@@ -68,13 +68,14 @@ class ValveDrawTool(QgsMapTool):
                 dist = feat.geometry().distance(QgsGeometry.fromPointXY(point))
                 if dist < tolerance:
                     return feat.attribute("id")
-        import random
-        nid = f"N{random.randint(1000, 9999)}"
-        feat = QgsFeature(self.junction_layer.fields())
-        feat.setGeometry(QgsGeometry.fromPointXY(point))
-        feat.setAttribute("id", nid)
-        self.junction_layer.dataProvider().addFeatures([feat])
-        self.junction_layer.updateExtents()
+        import random, time
+        nid = f"N{random.randint(1000, 9999)}{int(time.time())%100}"
+        if self.junction_layer and self.junction_layer.isValid():
+            feat = QgsFeature(self.junction_layer.fields())
+            feat.setGeometry(QgsGeometry.fromPointXY(point))
+            feat.setAttribute("id", nid)
+            self.junction_layer.dataProvider().addFeatures([feat])
+            self.junction_layer.updateExtents()
         return nid
 
     def _finish_valve(self, end_point, end_node_id):
