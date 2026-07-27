@@ -74,10 +74,9 @@ class AQuaDripPlugin:
         
         self._add_actions([
             ("draw_field",     "mActionDraw",          self.tr("绘制农田")),
-            ("select",         "mActionSelect",        self.tr("选择要素")),
-            ("delete",         "mActionDeleteSelected", self.tr("删除要素")),
-            ("draw_pump",      "mActionAdd",          self.tr("绘制水泵")),
-            ("draw_valve",     "mActionAdd",          self.tr("绘制阀门")),
+            ("start_editing",  "mActionToggleEditing", self.tr("开启编辑")),
+            ("draw_pump",      "mActionAdd",           self.tr("绘制水泵")),
+            ("draw_valve",     "mActionAdd",           self.tr("绘制阀门")),
             ("gen_network",    "mActionProcessing",    self.tr("生成管网")),
             ("configure",      "mActionOptions",       self.tr("参数配置")),
         ])
@@ -217,8 +216,8 @@ class AQuaDripPlugin:
         # 绘制农田 — NEW 或 FIELD 状态可用
         self._set_enabled("draw_field", s.state in [ProjectState.NEW, ProjectState.FIELD_IMPORTED])
         
-        # 选择要素 — 有图层即可
-        self._set_enabled("select", s.has_field)
+        # 开启编辑 — 有图层即可
+        self._set_enabled("start_editing", s.has_field)
         
         # 生成管网 — 有农田，未锁定
         self._set_enabled("gen_network", s.has_field and not s.is_simulating)
@@ -244,15 +243,20 @@ class AQuaDripPlugin:
         self._set_tool(FieldDrawTool(self.iface, self.layer_manager))
         self.state_machine.transition_to(ProjectState.FIELD_IMPORTED)
 
-    def _handle_select(self):
-        """激活选择工具"""
-        from .tools.selection_tool import SelectionTool
-        self._set_tool(SelectionTool(self.iface, self.layer_manager))
-
-    def _handle_delete(self):
-        """激活删除工具"""
-        from .tools.delete_tool import DeleteTool
-        self._set_tool(DeleteTool(self.iface, self.layer_manager))
+    def _handle_start_editing(self):
+        """开启编辑模式"""
+        layers = self.layer_manager.get_all_layers() if self.layer_manager else {}
+        active = False
+        for key, layer in layers.items():
+            if layer and layer.isValid():
+                layer.startEditing()
+                active = True
+        if active:
+            self.iface.messageBar().pushMessage(
+                "aQuaDrip", "编辑模式已开启，可使用 QGIS 原生工具选择/编辑/删除要素",
+                level=0, duration=5)
+        else:
+            self.iface.messageBar().pushWarning("aQuaDrip", "没有可编辑的图层")
 
     def _handle_draw_pump(self):
         """激活水泵绘制工具"""
