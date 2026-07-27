@@ -79,28 +79,37 @@ class ValveDrawTool(QgsMapTool):
 
     def _finish_valve(self, end_point, end_node_id):
         if not self.layer or not self.layer.isValid():
+            self.iface.messageBar().pushWarning("aQuaDrip", "阀门图层无效")
             return
         import random
         try:
-            self.layer.startEditing()
             feat = QgsFeature(self.layer.fields())
             line = QgsGeometry.fromPolylineXY([self.start_point, end_point])
+            if line.isNull():
+                self.iface.messageBar().pushWarning("aQuaDrip", "几何无效")
+                return
             feat.setGeometry(line)
             vid = f"V{random.randint(100, 999)}"
             feat.setAttribute("id", vid)
             feat.setAttribute("type", "PRV")
             feat.setAttribute("setting", 20)
-            self.layer.addFeature(feat)
-            self.layer.commitChanges()
+            
+            added = self.layer.dataProvider().addFeatures([feat])
+            if not added:
+                self.iface.messageBar().pushWarning("aQuaDrip", "添加要素失败")
+                return
+            
+            self.layer.updateExtents()
             self.layer.triggerRepaint()
-            self.canvas.setExtent(self.layer.extent().buffered(5))
+            self.canvas.setExtent(self.layer.extent().buffered(10))
             self.canvas.refresh()
             self.iface.messageBar().pushMessage(
                 "aQuaDrip", f"阀门 {vid} 已绘制", level=0, duration=3)
         except Exception as e:
-            self.layer.rollBack()
             self.iface.messageBar().pushWarning(
                 "aQuaDrip", f"绘制失败: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _reset(self):
         self.start_point = None
