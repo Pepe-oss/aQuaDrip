@@ -276,6 +276,13 @@ class AQuaDripPlugin:
         # 重置状态机
         self.state_machine.reset()
         self.dockwidget.log_message(self.tr("新建项目 — 图层已就绪"))
+        # 诊断图层是否可编辑
+        for key, layer in self.layer_manager.get_all_layers().items():
+            if layer:
+                self.dockwidget.log_message(
+                    f"  {layer.name()}: 有效={layer.isValid()}, "
+                    f"可编辑={not layer.isReadOnly()}, "
+                    f"要素={layer.featureCount()}")
         self.dockwidget.log_message(self.tr("请绘制或导入农田地块"))
 
     def _handle_open_project(self):
