@@ -1,0 +1,14 @@
+[general]
+name=aQuaDrip
+description=基于 QGIS + WNTR 的智能滴灌设计与水肥一体化分析平台
+qgisMinimumVersion=3.28
+version=0.1.0
+author=aQuaDrip Team
+email=
+about=基于 QGIS + WNTR 的智能滴灌设计与水肥一体化分析平台。支持农艺参数驱动的自动管网生成、手动绘制、WNTR 水力模拟、均匀度分析和模型校准。
+tracker=
+repository=
+homepage=
+icon=icon.png
+experimental=True
+deprecated=False

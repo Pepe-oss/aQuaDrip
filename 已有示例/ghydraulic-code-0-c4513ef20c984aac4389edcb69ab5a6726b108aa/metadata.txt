@@ -1,0 +1,75 @@
+; the next section is mandatory
+[general]
+name=GHydraulics
+qgisMinimumVersion=2.2
+description=Hydraulic analysis of water supply networks	(using EPANET)
+category=Vector
+version=version 2.1.8
+author=Steffen Macke
+email=sdteffen@gmail.com
+; end of mandatory metadata
+
+; start of optional metadata
+changelog=2014-04-04  GHydraulics 2.1.8:
+		Several bugfixes for EPANET simulation runs
+		Updated for QGIS 2.2
+	2014-03-19  GHydraulics 2.1.7:
+		Fixed EPANET simulation run on some platforms
+	2014-01-15  GHydraulics 2.1.6:
+		New function to run EPANET simulations
+		Reintegrated the economic diameter calculation
+		Some functions use the Undo history
+		Fixed all known bugs
+	2013-10-27  GHydraulics 2.1.4:
+		INP file writing bug fix
+	2013-09-26  GHydraulics 2.1.3:
+		Support for QGIS 2.0, project reprojection support
+	2013-08-11  GHydraulics 2.1.2:
+		Pipe length is calculated via UTM reprojection (if necessary)
+		Robustness and usability improvements
+		Optional backdrop map support
+		Added "New Project" and "Sample Darcy-Weisbach, metric" to menu
+	2013-07-29  GHydraulics 2.1.1:
+        	New option to calculate pipe length, bug fixes
+	2013-03-29  GHydraulics 2.1.0:
+		Checks and fixes for duplicate ids, missing junctions and
+		multipart shapes
+	2013-02-23  GHydraulics 2.0.9:
+		Fixed valve writing bug, started with "Check Model"
+	2013-01-20  GHydraulics 2.0.8:
+		Make EPANET model function, fills NODE1 and NODE2 of Line tables 
+	2012-06-26  GHydraulics 2.0.7:
+		Improved error messages, new D-W CMD template,
+		new sample data
+	2012-06-13  GHydraulics 2.0.6:
+		Added metadata.txt, updated package
+	2012-06-13  GHydraulics 2.0.5:
+		Write EPANET Inp file writes all network elements
+	2012-01-20  GHydraulics 2.0.4:
+		Write EPANET Inp file writes Junctions
+	2011-12-12  GHydraulics 2.0.3:
+		Renamed project to Ghydraulics
+	2009-04-11  GHydraulic 2.0.2:
+		Maintenance release that fixes problems with 
+		QT versions > 3, Mac OS X
+	2009-01-29  GHydraulic 2.0.1:
+		Maintenance release for QGIS 1.0
+	2007-10-28  GHydraulic 2.0.0: 
+		Initial release of the plugin
+
+; tags are in comma separated value format, spaces are allowed
+tags=hydraulic,analysis,epanet,water,supply,network,export,inp
+
+; these metadata can be empty
+homepage=http://epanet.de/ghydraulics/
+tracker=https://sourceforge.net/tracker/?group_id=5289&atid=105289
+repository=git://ghydraulic.git.sourceforge.net/gitroot/ghydraulic/ghydraulic
+icon=icon.png
+
+; experimental flag
+experimental=False
+
+; deprecated flag (applies to the whole plugin and not only to the uploaded version)
+deprecated=False
+
+about=GHydraulics allows to analyze water supply networks using EPANET. It allows to write EPANET INP files as well as running an EPANET simulation from QGIS complete with loading the result data. GHydraulics contains a function to calculate economic diameters based on given flowrates. The functions are accessible from the Quantum GIS plugin menu and toolbars.

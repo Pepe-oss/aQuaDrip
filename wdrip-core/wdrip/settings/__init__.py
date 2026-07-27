@@ -1,0 +1,1 @@
+"""settings — 配置管理：SettingsManager（默认单位/滴头/管材/DEM/语言/主题）"""
