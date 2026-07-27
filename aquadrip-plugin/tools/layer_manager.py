@@ -10,6 +10,7 @@ from qgis.core import (
     QgsWkbTypes, QgsMarkerSymbol, QgsLineSymbol,
     QgsSingleSymbolRenderer, QgsCategorizedSymbolRenderer,
     QgsGraduatedSymbolRenderer, QgsRendererRange,
+    QgsRectangle,
 )
 from qgis.PyQt.QtCore import QVariant
 from qgis.PyQt.QtGui import QColor
@@ -168,6 +169,10 @@ class LayerManager:
         provider = layer.dataProvider()
         provider.addAttributes(defn["fields"])
         layer.updateFields()
+        
+        # 设置默认范围，防止空图层导致"缩放到图层"崩溃
+        layer.setExtent(QgsRectangle(0, 0, 1, 1))
+        
         return layer
 
     def _add_layer_to_group(self, layer, key):
