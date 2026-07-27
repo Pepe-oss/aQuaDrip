@@ -125,18 +125,18 @@ class FieldDrawTool(QgsMapTool):
         from qgis.core import QgsDistanceArea, QgsProject
         da = QgsDistanceArea()
         try:
-            dest_crs = self.canvas.mapSettings().destinationCrs()
-            ellipsoid = dest_crs.ellipsoidAcronym()
+            project = QgsProject.instance()
+            da.setSourceCrs(project.crs(), project.transformContext())
+            ellipsoid = project.ellipsoid()
             if ellipsoid and ellipsoid != "NONE":
                 da.setEllipsoid(ellipsoid)
                 area_sqm = da.measureArea(polygon)
             else:
-                # 无有效椭球，按平面坐标估算
                 area_sqm = polygon.area()
         except:
             area_sqm = polygon.area()
         
-        if area_sqm is None or area_sqm != area_sqm:  # NaN 检查
+        if area_sqm is None or area_sqm != area_sqm:
             area_sqm = polygon.area()
         
         area_hectare = area_sqm / 10000
