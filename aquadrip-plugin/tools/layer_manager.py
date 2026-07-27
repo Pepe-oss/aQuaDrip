@@ -136,6 +136,12 @@ class LayerManager:
 
     def setup(self):
         """创建图层组和所有图层"""
+        # 移除旧的 aQuaDrip 分组（如果存在）
+        old = self._find_group(self.root, "aQuaDrip")
+        if old:
+            self.root.removeChildNode(old)
+        self._aq_group = None
+        
         self._create_groups(self.GROUP_TREE)
         self._create_layers()
         return self._layers
@@ -234,16 +240,29 @@ class LayerManager:
     def clear_layers(self, key: str = None):
         """清理图层"""
         if key:
+            # 清理指定图层
             layer = self._layers.pop(key, None)
             if layer:
+                try:
+                    self.project.removeMapLayer(layer)
+                except RuntimeError:
+                    pass
+            return
+        
+        # 清理所有图层
+        for k, layer in list(self._layers.items()):
+            try:
                 self.project.removeMapLayer(layer)
-        else:
-            for key, layer in self._layers.items():
-                self.project.removeMapLayer(layer)
-            self._layers.clear()
-            if self._aq_group:
+            except RuntimeError:
+                pass
+        self._layers.clear()
+        if self._aq_group:
+            try:
+                _ = self._aq_group.name()
                 self.root.removeChildNode(self._aq_group)
-                self._aq_group = None
+            except RuntimeError:
+                pass
+            self._aq_group = None
 
     # ---- 从 DripNetwork 更新 ----
 
