@@ -156,6 +156,13 @@ class FieldDrawTool(QgsMapTool):
                 return
             
             self.layer.updateExtents()
+            # 删除虚拟要素（坐标接近0,0的要素）
+            for feat in self.layer.getFeatures():
+                if feat.geometry():
+                    box = feat.geometry().boundingBox()
+                    if abs(box.xMinimum()) < 0.01 and abs(box.yMinimum()) < 0.01:
+                        self.layer.dataProvider().deleteFeatures([feat.id()])
+                        break
             
             # 更新画布视图
             canvas = self.iface.mapCanvas()
