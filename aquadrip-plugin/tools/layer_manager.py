@@ -154,12 +154,12 @@ class LayerManager:
     def _create_layers(self):
         """创建所有图层"""
         for key, defn in self.LAYER_DEFS.items():
-            layer = self._create_layer(defn)
+            layer = self._create_layer(key, defn)
             if layer:
                 self._layers[key] = layer
                 self._add_layer_to_group(layer, key)
 
-    def _create_layer(self, defn):
+    def _create_layer(self, key, defn):
         """创建单个矢量图层"""
         uri = f"{defn['geom']}?crs=EPSG:4326"
         layer = QgsVectorLayer(uri, defn["name"], "memory")
@@ -171,16 +171,20 @@ class LayerManager:
         layer.updateFields()
         
         # 添加一个虚拟要素，使图层有有效范围（防止"缩放到图层组"崩溃）
-        dummy = QgsFeature(layer.fields())
-        geom_type = defn["geom"]
-        if geom_type == "Point":
-            dummy.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(0, 0)))
-        elif geom_type == "LineString":
-            dummy.setGeometry(QgsGeometry.fromPolylineXY([QgsPointXY(0, 0), QgsPointXY(1, 1)]))
-        elif geom_type == "Polygon":
-            g = QgsGeometry.fromRect(QgsRectangle(0, 0, 1, 1))
-            dummy.setGeometry(g)
-        provider.addFeature(dummy)
+        # 仅农田图层需要，其他图层设置默认范围即可
+        if key == "field":
+            dummy = QgsFeature(layer.fields())
+            geom_type = defn["geom"]
+            if geom_type == "Point":
+                dummy.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(0, 0)))
+            elif geom_type == "LineString":
+                dummy.setGeometry(QgsGeometry.fromPolylineXY([QgsPointXY(0, 0), QgsPointXY(1, 1)]))
+            elif geom_type == "Polygon":
+                g = QgsGeometry.fromRect(QgsRectangle(0, 0, 1, 1))
+                dummy.setGeometry(g)
+            provider.addFeature(dummy)
+        else:
+            layer.setExtent(QgsRectangle(0, 0, 1, 1))
         
         return layer
 
