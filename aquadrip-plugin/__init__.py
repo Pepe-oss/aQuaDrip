@@ -14,7 +14,7 @@ for _p in [_wdrip_core, _fallback]:
     if os.path.isdir(os.path.join(_p, "wdrip")) and _p not in sys.path:
         sys.path.insert(0, _p)
 
-from aquadrip_plugin import AQuaDripPlugin
+from .aquadrip_plugin import AQuaDripPlugin
 
 
 def classFactory(iface):
