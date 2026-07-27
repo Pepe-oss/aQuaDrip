@@ -283,6 +283,16 @@ class AQuaDripPlugin:
                     f"  {layer.name()}: 有效={layer.isValid()}, "
                     f"可编辑={not layer.readOnly()}, "
                     f"要素={layer.featureCount()}")
+        # 设置第一个图层为活动图层，刷新 UI 确保编辑工具状态正确
+        first = None
+        for key, layer in self.layer_manager.get_all_layers().items():
+            if layer and layer.isValid():
+                first = layer
+                break
+        if first:
+            self.iface.setActiveLayer(first)
+            # 触发 QGIS 重绘图层面板
+            self.iface.layerTreeView().refresh()
         self.dockwidget.log_message(self.tr("请绘制或导入农田地块"))
 
     def _handle_open_project(self):
