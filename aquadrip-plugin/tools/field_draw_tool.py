@@ -118,7 +118,7 @@ class FieldDrawTool(QgsMapTool):
             feat.setGeometry(polygon)
             self.layer.dataProvider().addFeatures([feat])
             self.layer.updateExtents()
-            self.iface.mapCanvas().zoomToFeatureExtent(self.layer)
+            self.iface.mapCanvas().zoomToFeatureExtent(self.layer.extent())
 
         self.iface.messageBar().pushMessage(
             "aQuaDrip", f"农田已绘制（面积约 {polygon.area():.0f} m²）", level=0, duration=3)
