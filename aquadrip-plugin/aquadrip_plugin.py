@@ -74,6 +74,7 @@ class AQuaDripPlugin:
         
         self._add_actions([
             ("draw_field",     "mActionDraw",          self.tr("绘制农田")),
+            ("select",         "mActionSelect",        self.tr("选择要素")),
             ("gen_network",    "mActionProcessing",    self.tr("生成管网")),
             ("configure",      "mActionOptions",       self.tr("参数配置")),
         ])
@@ -94,6 +95,9 @@ class AQuaDripPlugin:
         from .ui.dockwidget import AQuaDripDockWidget
         self.dockwidget = AQuaDripDockWidget(self.iface)
         self.iface.addDockWidget(Qt.RightDockWidgetArea, self.dockwidget)
+        
+        # 当前激活的地图工具
+        self._active_tool = None
 
         # 连接 DockWidget 信号
         self.dockwidget.button_clicked.connect(self._on_dockwidget_button)
@@ -139,6 +143,11 @@ class AQuaDripPlugin:
         # 清理图层
         if hasattr(self, 'layer_manager'):
             self.layer_manager.clear_layers()
+        
+        # 清理地图工具
+        if self._active_tool:
+            self.iface.mapCanvas().unsetMapTool(self._active_tool)
+            self._active_tool = None
 
     # ---- 动作管理 ----
 
@@ -205,6 +214,9 @@ class AQuaDripPlugin:
         # 绘制农田 — NEW 或 FIELD 状态可用
         self._set_enabled("draw_field", s.state in [ProjectState.NEW, ProjectState.FIELD_IMPORTED])
         
+        # 选择要素 — 有图层即可
+        self._set_enabled("select", s.has_field)
+        
         # 生成管网 — 有农田，未锁定
         self._set_enabled("gen_network", s.has_field and not s.is_simulating)
         
@@ -222,6 +234,24 @@ class AQuaDripPlugin:
         
         # 导出 — 有结果
         self._set_enabled("export_inp", s.has_results)
+
+    def _handle_draw_field(self):
+        """激活农田绘制工具"""
+        from .tools.field_draw_tool import FieldDrawTool
+        self._set_tool(FieldDrawTool(self.iface, self.layer_manager))
+        self.state_machine.transition_to(ProjectState.FIELD_IMPORTED)
+
+    def _handle_select(self):
+        """激活选择工具"""
+        from .tools.selection_tool import SelectionTool
+        self._set_tool(SelectionTool(self.iface, self.layer_manager))
+
+    def _set_tool(self, tool):
+        """设置当前地图工具"""
+        if self._active_tool:
+            self._active_tool.deactivate()
+        self._active_tool = tool
+        self.iface.mapCanvas().setMapTool(tool)
 
     def _set_enabled(self, key, enabled):
         """设置按钮启用状态"""
