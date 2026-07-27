@@ -50,7 +50,7 @@ class FieldDrawTool(QgsMapTool):
     def canvasPressEvent(self, event: QgsMapMouseEvent):
         """鼠标点击事件"""
         if event.button() == Qt.LeftButton:
-            point = self._to_map_coords(event)
+            point = event.snapPoint()
             self.points.append(point)
             self.is_drawing = True
             self._update_rubber()
@@ -63,7 +63,7 @@ class FieldDrawTool(QgsMapTool):
     def canvasMoveEvent(self, event: QgsMapMouseEvent):
         """鼠标移动事件（实时预览最后一段线）"""
         if self.is_drawing and len(self.points) > 0:
-            point = self._to_map_coords(event)
+            point = event.snapPoint()
             self.temp_rubber.reset(QgsWkbTypes.LineGeometry)
             # 画从最后一个点到鼠标位置的线
             last = self.points[-1]
@@ -72,7 +72,6 @@ class FieldDrawTool(QgsMapTool):
 
     def canvasDoubleClickEvent(self, event):
         """双击完成绘制"""
-        self.canvasMoveEvent(event)  # 先更新最后一点
         if len(self.points) >= 3:
             self._finish_polygon()
 
@@ -85,10 +84,6 @@ class FieldDrawTool(QgsMapTool):
             self._reset()
 
     # ---- 内部方法 ----
-
-    def _to_map_coords(self, event):
-        """事件坐标转地图坐标"""
-        return self.canvas.snapToCurrentLayer(event)
 
     def _update_rubber(self):
         """更新多边形预览"""

@@ -31,7 +31,7 @@ class SelectionTool(QgsMapTool):
 
     def canvasPressEvent(self, event: QgsMapMouseEvent):
         if event.button() == Qt.LeftButton:
-            point = self.canvas.snapToCurrentLayer(event)
+            point = event.snapPoint()
             self._select_at(point)
         elif event.button() == Qt.RightButton:
             self._clear_selection()

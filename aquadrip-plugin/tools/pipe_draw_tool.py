@@ -61,7 +61,7 @@ class PipeDrawTool(QgsMapTool):
 
     def canvasPressEvent(self, event: QgsMapMouseEvent):
         if event.button() == Qt.LeftButton:
-            point = self.canvas.snapToCurrentLayer(event)
+            point = event.snapPoint()
             
             if self.start_point is None:
                 # 第一个点：尝试捕捉已有节点
@@ -79,7 +79,7 @@ class PipeDrawTool(QgsMapTool):
 
     def canvasMoveEvent(self, event: QgsMapMouseEvent):
         if self.start_point is not None:
-            point = self.canvas.snapToCurrentLayer(event)
+            point = event.snapPoint()
             self.rubber.reset(QgsWkbTypes.LineGeometry)
             self.rubber.addPoint(self.start_point)
             self.rubber.addPoint(point)
