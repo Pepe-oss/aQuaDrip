@@ -293,9 +293,6 @@ class AQuaDripPlugin:
         if path:
             self._not_implemented(self.tr("保存项目"))
 
-    def _handle_draw_field(self):
-        self._not_implemented(self.tr("绘制农田"))
-
     def _handle_gen_network(self):
         self._not_implemented(self.tr("生成管网"))
 
