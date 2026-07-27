@@ -291,8 +291,11 @@ class AQuaDripPlugin:
                 break
         if first:
             self.iface.setActiveLayer(first)
-            # 触发 QGIS 重绘图层面板
-            self.iface.layerTreeView().refresh()
+            # 触发信号通知 QGIS 更新编辑工具状态
+            try:
+                self.iface.mapCanvas().currentLayerChanged.emit(first)
+            except:
+                pass
         self.dockwidget.log_message(self.tr("请绘制或导入农田地块"))
 
     def _handle_open_project(self):
