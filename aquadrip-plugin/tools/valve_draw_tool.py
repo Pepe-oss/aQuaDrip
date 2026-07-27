@@ -90,6 +90,10 @@ class ValveDrawTool(QgsMapTool):
         feat.setAttribute("setting", 20)
         self.layer.dataProvider().addFeatures([feat])
         self.layer.updateExtents()
+        self.canvas.setExtent(self.layer.extent())
+        self.canvas.refresh()
+        self.iface.messageBar().pushMessage(
+            "aQuaDrip", f"阀门 {vid} 已绘制", level=0, duration=3)
 
     def _reset(self):
         self.start_point = None

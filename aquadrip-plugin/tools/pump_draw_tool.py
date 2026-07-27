@@ -93,6 +93,10 @@ class PumpDrawTool(QgsMapTool):
         feat.setAttribute("power", 5.5)
         self.layer.dataProvider().addFeatures([feat])
         self.layer.updateExtents()
+        self.canvas.setExtent(self.layer.extent())
+        self.canvas.refresh()
+        self.iface.messageBar().pushMessage(
+            "aQuaDrip", f"水泵 {pid} 已绘制", level=0, duration=3)
 
     def _reset(self):
         self.start_point = None
