@@ -8,6 +8,7 @@ import sys
 from qgis.core import QgsApplication
 from qgis.gui import QgisInterface
 from qgis.PyQt.QtWidgets import QAction, QMessageBox
+from qgis.PyQt.QtCore import Qt
 
 from .tools.state_machine import ProjectStateMachine, ProjectState
 from .tools.event_bus import EventBus, SIMULATION_PROGRESS, ERROR_OCCURRED
@@ -89,6 +90,21 @@ class AQuaDripPlugin:
         # 初始化按钮状态
         self._update_actions()
 
+        # 创建 DockWidget
+        from .ui.dockwidget import AQuaDripDockWidget
+        self.dockwidget = AQuaDripDockWidget(self.iface)
+        self.iface.addDockWidget(Qt.RightDockWidgetArea, self.dockwidget)
+
+        # 连接 DockWidget 信号
+        self.dockwidget.button_clicked.connect(self._on_dockwidget_button)
+
+        # 连接事件总线到日志
+        self.event_bus.on(SIMULATION_PROGRESS, lambda msg: self.dockwidget.log_message(msg))
+
+        # 启动日志
+        self.dockwidget.log_message(self.tr("aQuaDrip 已加载"))
+        self.dockwidget.log_message(self.tr("wdrip-core 核心库就绪"))
+
     def unload(self):
         """卸载插件"""
         for name, action in self.actions.items():
@@ -142,11 +158,25 @@ class AQuaDripPlugin:
     def _on_state_changed(self, old_state, new_state):
         """状态变化时更新 UI"""
         self._update_actions()
+        if self.dockwidget:
+            self.dockwidget.log_message(f"状态: {old_state.value} → {new_state.value}")
         self.iface.messageBar().pushMessage(
             self.tr("aQuaDrip"),
             f"{old_state.value} → {new_state.value}",
             level=0, duration=3
         )
+
+    def _on_dockwidget_button(self, button_name):
+        """DockWidget 按钮回调"""
+        action_map = {
+            "generate_network": "gen_network",
+            "configure": "configure",
+            "run_simulation": "run_simulation",
+            "show_results": "show_results",
+        }
+        key = action_map.get(button_name)
+        if key:
+            self._on_action(key)
 
     def _update_actions(self):
         """根据当前状态更新按钮启用/禁用"""
