@@ -121,10 +121,23 @@ class FieldDrawTool(QgsMapTool):
             return
 
         # 计算面积（考虑 CRS 和椭球）
-        from qgis.core import QgsDistanceArea
+        from qgis.core import QgsDistanceArea, QgsProject
         da = QgsDistanceArea()
-        da.setEllipsoid(self.canvas.mapSettings().destinationCrs().ellipsoidAcronym())
-        area_sqm = da.measureArea(polygon)
+        try:
+            dest_crs = self.canvas.mapSettings().destinationCrs()
+            ellipsoid = dest_crs.ellipsoidAcronym()
+            if ellipsoid and ellipsoid != "NONE":
+                da.setEllipsoid(ellipsoid)
+                area_sqm = da.measureArea(polygon)
+            else:
+                # 无有效椭球，按平面坐标估算
+                area_sqm = polygon.area()
+        except:
+            area_sqm = polygon.area()
+        
+        if area_sqm is None or area_sqm != area_sqm:  # NaN 检查
+            area_sqm = polygon.area()
+        
         area_hectare = area_sqm / 10000
         area_mu = area_sqm / 666.667
 
