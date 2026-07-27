@@ -176,6 +176,15 @@ class LayerManager:
         provider.addAttributes(defn["fields"])
         layer.updateFields()
         
+        # 确保 CRS 与项目 CRS 一致（否则编辑工具不可用）
+        from qgis.core import QgsProject
+        project_crs = QgsProject.instance().crs()
+        if project_crs.isValid():
+            layer.setCrs(project_crs)
+        
+        # 显式设置为可读写
+        layer.setReadOnly(False)
+        
         # 添加一个虚拟要素，使图层有有效范围（防止"缩放到图层组"崩溃）
         # 仅农田图层需要，其他图层设置默认范围即可
         if key == "field":
