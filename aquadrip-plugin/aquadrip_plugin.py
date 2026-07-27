@@ -105,6 +105,18 @@ class AQuaDripPlugin:
         self.dockwidget.log_message(self.tr("aQuaDrip 已加载"))
         self.dockwidget.log_message(self.tr("wdrip-core 核心库就绪"))
 
+        # 初始化图层管理器
+        from .tools.layer_manager import LayerManager
+        self.layer_manager = LayerManager()
+        self.layer_manager.setup()
+        self.dockwidget.log_message(self.tr("图层已创建"))
+
+        # 初始化样式管理器
+        from .tools.style_manager import StyleManager
+        self.style_manager = StyleManager()
+        self.style_manager.apply_default_styles(self.layer_manager.get_all_layers())
+        self.dockwidget.log_message(self.tr("样式已应用"))
+
     def unload(self):
         """卸载插件"""
         for name, action in self.actions.items():
@@ -127,6 +139,10 @@ class AQuaDripPlugin:
         
         # 清理事件总线
         self.event_bus.clear()
+
+        # 清理图层
+        if hasattr(self, 'layer_manager'):
+            self.layer_manager.clear_layers()
 
     # ---- 动作管理 ----
 
