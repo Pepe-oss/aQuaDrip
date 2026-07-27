@@ -81,19 +81,26 @@ class ValveDrawTool(QgsMapTool):
         if not self.layer or not self.layer.isValid():
             return
         import random
-        feat = QgsFeature(self.layer.fields())
-        line = QgsGeometry.fromPolylineXY([self.start_point, end_point])
-        feat.setGeometry(line)
-        vid = f"V{random.randint(100, 999)}"
-        feat.setAttribute("id", vid)
-        feat.setAttribute("type", "PRV")
-        feat.setAttribute("setting", 20)
-        self.layer.dataProvider().addFeatures([feat])
-        self.layer.updateExtents()
-        self.canvas.setExtent(self.layer.extent())
-        self.canvas.refresh()
-        self.iface.messageBar().pushMessage(
-            "aQuaDrip", f"阀门 {vid} 已绘制", level=0, duration=3)
+        try:
+            self.layer.startEditing()
+            feat = QgsFeature(self.layer.fields())
+            line = QgsGeometry.fromPolylineXY([self.start_point, end_point])
+            feat.setGeometry(line)
+            vid = f"V{random.randint(100, 999)}"
+            feat.setAttribute("id", vid)
+            feat.setAttribute("type", "PRV")
+            feat.setAttribute("setting", 20)
+            self.layer.addFeature(feat)
+            self.layer.commitChanges()
+            self.layer.triggerRepaint()
+            self.canvas.setExtent(self.layer.extent().buffered(5))
+            self.canvas.refresh()
+            self.iface.messageBar().pushMessage(
+                "aQuaDrip", f"阀门 {vid} 已绘制", level=0, duration=3)
+        except Exception as e:
+            self.layer.rollBack()
+            self.iface.messageBar().pushWarning(
+                "aQuaDrip", f"绘制失败: {e}")
 
     def _reset(self):
         self.start_point = None

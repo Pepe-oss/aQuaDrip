@@ -83,20 +83,27 @@ class PumpDrawTool(QgsMapTool):
         if not self.layer or not self.layer.isValid():
             return
         import random
-        feat = QgsFeature(self.layer.fields())
-        line = QgsGeometry.fromPolylineXY([self.start_point, end_point])
-        feat.setGeometry(line)
-        pid = f"PU{random.randint(100, 999)}"
-        feat.setAttribute("id", pid)
-        feat.setAttribute("head", 30)
-        feat.setAttribute("flow", 15)
-        feat.setAttribute("power", 5.5)
-        self.layer.dataProvider().addFeatures([feat])
-        self.layer.updateExtents()
-        self.canvas.setExtent(self.layer.extent())
-        self.canvas.refresh()
-        self.iface.messageBar().pushMessage(
-            "aQuaDrip", f"水泵 {pid} 已绘制", level=0, duration=3)
+        try:
+            self.layer.startEditing()
+            feat = QgsFeature(self.layer.fields())
+            line = QgsGeometry.fromPolylineXY([self.start_point, end_point])
+            feat.setGeometry(line)
+            pid = f"PU{random.randint(100, 999)}"
+            feat.setAttribute("id", pid)
+            feat.setAttribute("head", 30)
+            feat.setAttribute("flow", 15)
+            feat.setAttribute("power", 5.5)
+            self.layer.addFeature(feat)
+            self.layer.commitChanges()
+            self.layer.triggerRepaint()
+            self.canvas.setExtent(self.layer.extent().buffered(5))
+            self.canvas.refresh()
+            self.iface.messageBar().pushMessage(
+                "aQuaDrip", f"水泵 {pid} 已绘制", level=0, duration=3)
+        except Exception as e:
+            self.layer.rollBack()
+            self.iface.messageBar().pushWarning(
+                "aQuaDrip", f"绘制失败: {e}")
 
     def _reset(self):
         self.start_point = None
