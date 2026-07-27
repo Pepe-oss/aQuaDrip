@@ -281,7 +281,7 @@ class AQuaDripPlugin:
             if layer:
                 self.dockwidget.log_message(
                     f"  {layer.name()}: 有效={layer.isValid()}, "
-                    f"可编辑={not layer.isReadOnly()}, "
+                    f"可编辑={not layer.readOnly()}, "
                     f"要素={layer.featureCount()}")
         self.dockwidget.log_message(self.tr("请绘制或导入农田地块"))
 
