@@ -120,6 +120,14 @@ class FieldDrawTool(QgsMapTool):
                 "aQuaDrip", "多边形无效，请重新绘制")
             return
 
+        # 计算面积（考虑 CRS 和椭球）
+        from qgis.core import QgsDistanceArea
+        da = QgsDistanceArea()
+        da.setEllipsoid(self.canvas.mapSettings().destinationCrs().ellipsoidAcronym())
+        area_sqm = da.measureArea(polygon)
+        area_hectare = area_sqm / 10000
+        area_mu = area_sqm / 666.667
+
         # 写入图层
         if self.layer and self.layer.isValid():
             # 删除虚拟要素（如果有）
@@ -142,7 +150,7 @@ class FieldDrawTool(QgsMapTool):
             
             self.iface.messageBar().pushMessage(
                 "aQuaDrip",
-                f"农田已绘制（面积约 {polygon.area():.0f} m²）",
+                f"农田已绘制（{area_sqm:.0f} m² ≈ {area_mu:.1f} 亩）",
                 level=0, duration=3)
         else:
             self.iface.messageBar().pushWarning(

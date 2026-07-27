@@ -45,8 +45,7 @@ class ValveDrawTool(QgsMapTool):
                 self.rubber.addPoint(point)
             else:
                 end_node_id = self._find_or_create_node(point)
-                if self.start_node_id and end_node_id and self.start_node_id != end_node_id:
-                    self._finish_valve(point, end_node_id)
+                self._finish_valve(point, end_node_id)
                 self._reset()
         elif event.button() == Qt.RightButton:
             self._reset()
