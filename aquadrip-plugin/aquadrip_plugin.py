@@ -1,14 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-aQuaDrip 插件主类 — 菜单、工具栏、DockWidget 管理
+aQuaDrip 插件主类 — 菜单、工具栏、状态机、事件总线
 """
 
 import os
 import sys
 from qgis.core import QgsApplication
 from qgis.gui import QgisInterface
-from qgis.PyQt.QtWidgets import QAction, QToolBar, QMenu, QMessageBox
-from qgis.PyQt.QtGui import QIcon
+from qgis.PyQt.QtWidgets import QAction, QMessageBox
+
+from .tools.state_machine import ProjectStateMachine, ProjectState
+from .tools.event_bus import EventBus, SIMULATION_PROGRESS, ERROR_OCCURRED
 
 
 class AQuaDripPlugin:
@@ -24,65 +26,72 @@ class AQuaDripPlugin:
         if os.path.isdir(os.path.join(_p, "wdrip")) and _p not in sys.path:
             sys.path.insert(0, _p)
         
-        self.actions = []       # 所有 QAction
-        self.menu = None        # 主菜单
-        self.toolbar = None     # 工具栏
+        # 状态机
+        self.state_machine = ProjectStateMachine()
+        self.state_machine.add_listener(self._on_state_changed)
+        
+        # 事件总线
+        self.event_bus = EventBus()
+        
+        # 动作字典 {name: QAction}
+        self.actions = {}
+        self.menu = None
+        self.toolbar = None
         self.dockwidget = None
         self.provider = None
         self._wdrip_ok = False
 
+    # ---- 初始化 ----
+
     def initGui(self):
-        """初始化 GUI（菜单、工具栏、动作）"""
-        # 验证 wdrip-core
+        """初始化 GUI"""
         try:
             from wdrip.network import DripNetwork
             from wdrip.simulation import DripSimulation
             self._wdrip_ok = True
         except ImportError as e:
             self.iface.messageBar().pushWarning(
-                self.tr("aQuaDrip"), self.tr("wdrip-core 加载失败: {}").format(e)
-            )
-            import traceback
-            traceback.print_exc()
+                self.tr("aQuaDrip"), self.tr("wdrip-core 加载失败: {}").format(e))
+            import traceback; traceback.print_exc()
             return
 
-        # 创建菜单
+        # 菜单
         self.menu = self.iface.pluginMenu().addMenu(self.tr("&aQuaDrip"))
 
-        # 创建工具栏
+        # 工具栏
         self.toolbar = self.iface.addToolBar("aQuaDrip")
         self.toolbar.setObjectName("aQuaDripToolBar")
 
-        # 注册动作
-        self._add_action(self.tr("新建项目"), "mActionNewProject",
-                        self.on_new_project, self.tr("创建新灌溉项目"))
-        self._add_action(self.tr("打开项目"), "mActionOpenProject",
-                        self.on_open_project, self.tr("打开已有 .aqd 项目"))
-        self._add_action(self.tr("保存项目"), "mActionSaveProject",
-                        self.on_save_project, self.tr("保存当前项目"))
-        
+        # 注册动作（按功能分组）
+        self._add_actions([
+            ("new_project",    "mActionNewProject",    self.tr("新建项目")),
+            ("open_project",   "mActionOpenProject",   self.tr("打开项目")),
+            ("save_project",   "mActionSaveProject",   self.tr("保存项目")),
+        ])
         self.menu.addSeparator()
         self.toolbar.addSeparator()
         
-        self._add_action(self.tr("生成管网"), "mActionDraw",
-                        self.on_generate_network, self.tr("农艺参数驱动自动生成管网"))
-        self._add_action(self.tr("参数配置"), "mActionOptions",
-                        self.on_configure, self.tr("配置滴头/管道/设备参数"))
-        self._add_action(self.tr("运行模拟"), "mActionStart",
-                        self.on_run_simulation, self.tr("运行 WNTR 水力模拟"))
-        
+        self._add_actions([
+            ("draw_field",     "mActionDraw",          self.tr("绘制农田")),
+            ("gen_network",    "mActionProcessing",    self.tr("生成管网")),
+            ("configure",      "mActionOptions",       self.tr("参数配置")),
+        ])
         self.menu.addSeparator()
         self.toolbar.addSeparator()
         
-        self._add_action(self.tr("结果分析"), "mActionReport",
-                        self.on_show_results, self.tr("均匀度/压力/流量分析"))
-        self._add_action(self.tr("导出 INP"), "mActionFileExit",
-                        self.on_export_inp, self.tr("导出 EPANET INP 文件"))
+        self._add_actions([
+            ("run_simulation", "mActionStart",         self.tr("运行模拟")),
+            ("show_results",   "mActionReport",        self.tr("结果分析")),
+            ("calibrate",      "mActionReFresh",       self.tr("模型校准")),
+            ("export_inp",     "mActionFileExit",      self.tr("导出 INP")),
+        ])
+        
+        # 初始化按钮状态
+        self._update_actions()
 
     def unload(self):
         """卸载插件"""
-        # 移除所有动作
-        for action in self.actions:
+        for name, action in self.actions.items():
             try:
                 self.iface.removePluginMenu("&aQuaDrip", action)
                 self.iface.removeToolBarIcon(action)
@@ -90,97 +99,157 @@ class AQuaDripPlugin:
                 pass
         self.actions.clear()
         
-        # 移除菜单和工具栏
         if self.menu:
-            self.menu.deleteLater()
-            self.menu = None
+            self.menu.deleteLater(); self.menu = None
         if self.toolbar:
-            del self.toolbar
-            self.toolbar = None
-        
-        # 移除 DockWidget
+            del self.toolbar; self.toolbar = None
         if self.dockwidget:
-            self.iface.removeDockWidget(self.dockwidget)
-            self.dockwidget = None
-        
-        # 注销 Processing Provider
+            self.iface.removeDockWidget(self.dockwidget); self.dockwidget = None
         if self.provider:
             QgsApplication.processingRegistry().removeProvider(self.provider)
             self.provider = None
+        
+        # 清理事件总线
+        self.event_bus.clear()
 
     # ---- 动作管理 ----
 
-    def _add_action(self, text, icon_name, callback, tooltip=""):
-        """添加菜单+工具栏动作"""
-        icon = QgsApplication.getThemeIcon(icon_name)
-        action = QAction(icon, text, self.iface.mainWindow())
-        action.triggered.connect(callback)
-        action.setToolTip(tooltip or text)
-        action.setStatusTip(tooltip or text)
-        
-        self.menu.addAction(action)
-        self.toolbar.addAction(action)
-        self.actions.append(action)
-        return action
+    def _add_actions(self, action_defs):
+        """批量添加动作"""
+        for key, icon_name, text in action_defs:
+            icon = QgsApplication.getThemeIcon(icon_name)
+            action = QAction(icon, text, self.iface.mainWindow())
+            action.triggered.connect(lambda checked, k=key: self._on_action(k))
+            action.setToolTip(text)
+            action.setStatusTip(text)
+            
+            self.menu.addAction(action)
+            self.toolbar.addAction(action)
+            self.actions[key] = action
 
-    def _not_implemented(self, feature_name):
-        """未实现功能提示"""
+    def _on_action(self, key):
+        """动作分发"""
+        if not self._check_wdrip():
+            return
+        handler = getattr(self, f"_handle_{key}", None)
+        if handler:
+            handler()
+        else:
+            self._not_implemented(key)
+
+    # ---- 状态驱动 UI ----
+
+    def _on_state_changed(self, old_state, new_state):
+        """状态变化时更新 UI"""
+        self._update_actions()
+        self.iface.messageBar().pushMessage(
+            self.tr("aQuaDrip"),
+            f"{old_state.value} → {new_state.value}",
+            level=0, duration=3
+        )
+
+    def _update_actions(self):
+        """根据当前状态更新按钮启用/禁用"""
+        s = self.state_machine
+        disabled = 0
+        
+        # 新建/打开 — 始终可用
+        self._set_enabled("new_project", True)
+        self._set_enabled("open_project", True)
+        
+        # 保存 — 有内容才可保存
+        self._set_enabled("save_project", s.has_field)
+        
+        # 绘制农田 — NEW 或 FIELD 状态可用
+        self._set_enabled("draw_field", s.state in [ProjectState.NEW, ProjectState.FIELD_IMPORTED])
+        
+        # 生成管网 — 有农田，未锁定
+        self._set_enabled("gen_network", s.has_field and not s.is_simulating)
+        
+        # 参数配置 — 有管网即可
+        self._set_enabled("configure", s.has_network and not s.is_simulating)
+        
+        # 运行模拟 — SIMULATION_READY 状态
+        self._set_enabled("run_simulation", s.can_simulate)
+        
+        # 结果分析 — 有结果
+        self._set_enabled("show_results", s.has_results)
+        
+        # 模型校准 — 有结果
+        self._set_enabled("calibrate", s.has_results)
+        
+        # 导出 — 有结果
+        self._set_enabled("export_inp", s.has_results)
+
+    def _set_enabled(self, key, enabled):
+        """设置按钮启用状态"""
+        action = self.actions.get(key)
+        if action:
+            action.setEnabled(enabled)
+
+    # ---- 功能区（后续 Sprint 实现）----
+
+    def _handle_new_project(self):
+        self.state_machine.reset()
+        self.iface.messageBar().pushMessage(
+            self.tr("aQuaDrip"), self.tr("新建项目"), level=0, duration=3)
+
+    def _handle_open_project(self):
+        from qgis.PyQt.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getOpenFileName(
+            self.iface.mainWindow(),
+            self.tr("打开项目"), "",
+            self.tr("aQuaDrip 项目 (*.aqd)"))
+        if path:
+            self._not_implemented(self.tr("打开项目"))
+
+    def _handle_save_project(self):
+        from qgis.PyQt.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getSaveFileName(
+            self.iface.mainWindow(),
+            self.tr("保存项目"), "",
+            self.tr("aQuaDrip 项目 (*.aqd)"))
+        if path:
+            self._not_implemented(self.tr("保存项目"))
+
+    def _handle_draw_field(self):
+        self._not_implemented(self.tr("绘制农田"))
+
+    def _handle_gen_network(self):
+        self._not_implemented(self.tr("生成管网"))
+
+    def _handle_configure(self):
+        self._not_implemented(self.tr("参数配置"))
+
+    def _handle_run_simulation(self):
+        self._not_implemented(self.tr("运行模拟"))
+
+    def _handle_show_results(self):
+        self._not_implemented(self.tr("结果分析"))
+
+    def _handle_calibrate(self):
+        self._not_implemented(self.tr("模型校准"))
+
+    def _handle_export_inp(self):
+        self._not_implemented(self.tr("导出 INP"))
+
+    # ---- 工具方法 ----
+
+    def _not_implemented(self, name):
         QMessageBox.information(
             self.iface.mainWindow(),
             self.tr("aQuaDrip"),
-            self.tr("「{}」功能将在后续版本中实现").format(feature_name)
-        )
+            self.tr("「{}」功能将在后续版本中实现").format(name))
 
     def _check_wdrip(self):
-        """检查 wdrip-core 是否可用"""
         if not self._wdrip_ok:
             QMessageBox.warning(
                 self.iface.mainWindow(),
                 self.tr("aQuaDrip"),
-                self.tr("wdrip-core 核心库未加载，请检查安装")
-            )
+                self.tr("wdrip-core 核心库未加载"))
             return False
         return True
 
-    # ---- 占位回调 ----
-
-    def on_new_project(self):
-        self._not_implemented(self.tr("新建项目"))
-
-    def on_open_project(self):
-        self._not_implemented(self.tr("打开项目"))
-
-    def on_save_project(self):
-        self._not_implemented(self.tr("保存项目"))
-
-    def on_generate_network(self):
-        if not self._check_wdrip():
-            return
-        self._not_implemented(self.tr("生成管网"))
-
-    def on_configure(self):
-        if not self._check_wdrip():
-            return
-        self._not_implemented(self.tr("参数配置"))
-
-    def on_run_simulation(self):
-        if not self._check_wdrip():
-            return
-        self._not_implemented(self.tr("运行模拟"))
-
-    def on_show_results(self):
-        if not self._check_wdrip():
-            return
-        self._not_implemented(self.tr("结果分析"))
-
-    def on_export_inp(self):
-        if not self._check_wdrip():
-            return
-        self._not_implemented(self.tr("导出 INP"))
-
-    # ---- 国际化 ----
-
     @staticmethod
     def tr(message):
-        """简单 i18n 支持（后续接入 QGIS 翻译系统）"""
         return message
