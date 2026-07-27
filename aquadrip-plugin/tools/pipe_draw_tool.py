@@ -1,10 +1,10 @@
 """PipeDrawTool — 在地图上绘制管道（干管/支管/毛管）"""
 
+from qgis.gui import QgsMapTool, QgsMapMouseEvent, QgsMapCanvasSnappingUtils
 from qgis.core import (
-    QgsMapTool, QgsPointXY, QgsGeometry, QgsFeature,
+    QgsPointXY, QgsGeometry, QgsFeature,
     QgsProject, QgsRubberBand, QgsWkbTypes, QgsSnappingConfig,
 )
-from qgis.gui import QgsMapTool, QgsMapMouseEvent, QgsMapCanvasSnappingUtils
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QColor
 

@@ -1,10 +1,10 @@
 """FieldDrawTool — 在地图上绘制农田多边形"""
 
+from qgis.gui import QgsMapTool, QgsMapMouseEvent
 from qgis.core import (
-    QgsMapTool, QgsPointXY, QgsGeometry, QgsFeature,
+    QgsPointXY, QgsGeometry, QgsFeature,
     QgsProject, QgsRubberBand, QgsWkbTypes,
 )
-from qgis.gui import QgsMapTool, QgsMapMouseEvent
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QColor, QPolygonF
 

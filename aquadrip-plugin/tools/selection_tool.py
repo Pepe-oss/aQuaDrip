@@ -1,7 +1,7 @@
 """SelectionTool — 选择/查看管网元素"""
 
-from qgis.core import QgsMapTool, QgsFeatureRequest, QgsGeometry
 from qgis.gui import QgsMapTool, QgsMapMouseEvent, QgsRubberBand
+from qgis.core import QgsFeatureRequest, QgsGeometry
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QColor
 
