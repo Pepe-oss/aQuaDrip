@@ -21,15 +21,27 @@ class DripSimulation:
     """滴灌管网模拟器
     
     封装 WNTR，提供滴灌专用的模拟接口。
+    支持切换不同的模拟引擎：WNTRSimulator / EpanetSimulator / 迭代求解器。
     
     Args:
         network: 滴灌管网
+        engine: 模拟引擎实例。不指定则调用 auto_detect_engine()
     """
     
-    def __init__(self, network: 'DripNetwork'):
+    def __init__(self, network: 'DripNetwork', engine: Optional['SimulationEngine'] = None):
+        from .engine import auto_detect_engine, SimulationEngine
         self.network = network
         self._wn = None  # WNTR WaterNetworkModel
-        self._sim = None # WNTR Simulator
+        self._wntr_results = None
+        self._engine: SimulationEngine = engine or auto_detect_engine()
+        
+        if engine is not None:
+            self._engine = engine
+    
+    @property
+    def engine_name(self) -> str:
+        """当前使用的引擎名称"""
+        return self._engine.display_name
     
     # ---- 模型转换 ----
     
@@ -143,14 +155,14 @@ class DripSimulation:
             else:
                 self._wn.options.time.duration = 0
             
-            # 运行模拟
-            self._sim = wntr.sim.WNTRSimulator(self._wn)
-            wntr_results = self._sim.run_sim()
+            # 使用当前引擎运行
+            logger.info(f"使用引擎: {self._engine.display_name}")
+            wntr_results = self._engine.run(self._wn)
             
             # 提取结果
             result = self._extract_results(wntr_results, duration)
             result.success = True
-            result.message = "模拟成功"
+            result.message = f"模拟成功 (引擎: {self._engine.display_name})"
             
             return result
         
