@@ -28,7 +28,8 @@ class FieldDrawTool(QgsMapTool):
         self.points = []  # 已点击的点
         self.is_drawing = False
         self.temp_rubber = QgsRubberBand(self.canvas, QgsWkbTypes.LineGeometry)
-        self.temp_rubber.setColor(QColor(39, 174, 96))
+        self.temp_rubber.setColor(QColor(39, 174, 96, 80))
+        self.temp_rubber.setStrokeColor(QColor(39, 174, 96))
         self.temp_rubber.setWidth(2)
 
     def activate(self):
