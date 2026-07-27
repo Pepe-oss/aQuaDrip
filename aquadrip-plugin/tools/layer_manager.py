@@ -10,7 +10,7 @@ from qgis.core import (
     QgsWkbTypes, QgsMarkerSymbol, QgsLineSymbol,
     QgsSingleSymbolRenderer, QgsCategorizedSymbolRenderer,
     QgsGraduatedSymbolRenderer, QgsRendererRange,
-    QgsRectangle,
+    QgsRectangle, QgsFeature, QgsGeometry, QgsPointXY, QgsLineString, edit,
 )
 from qgis.PyQt.QtCore import QVariant
 from qgis.PyQt.QtGui import QColor
@@ -170,8 +170,17 @@ class LayerManager:
         provider.addAttributes(defn["fields"])
         layer.updateFields()
         
-        # 设置默认范围，防止空图层导致"缩放到图层"崩溃
-        layer.setExtent(QgsRectangle(0, 0, 1, 1))
+        # 添加一个虚拟要素，使图层有有效范围（防止"缩放到图层组"崩溃）
+        dummy = QgsFeature(layer.fields())
+        geom_type = defn["geom"]
+        if geom_type == "Point":
+            dummy.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(0, 0)))
+        elif geom_type == "LineString":
+            dummy.setGeometry(QgsGeometry.fromPolylineXY([QgsPointXY(0, 0), QgsPointXY(1, 1)]))
+        elif geom_type == "Polygon":
+            g = QgsGeometry.fromRect(QgsRectangle(0, 0, 1, 1))
+            dummy.setGeometry(g)
+        provider.addFeature(dummy)
         
         return layer
 
@@ -233,6 +242,15 @@ class LayerManager:
                 self._aq_group = None
 
     # ---- 从 DripNetwork 更新 ----
+
+    def clear_dummy_features(self):
+        """清除所有图层中的虚拟要素"""
+        for key, layer in self._layers.items():
+            if layer and layer.featureCount() > 0:
+                with edit(layer):
+                    for feat in layer.getFeatures():
+                        layer.deleteFeature(feat.id())
+                        break  # 只需删除一个（虚拟要素）
 
     def update_from_network(self, network, result=None):
         """从 DripNetwork 和模拟结果更新图层"""
