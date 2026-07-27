@@ -104,13 +104,13 @@ class PumpDrawTool(QgsMapTool):
             
             self.layer.updateExtents()
             self.layer.triggerRepaint()
-            self.canvas.setExtent(self.layer.extent().buffered(10))
+            self.canvas.setExtent(self.layer.extent())
             self.canvas.refresh()
             self.iface.messageBar().pushMessage(
-                "aQuaDrip", f"水泵 {pid} 已绘制", level=0, duration=3)
+                "aQuaDrip", f"水泵 {pid} 已绘制 (图层要素数: {self.layer.featureCount()})", level=0, duration=3)
         except Exception as e:
             self.iface.messageBar().pushWarning(
-                "aQuaDrip", f"绘制失败: {e}")
+                "aQuaDrip", f"绘制失败: {type(e).__name__}: {e}")
             import traceback
             traceback.print_exc()
 
