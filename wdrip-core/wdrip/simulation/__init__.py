@@ -1,1 +1,267 @@
-"""simulation — WNTR 模拟封装：DripSimulation（水力/水质模拟）"""
+"""DripSimulation — WNTR 模拟封装
+
+将 DripNetwork 转换为 WNTR 模型，运行水力/水质模拟。
+"""
+
+import logging
+from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
+
+import numpy as np
+
+from .result import SimulationResult
+
+if TYPE_CHECKING:
+    from wdrip.network import DripNetwork, EmitterNode, Pipe, Pump, Valve
+    from wdrip.network import SourceNode
+
+logger = logging.getLogger(__name__)
+
+
+class DripSimulation:
+    """滴灌管网模拟器
+    
+    封装 WNTR，提供滴灌专用的模拟接口。
+    
+    Args:
+        network: 滴灌管网
+    """
+    
+    def __init__(self, network: 'DripNetwork'):
+        self.network = network
+        self._wn = None  # WNTR WaterNetworkModel
+        self._sim = None # WNTR Simulator
+    
+    # ---- 模型转换 ----
+    
+    def _build_wntr_model(self) -> object:
+        """构建 WNTR 模型"""
+        import wntr
+        
+        wn = wntr.network.WaterNetworkModel()
+        
+        # 1. 创建节点
+        for nid, node in self.network.nodes.items():
+            self._add_wntr_node(wn, nid, node)
+        
+        # 2. 创建管道
+        for lid, link in self.network.links.items():
+            self._add_wntr_link(wn, lid, link)
+        
+        # 3. 设置模拟选项
+        wn.options.time.duration = 0  # 稳态模拟
+        wn.options.hydraulic.headloss = "H-W"  # Hazen-Williams
+        
+        return wn
+    
+    def _add_wntr_node(self, wn, nid: str, node):
+        """添加 WNTR 节点"""
+        import wntr
+        
+        if hasattr(node, "source_type") and hasattr(node, "head") and node.head > 0:
+            # SourceNode → wntr.Reservoir
+            wn.add_reservoir(nid, base_head=node.head,
+                             coordinates=(node.x, node.y))
+            logger.debug(f"  Reservoir: {nid} head={node.head}")
+        
+        elif hasattr(node, "emitter_k"):
+            # EmitterNode → wntr.Junction + emitter
+            wn.add_junction(nid, base_demand=node.demand,
+                           elevation=node.elevation,
+                           coordinates=(node.x, node.y))
+            # 设置发射器参数
+            # WNTR 使用 SI 单位 (m³/s)，我们的 k 是 L/h / m^x
+            # 转换: 1 L/h = 2.77778e-7 m³/s
+            emitter_coeff_si = node.emitter_k * 2.77778e-7
+            wn.get_node(nid).emitter_coefficient = emitter_coeff_si
+            logger.debug(f"  Emitter: {nid} k={node.emitter_k} x={node.emitter_x}")
+        
+        else:
+            # Junction → wntr.Junction
+            wn.add_junction(nid, base_demand=getattr(node, "demand", 0),
+                           elevation=node.elevation,
+                           coordinates=(node.x, node.y))
+            logger.debug(f"  Junction: {nid} elev={node.elevation}")
+    
+    def _add_wntr_link(self, wn, lid: str, link):
+        """添加 WNTR 链路"""
+        import wntr
+        
+        if hasattr(link, "pump_type"):
+            # Pump (Link!)
+            wn.add_pump(lid, link.from_node, link.to_node,
+                       pump_type="HEAD",
+                       pump_parameters=[(link.rated_flow or 0, link.rated_head or 0)])
+            logger.debug(f"  Pump: {lid} {link.from_node}→{link.to_node}")
+        
+        elif hasattr(link, "valve_type"):
+            # Valve (Link!)
+            vtype = str(link.valve_type.name).upper()
+            wn.add_valve(lid, link.from_node, link.to_node,
+                        valve_type=vtype,
+                        diameter=link.diameter if link.diameter > 0 else None,
+                        setting=link.setting)
+            logger.debug(f"  Valve: {lid} type={vtype} setting={link.setting}")
+        
+        else:
+            # Pipe
+            diameter_m = link.diameter / 1000.0 if link.diameter > 0 else 0.02
+            wn.add_pipe(lid, link.from_node, link.to_node,
+                       length=max(link.length, 1),
+                       diameter=diameter_m,
+                       roughness=link.roughness,
+                       minor_loss=link.minor_loss)
+            logger.debug(f"  Pipe: {lid} {link.from_node}→{link.to_node} L={link.length}")
+    
+    # ---- 运行模拟 ----
+    
+    def run(self, duration: int = 0, timestep: int = 3600) -> 'SimulationResult':
+        """运行水力模拟
+        
+        Args:
+            duration: 模拟时长（seconds）。0=稳态，>0=延时
+            timestep: 报告时间步长（seconds）
+            
+        Returns:
+            模拟结果
+        """
+        try:
+            import wntr
+        except ImportError:
+            return SimulationResult(
+                success=False,
+                message="WNTR 未安装。请运行: pip install wntr"
+            )
+        
+        try:
+            # 构建模型
+            self._wn = self._build_wntr_model()
+            
+            # 设置模拟时间
+            if duration > 0:
+                self._wn.options.time.duration = duration
+                self._wn.options.time.report_timestep = timestep
+            else:
+                self._wn.options.time.duration = 0
+            
+            # 运行模拟
+            self._sim = wntr.sim.WNTRSimulator(self._wn)
+            wntr_results = self._sim.run_sim()
+            
+            # 提取结果
+            result = self._extract_results(wntr_results, duration)
+            result.success = True
+            result.message = "模拟成功"
+            
+            return result
+        
+        except Exception as e:
+            logger.exception("模拟失败")
+            return SimulationResult(
+                success=False,
+                message=f"模拟失败: {e}"
+            )
+    
+    def run_water_quality(self, duration: int = 7200, timestep: int = 3600) -> 'SimulationResult':
+        """运行水质（水肥）模拟
+        
+        Args:
+            duration: 模拟时长（seconds）
+            timestep: 报告时间步长（seconds）
+            
+        Returns:
+            含水质结果的模拟结果
+        """
+        try:
+            import wntr
+        except ImportError:
+            return SimulationResult(success=False, message="WNTR 未安装")
+        
+        try:
+            self._wn = self._build_wntr_model()
+            self._wn.options.time.duration = duration
+            self._wn.options.time.report_timestep = timestep
+            
+            # 设置水质模拟
+            self._wn.options.quality.parameter = "CHEMICAL"
+            self._wn.options.quality.trace_node = None
+            
+            # 为水源节点设置水质边界条件
+            for nid, node in self.network.nodes.items():
+                if hasattr(node, "water_quality") and node.water_quality > 0:
+                    wntr_node = self._wn.get_node(nid)
+                    if wntr_node:
+                        wntr_node.initial_quality = node.water_quality
+            
+            self._sim = wntr.sim.WNTRSimulator(self._wn)
+            wntr_results = self._sim.run_sim()
+            
+            result = self._extract_results(wntr_results, duration)
+            # 提取水质结果
+            if 'quality' in wntr_results.node:
+                for nid in self.network.nodes:
+                    arr = wntr_results.node['quality'].loc[:, nid].values
+                    result.node_quality[nid] = arr
+            
+            result.success = True
+            result.message = "水肥模拟成功"
+            return result
+        
+        except Exception as e:
+            logger.exception("水质模拟失败")
+            return SimulationResult(success=False, message=f"水质模拟失败: {e}")
+    
+    # ---- 结果提取 ----
+    
+    def _extract_results(self, wntr_results, duration: int) -> 'SimulationResult':
+        """从 WNTR 结果提取滴灌专用结果"""
+        result = SimulationResult(duration_seconds=duration)
+        
+        # 时间步
+        result.time_steps = np.array(wntr_results.time)
+        
+        # 节点压力
+        for nid, node in self.network.nodes.items():
+            try:
+                arr = wntr_results.node['pressure'].loc[:, nid].values
+                result.node_pressure[nid] = arr
+            except (KeyError, AttributeError):
+                pass
+        
+        # 节点流量（用水量）
+        for nid, node in self.network.nodes.items():
+            try:
+                arr = wntr_results.node['demand'].loc[:, nid].values
+                result.node_demand[nid] = arr
+            except (KeyError, AttributeError):
+                pass
+        
+        # 管段流量
+        for lid, link in self.network.links.items():
+            try:
+                arr = wntr_results.link['flowrate'].loc[:, lid].values
+                result.link_flow[lid] = arr
+            except (KeyError, AttributeError):
+                pass
+        
+        # 管段流速
+        for lid, link in self.network.links.items():
+            try:
+                arr = wntr_results.link['velocity'].loc[:, lid].values
+                result.link_velocity[lid] = arr
+            except (KeyError, AttributeError):
+                pass
+        
+        # 滴头流量（从压力手动计算，WNTRSimulator 不自动计算 emitter flow）
+        for nid, node in self.network.nodes.items():
+            if hasattr(node, "emitter_k") and node.emitter_k > 0:
+                pressure_arr = result.node_pressure.get(nid)
+                if pressure_arr is not None and len(pressure_arr) > 0:
+                    # q (L/h) = k * P^x  （k 单位 L/h, P 单位 m）
+                    # 对于 PC 滴头 (x≈0)，流量 ≈ nominal_flow
+                    if node.emitter_x < 0.1:
+                        flow_arr = np.full_like(pressure_arr, node.emitter_k)
+                    else:
+                        flow_arr = node.emitter_k * (np.maximum(pressure_arr, 0) ** node.emitter_x)
+                    result.emitter_flow[nid] = flow_arr
+        
+        return result
