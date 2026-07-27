@@ -62,13 +62,7 @@ class PumpDrawTool(QgsMapTool):
             self._reset()
 
     def _find_or_create_node(self, point, tolerance=15):
-        """查找附近节点，未找到则创建"""
-        if self.junction_layer and self.junction_layer.isValid():
-            for feat in self.junction_layer.getFeatures():
-                dist = feat.geometry().distance(QgsGeometry.fromPointXY(point))
-                if dist < tolerance:
-                    return feat.attribute("id")
-        # 创建新节点（即使 junction_layer 无效也生成 ID）
+        """在点击位置创建新节点（不查找已有节点）"""
         import random, time
         nid = f"N{random.randint(1000, 9999)}{int(time.time())%100}"
         if self.junction_layer and self.junction_layer.isValid():
@@ -104,7 +98,6 @@ class PumpDrawTool(QgsMapTool):
             
             self.layer.updateExtents()
             self.layer.triggerRepaint()
-            self.canvas.setExtent(self.layer.extent())
             self.canvas.refresh()
             self.iface.messageBar().pushMessage(
                 "aQuaDrip", f"水泵 {pid} 已绘制 (图层要素数: {self.layer.featureCount()})", level=0, duration=3)
