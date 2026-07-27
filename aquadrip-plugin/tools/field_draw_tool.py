@@ -144,17 +144,17 @@ class FieldDrawTool(QgsMapTool):
 
         # 写入图层
         if self.layer and self.layer.isValid():
-            # 删除虚拟要素（如果有）
-            ids_to_delete = []
-            for feat in self.layer.getFeatures():
-                ids_to_delete.append(feat.id())
-            if ids_to_delete:
-                self.layer.dataProvider().deleteFeatures(ids_to_delete)
-            
-            # 添加真实农田
+            # 直接添加新农田（不删除已有要素，支持多个地块）
             feat = QgsFeature(self.layer.fields())
             feat.setGeometry(polygon)
-            self.layer.dataProvider().addFeatures([feat])
+            success = self.layer.dataProvider().addFeatures([feat])
+            
+            if not success:
+                self.iface.messageBar().pushWarning(
+                    "aQuaDrip", "添加农田要素失败")
+                self._reset()
+                return
+            
             self.layer.updateExtents()
             
             # 更新画布视图
