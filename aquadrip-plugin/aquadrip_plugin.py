@@ -101,21 +101,17 @@ class AQuaDripPlugin:
         # 连接事件总线到日志
         self.event_bus.on(SIMULATION_PROGRESS, lambda msg: self.dockwidget.log_message(msg))
 
-        # 启动日志
-        self.dockwidget.log_message(self.tr("aQuaDrip 已加载"))
-        self.dockwidget.log_message(self.tr("wdrip-core 核心库就绪"))
-
-        # 初始化图层管理器
+        # 初始化图层管理器（不创建图层，等新建项目时再创建）
         from .tools.layer_manager import LayerManager
         self.layer_manager = LayerManager()
-        self.layer_manager.setup()
-        self.dockwidget.log_message(self.tr("图层已创建"))
 
         # 初始化样式管理器
         from .tools.style_manager import StyleManager
         self.style_manager = StyleManager()
-        self.style_manager.apply_default_styles(self.layer_manager.get_all_layers())
-        self.dockwidget.log_message(self.tr("样式已应用"))
+
+        self.dockwidget.log_message(self.tr("aQuaDrip 已加载"))
+        self.dockwidget.log_message(self.tr("wdrip-core 核心库就绪"))
+        self.dockwidget.log_message(self.tr("点击「新建项目」开始设计"))
 
     def unload(self):
         """卸载插件"""
@@ -236,9 +232,18 @@ class AQuaDripPlugin:
     # ---- 功能区（后续 Sprint 实现）----
 
     def _handle_new_project(self):
+        """新建项目"""
+        # 清理旧图层
+        self.layer_manager.clear_layers()
+        # 创建新图层
+        self.layer_manager.setup()
+        self.style_manager.apply_default_styles(self.layer_manager.get_all_layers())
+        # 更新项目树
+        self.dockwidget.update_project_tree("未命名项目")
+        # 重置状态机
         self.state_machine.reset()
-        self.iface.messageBar().pushMessage(
-            self.tr("aQuaDrip"), self.tr("新建项目"), level=0, duration=3)
+        self.dockwidget.log_message(self.tr("新建项目 — 图层已就绪"))
+        self.dockwidget.log_message(self.tr("请绘制或导入农田地块"))
 
     def _handle_open_project(self):
         from qgis.PyQt.QtWidgets import QFileDialog
