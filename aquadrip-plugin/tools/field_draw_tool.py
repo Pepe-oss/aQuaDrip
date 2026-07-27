@@ -55,20 +55,28 @@ class FieldDrawTool(QgsMapTool):
             self.is_drawing = True
             self._update_rubber()
         elif event.button() == Qt.RightButton:
+            # 右键完成绘制
             if len(self.points) >= 3:
                 self._finish_polygon()
             else:
                 self._reset()
 
     def canvasMoveEvent(self, event: QgsMapMouseEvent):
-        """鼠标移动事件（实时预览最后一段线）"""
+        """鼠标移动事件（实时预览最后一段线或面）"""
         if self.is_drawing and len(self.points) > 0:
             point = event.snapPoint()
-            self.temp_rubber.reset(QgsWkbTypes.LineGeometry)
-            # 画从最后一个点到鼠标位置的线
-            last = self.points[-1]
-            self.temp_rubber.addPoint(last)
-            self.temp_rubber.addPoint(point)
+            n = len(self.points)
+            if n < 3:
+                # 点少于3个时，显示从最后点到鼠标的线段
+                self.temp_rubber.reset(QgsWkbTypes.LineGeometry)
+                self.temp_rubber.addPoint(self.points[-1])
+                self.temp_rubber.addPoint(point)
+            else:
+                # 3个点以上，实时更新多边形预览
+                self.temp_rubber.reset(QgsWkbTypes.PolygonGeometry)
+                all_pts = self.points + [point]
+                poly = QgsGeometry.fromPolygonXY([all_pts])
+                self.temp_rubber.setToGeometry(poly)
 
     def canvasDoubleClickEvent(self, event):
         """双击完成绘制"""
@@ -87,12 +95,19 @@ class FieldDrawTool(QgsMapTool):
 
     def _update_rubber(self):
         """更新多边形预览"""
-        self.rubber.reset(QgsWkbTypes.PolygonGeometry)
-        if len(self.points) >= 3:
+        n = len(self.points)
+        if n < 2:
+            return
+        if n == 2:
+            # 2个点：显示线段
+            self.rubber.reset(QgsWkbTypes.LineGeometry)
+            self.rubber.addPoint(self.points[0])
+            self.rubber.addPoint(self.points[1])
+        else:
+            # 3+个点：显示多边形
+            self.rubber.reset(QgsWkbTypes.PolygonGeometry)
             polygon = QgsGeometry.fromPolygonXY([self.points])
             self.rubber.setToGeometry(polygon)
-        else:
-            self.rubber.reset(QgsWkbTypes.PolygonGeometry)
 
     def _finish_polygon(self):
         """完成多边形并写入图层"""
@@ -107,23 +122,32 @@ class FieldDrawTool(QgsMapTool):
 
         # 写入图层
         if self.layer and self.layer.isValid():
-            if self.layer.featureCount() > 1:
-                # 如果有虚拟要素，先清理
-                self.layer_manager.clear_dummy_features()
-                self.layer.startEditing()
-                for feat in self.layer.getFeatures():
-                    self.layer.deleteFeature(feat.id())
+            # 删除虚拟要素（如果有）
+            ids_to_delete = []
+            for feat in self.layer.getFeatures():
+                ids_to_delete.append(feat.id())
+            if ids_to_delete:
+                self.layer.dataProvider().deleteFeatures(ids_to_delete)
             
+            # 添加真实农田
             feat = QgsFeature(self.layer.fields())
             feat.setGeometry(polygon)
             self.layer.dataProvider().addFeatures([feat])
             self.layer.updateExtents()
-            self.iface.mapCanvas().zoomToFeatureExtent(self.layer.extent())
+            
+            # 更新画布视图
+            canvas = self.iface.mapCanvas()
+            canvas.setExtent(self.layer.extent())
+            canvas.refresh()
+            
+            self.iface.messageBar().pushMessage(
+                "aQuaDrip",
+                f"农田已绘制（面积约 {polygon.area():.0f} m²）",
+                level=0, duration=3)
+        else:
+            self.iface.messageBar().pushWarning(
+                "aQuaDrip", "农田图层无效")
 
-        self.iface.messageBar().pushMessage(
-            "aQuaDrip", f"农田已绘制（面积约 {polygon.area():.0f} m²）", level=0, duration=3)
-
-        # 触发状态变迁（如果有事件总线）
         self._reset()
 
     def _reset(self):
