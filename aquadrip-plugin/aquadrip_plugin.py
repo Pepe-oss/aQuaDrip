@@ -75,6 +75,9 @@ class AQuaDripPlugin:
         self._add_actions([
             ("draw_field",     "mActionDraw",          self.tr("绘制农田")),
             ("select",         "mActionSelect",        self.tr("选择要素")),
+            ("delete",         "mActionDeleteSelected", self.tr("删除要素")),
+            ("draw_pump",      "mActionAdd",          self.tr("绘制水泵")),
+            ("draw_valve",     "mActionAdd",          self.tr("绘制阀门")),
             ("gen_network",    "mActionProcessing",    self.tr("生成管网")),
             ("configure",      "mActionOptions",       self.tr("参数配置")),
         ])
@@ -245,6 +248,21 @@ class AQuaDripPlugin:
         """激活选择工具"""
         from .tools.selection_tool import SelectionTool
         self._set_tool(SelectionTool(self.iface, self.layer_manager))
+
+    def _handle_delete(self):
+        """激活删除工具"""
+        from .tools.delete_tool import DeleteTool
+        self._set_tool(DeleteTool(self.iface, self.layer_manager))
+
+    def _handle_draw_pump(self):
+        """激活水泵绘制工具"""
+        from .tools.pump_draw_tool import PumpDrawTool
+        self._set_tool(PumpDrawTool(self.iface, self.layer_manager))
+
+    def _handle_draw_valve(self):
+        """激活阀门绘制工具"""
+        from .tools.valve_draw_tool import ValveDrawTool
+        self._set_tool(ValveDrawTool(self.iface, self.layer_manager))
 
     def _set_tool(self, tool):
         """设置当前地图工具"""
