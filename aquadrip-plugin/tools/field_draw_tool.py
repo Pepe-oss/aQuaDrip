@@ -1,9 +1,9 @@
 """FieldDrawTool — 在地图上绘制农田多边形"""
 
-from qgis.gui import QgsMapTool, QgsMapMouseEvent
+from qgis.gui import QgsMapTool, QgsMapMouseEvent, QgsRubberBand
 from qgis.core import (
     QgsPointXY, QgsGeometry, QgsFeature,
-    QgsProject, QgsRubberBand, QgsWkbTypes,
+    QgsProject, QgsWkbTypes,
 )
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QColor, QPolygonF
@@ -22,7 +22,7 @@ class FieldDrawTool(QgsMapTool):
         # 橡皮筋预览
         self.rubber = QgsRubberBand(self.canvas, QgsWkbTypes.PolygonGeometry)
         self.rubber.setColor(QColor(39, 174, 96, 80))
-        self.rubber.setBorderColor(QColor(39, 174, 96))
+        self.rubber.setStrokeColor(QColor(39, 174, 96))
         self.rubber.setWidth(2)
 
         self.points = []  # 已点击的点

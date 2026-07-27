@@ -16,7 +16,7 @@ class SelectionTool(QgsMapTool):
         self.layer_manager = layer_manager
         self.rb = QgsRubberBand(self.canvas)
         self.rb.setColor(QColor(231, 76, 60, 100))
-        self.rb.setBorderColor(QColor(231, 76, 60))
+        self.rb.setStrokeColor(QColor(231, 76, 60))
         self.rb.setWidth(3)
 
     def activate(self):
