@@ -25,7 +25,7 @@ def _double_field(name: str, precision: int = 2) -> QgsField:
 
 def _int_field(name: str) -> QgsField:
     """创建整数字段"""
-    return QgsField(name, QVariant.Int, "integer")
+    return QgsField(name, QVariant.Int, "Integer")
 
 
 FIELD_DEFS = {

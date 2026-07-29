@@ -2,7 +2,7 @@
 
 from qgis.PyQt.QtWidgets import (
     QFrame, QVBoxLayout, QLabel, QCheckBox,
-    QDoubleSpinBox, QPushButton, QHBoxLayout,
+    QDoubleSpinBox, QPushButton, QHBoxLayout, QSizePolicy,
 )
 from qgis.PyQt.QtCore import Qt, pyqtSignal
 
@@ -15,7 +15,17 @@ class TrimPanel(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFrameShape(QFrame.StyledPanel)
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
         self._build_ui()
+
+    def setVisible(self, visible: bool):
+        """显示/隐藏时调整尺寸策略，防止空白占位"""
+        super().setVisible(visible)
+        if visible:
+            self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+        else:
+            self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+        self.updateGeometry()
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
