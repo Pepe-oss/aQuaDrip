@@ -1572,49 +1572,55 @@ def optimize_topology(graph: TopologyGraph) -> TopologyGraph:
 - [ ] 1.9.1 端到端测试
 - [ ] 1.9.2 API 文档生成
 
-### Phase 2 — QGIS 插件基础（预估：3周）
+### Phase 2 — QGIS 插件基础（3周）
 
-#### Sprint 2.1: 插件骨架（0.5周）
-- [ ] 2.1.1 `classFactory()` + 插件主类
-- [ ] 2.1.2 菜单和工具栏
-- [ ] 2.1.3 i18n 国际化
+#### 设计原则
 
-#### Sprint 2.2: 状态机与事件（0.5周）
-- [ ] 2.2.1 `ProjectStateMachine`
-- [ ] 2.2.2 `EventBus`
+```
+充分利用 QGIS 原生功能，只补充领域特有功能。
+```
 
-#### Sprint 2.3: 主面板（0.5周）
-- [ ] 2.3.1 DockWidget 布局
-- [ ] 2.3.2 项目树
+- **图层精简**：4 个 GeoPackage 图层，而非 9 个内存图层
+- **编辑原生**：不使用自定义 MapTool 编辑，而是由用户在 QGIS 中直接编辑（toggle editing）
+- **领域工具**：只补充 QGIS 没有的领域特定功能（毛管生成、管道切割、边选择、方向反转）
+- **存储稳定**：所有数据存储在 `.gpkg` 文件中，可跨项目复用
 
-#### Sprint 2.4: 图层管理（0.5周）
-- [ ] 2.4.1 `LayerManager`（简化版：仅管理 3 个核心图层 + 1 个辅助图层）
-  - `aqd_fields` (Polygon)：农田地块
-  - `aqd_pipes` (LineString)：所有管道（干管/支管/毛管），含 device 字段区分普通管道/水泵/阀门
-  - `aqd_nodes` (Point)：所有节点（水源/施肥罐），含 node_type 字段
-  - `aqd_obs_points` (Point)：校准观测点（辅助图层）
-- [ ] 2.4.2 `sync_to_network()`：从 QGIS 图层反读几何和属性，重建 DripNetwork（管道端点自动匹配最近节点，推导 from_node/to_node）
-- [ ] 2.4.3 `sync_from_network()`：将 wdrip-core 计算结果写回 QGIS 图层
-- [ ] 2.4.4 `StyleManager`：按 pipe_type 分色渲染（干管绿/支管橙/毛管紫）+ 方向箭头 + 设备图标
+#### 已完成的组件（实际开发记录）
 
-#### Sprint 2.5: 智能捕捉与交互工具（1周）
-- [ ] 2.5.1 **`SmartSnapTool`**（★ 核心 — 取代旧的 PipeDrawTool/PumpDrawTool/ValveDrawTool）
-  - [ ] 连接规则矩阵：定义管道类型间的合法连接关系
-    - `mainline ↔ mainline / submain / source / fertilizer`
-    - `submain ↔ submain / mainline / lateral`
-    - `lateral ↔ lateral / submain`
-  - [ ] QGIS 原生捕捉 + 规则过滤双层机制（合法=绿色吸附，非法=红色❌+提示）
-  - [ ] 动态捕捉状态：根据当前绘制类型自动切换 Snap 配置
-  - [ ] **毛管段捕捉（Segment Snap）**：支管连接毛管中部时自动吸附
-  - [ ] **实时管线分割**：支管与毛管交叉时自动在交叉点创建 Junction 并分割毛管几何
-  - [ ] 非法连接视觉反馈 + 引导提示
-- [ ] 2.5.2 `FieldDrawTool`（保留—农田多边形绘制+农艺参数表单）
-- [ ] 2.5.3 `LateralManageTool`（保留—毛管删除/截断/分区）
-- [ ] 2.5.4 `ReverseDirectionTool`（保留—Link 方向反转）
-- [ ] 2.5.5 `ConvertToDeviceAction`（新增—管道→水泵/阀门转换的右键菜单）
-- [ ] 2.5.6 `CalibrationObservationTool`（保留—校准观测点标记）
-- [ ] 2.5.7 `LayerSetupAction`（新增—一键创建标准 GeoPackage 图层和字段约束）
-- [ ] 2.5.8 领域工具与 QGIS 原生工具的交互规范文档
+| 组件 | 文件 | 说明 |
+|:----|:-----|:-----|
+| `LayerSetupAction` | `tools/layer_setup.py` | ✅ 一键创建 4 个 GeoPackage 图层（aqd_fields/aqd_pipes/aqd_nodes/aqd_obs_points），含 ValueMap 字段约束 |
+| `SyncManager` | `tools/sync_manager.py` | ✅ QGIS↔DripNetwork 双向同步（aqd_fields → FieldInfo, aqd_pipes → Pipe[]） |
+| `FieldPropertiesPanel` | `ui/field_properties.py` | ✅ 右侧停靠面板：选中地块后显示并编辑农艺参数（耕作模式/垄数/滴灌带数量/方向） |
+| `EdgeSelectTool` | `tools/edge_select_tool.py` | ✅ 点击田块某条边确定滴灌带方向（替代下拉选择长/短边） |
+| `LateralGenerator` | `tools/lateral_generator.py` | ✅ 根据农艺参数自动生成毛管（等行距/宽窄行两种模式），写入 aqd_pipes 的 lateral 类型 |
+| `TrimTool` | `tools/trim_tool.py` | ✅ 点击管道任意位置分割/切除（可选毛管/支管/干管类型，可选切割长度>0=切除） |
+| `TrimDialog` | `ui/trim_dialog.py` | ✅ 切割参数浮动窗口（管道类型勾选 + 切割长度输入） |
+| `AQuaDripDockWidget` | `ui/dockwidget.py` | ✅ 右侧主面板：FieldPropertiesPanel + 操作日志 |
+
+#### 待完成的组件
+
+| 组件 | 优先级 | 说明 |
+|:----|:------|:-----|
+| `ReverseDirectionTool` | ★★★ | 反转管道方向（水泵/有向阀门必须） |
+| `ConvertToDeviceAction` | ★★★ | 右键管道 → 转换为水泵/阀门（设置 device 字段 + 前端几何装饰） |
+| 干管/支管绘制 | ★★★ | 用户在 aqd_pipes 图层绘制干管/支管（QGIS 原生即可），写入 pipe_type 字段 |
+| 管网生成向导 | ★★ | 分步生成：毛管→干管策略→支管连接→拓扑检查 |
+| 模拟运行 | ★★ | 进度对话框 + 后台线程 + 日志 |
+| `CalibrationObservationTool` | ★★ | 标记校准观测点 |
+| 结果可视化 | ★★ | 压力/流量/均匀度热力图 |
+| StyleManager | ★ | 按 pipe_type 分色渲染 + 方向箭头 |
+
+#### 关于已废弃的 Sprint（保留历史参考）
+
+```
+以下 Sprint 在开发过程中被废弃或重写:
+- Sprint 2.1 (插件骨架): 废弃，直接使用 classFactory + 简单菜单
+- Sprint 2.2 (状态机与事件): 废弃，由 SyncManager 替代
+- Sprint 2.3 (主面板): 废弃，简化为 DockWidget + FieldPropertiesPanel
+- Sprint 2.4 (9层LayerManager): 废弃，改为4层 GeoPackage 图层
+- Sprint 2.5 (自定义MapTool): 废弃，除领域工具外全部使用 QGIS 原生编辑
+```
 
 ### Phase 3 — 核心功能集成（预估：4周）
 
