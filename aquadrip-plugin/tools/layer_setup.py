@@ -36,18 +36,24 @@ FIELD_DEFS = {
             _text_field("name"),
             _double_field("area", 1),
             _text_field("crop_type", 50),
-            _text_field("planting_pattern", 20),  # uniform/wide_narrow/ridge_count/custom
-            _double_field("row_spacing"),
-            _int_field("ridge_count"),
-            _double_field("row_direction"),
-            _double_field("emitter_spacing"),
+            _text_field("planting_pattern", 20),  # ridge/ridge_count
+            _text_field("direction_type", 20),    # long_edge/short_edge/custom
+            _double_field("row_spacing"),         # 垄间距
+            _int_field("tapes_per_ridge"),        # 每垄滴灌带数
+            _double_field("tape_spacing"),        # 滴灌带间距
+            _int_field("ridge_count"),            # 垄数
+            _double_field("row_direction"),       # 种植方向角度
+            _double_field("emitter_spacing"),     # 滴头间距
         ],
         "value_maps": {
             "planting_pattern": {
-                "等行距": "uniform",
-                "宽窄行": "wide_narrow",
+                "垄模式": "ridge",
                 "按垄数": "ridge_count",
-                "自定义": "custom",
+            },
+            "direction_type": {
+                "与田块长边平行": "long_edge",
+                "与田块短边平行": "short_edge",
+                "自定义角度": "custom",
             },
             "crop_type": {
                 "玉米": "corn",
@@ -59,7 +65,9 @@ FIELD_DEFS = {
             },
         },
         "defaults": {
-            "planting_pattern": "'uniform'",
+            "planting_pattern": "'ridge'",
+            "direction_type": "'long_edge'",
+            "tapes_per_ridge": "1",
             "emitter_spacing": "0.3",
         },
     },
