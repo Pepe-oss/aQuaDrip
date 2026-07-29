@@ -120,6 +120,14 @@ class AQuaDripPlugin:
                 "aQuaDrip", f"创建失败: {e}")
 
     def on_trim_lateral(self):
-        """激活毛管切割工具"""
-        from .tools.lateral_trim_tool import LateralTrimTool
-        self.iface.mapCanvas().setMapTool(LateralTrimTool(self.iface))
+        """激活管道切割工具"""
+        # 显示切割面板
+        if self.dockwidget:
+            self.dockwidget.trim_panel.setVisible(True)
+            self.dockwidget.trim_panel.apply_clicked.connect(self._on_trim_apply)
+
+    def _on_trim_apply(self, params):
+        """切割参数确认后激活工具"""
+        from .tools.trim_tool import TrimTool
+        tool = TrimTool(self.iface, params["pipe_types"], params["cut_length"])
+        self.iface.mapCanvas().setMapTool(tool)

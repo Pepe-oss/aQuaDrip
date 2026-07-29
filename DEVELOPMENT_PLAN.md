@@ -560,14 +560,29 @@ class DripOptimizer:
 - `ResultViewer`：结果查看
 
 **地图交互层：**
-- `FieldDrawTool`：绘制农田边界
-- `PipeDrawTool`：手动绘制管道（干管/支管/毛管）
-- `PumpDrawTool`：手动绘制水泵（作为 Link 绘制，**先点击进水端→再点击出水端**）
-- `ValveDrawTool`：手动绘制阀门（作为 Link 绘制，**注意方向约束**）
-- **`ReverseDirectionTool`：反转 Link 方向（交换 from_node 和 to_node）**
-- `NodeEditTool`：微调节点位置
-- `SelectionTool`：选择/查看属性
-- `DeleteTool`：删除组件
+aQuaDrip 充分利用 QGIS 已有的矢量编辑能力，不重复造轮子。用户使用 QGIS 原生工具完成大部分交互，aQuaDrip 仅补充领域特有的功能。
+
+**由 QGIS 原生工具覆盖的操作：**
+- `添加线要素`（Add Line Feature）：在 aqd_pipes 图层上绘制所有管道（干管/支管/毛管）
+- `添加点要素`（Add Point Feature）：在 aqd_nodes 图层上添加水源/施肥罐
+- `Vertex Tool`：编辑/移动节点位置
+- `移动要素`（Move Feature）：移动管道几何
+- `删除要素`（Delete Feature）：删除组件
+- `选择要素`（Select Features）：选择/查看属性
+- `撤销/重做`（Undo/Redo）：QGIS 内置
+
+**由 aQuaDrip 补充的领域特定工具：**
+- `FieldDrawTool`：绘制农田边界 + 弹出农艺参数表单（QGIS 无法原生绑定复杂表单）
+- **`SmartSnapTool`**：★ 核心绘制工具 — 在 QGIS 数字化工具之上叠加管道类型约束的智能捕捉过滤器
+  - **连接规则矩阵**：干管↔干管/支管/水源/施肥罐，支管↔支管/干管/毛管，毛管↔毛管/支管
+  - **毛管段捕捉（Segment Snap）**：支管连接毛管中部时自动吸附，实时生成交叉节点并分割毛管
+  - **非法连接视觉反馈**：红色 ❌ 指示器 + 提示消息
+  - **动态捕捉状态**：根据当前绘制类型自动切换 Snapping 配置
+- **`ReverseDirectionTool`**：反转 Link 方向（交换 from_node 和 to_node）
+- **`LateralManageTool`**：毛管管理（删除/截断/分区）
+- **`ConvertToDeviceAction`**：右键菜单动作 — 将选中的管道转换为水泵或阀门（设置 device 字段，弹出对应属性表单）
+- `CalibrationObservationTool`：校准观测点标记
+- `LayerSetupAction`：一键创建标准 GeoPackage 图层，配置字段约束和域值
 
 **状态管理层：**
 ```
@@ -587,8 +602,11 @@ ProjectStateMachine:
 
 **桥接层：**
 - `PluginCore`：管理 wdrip-core 实例
-- `LayerManager`：自动创建/管理 QGIS 图层
-- `StyleManager`：管网渲染样式
+- `LayerManager`：在 3 个核心 QGIS 图层 (aqd_fields / aqd_pipes / aqd_nodes) 与 DripNetwork 之间做双向同步
+  - `sync_to_network()`：从 QGIS 图层反读几何和属性，重建 DripNetwork（管道端点自动匹配最近节点，推导 from_node/to_node）
+  - `sync_from_network()`：将 wdrip-core 计算结果写回 QGIS 图层
+  - 自动推导：从管道几何端点匹配最近节点，自动填充 from_node/to_node
+- `StyleManager`：管网渲染样式（按 pipe_type 分色 + 方向箭头 + 设备图标）
 
 **插件生命周期：**
 ```
@@ -989,31 +1007,79 @@ class DripNetwork:
 
 ### 6.4 QGIS 数据图层设计
 
-| 图层 | 几何类型 | WNTR 映射 | 主要属性 |
-|------|---------|-----------|---------|
-| 农田地块 | Polygon | — | id, 作物, 面积, 行距, **耕作模式**, **垄数**, 行向 |
-| 干管 | **LineString** | Pipe | id, 管径, 材质, C值, 长度, 流量, 流速 |
-| 支管 | **LineString** | Pipe | id, 所属干管, 管径, 材质, 长度, 流量 |
-| 毛管 | **LineString** | Pipe | id, **所属支管**, 管径, 材质, 滴头间距, 流量, **连接方式(交叉/端接)**, **交叉节点ID**, 垄号 |
-| 节点/Junction | Point | Junction | id, 高程, 压力, 需水量, **类型(支管连接点/毛管起点/普通)** |
-| 滴头 | Point | Junction+Emitter | id, 型号, K, x, 工作压力, 流量, **所属毛管ID**, **所属毛管段序号** |
-| 滴头 | Point | Junction+Emitter | id, 型号, K, x, 工作压力, 流量 |
-| 水源 | Point | Reservoir | 类型, 可用流量, 水头 |
-| **水泵** | **LineString** | **Pump (Link)** | 型号, 扬程, 流量, 功率, 曲线, **from_node(进水)**, **to_node(出水)**, 方向箭头渲染 |
-| **阀门** | **LineString** | **Valve (Link)** | 类型, 设定值, 状态, **from_node(高压侧)**, **to_node(低压侧)**, 有方向约束否 |
-| 过滤器 | Point | Pipe+损失 | 类型, 精度, 额定流量 |
-| 施肥罐 | Point | Junction+水质 | 容积, 浓度, 注入速率 |
-| 观测节点 | Point | Junction(监测) | id, 实测压力, 模拟压力, 偏差%, 是否活动 |
+aQuaDrip 将 QGIS 图层精简为 **3 个核心图层 + 1 个辅助图层**，充分利用 QGIS 原生矢量编辑能力。滴头、普通 Junction 等细节由 wdrip-core 在内部自动管理，用户在 QGIS 中只需关注管道拓扑和设备配置。
 
-**重要提示**：水泵和阀门在 QGIS 中展示为 **LineString**（线要素），因为它们本质上是连接两个节点的 Link。用户绘制时是画一条线连接两个节点。
+#### 核心图层
 
-**方向管理要点：**
-- 绘制顺序决定方向：**先点击的节点为 from_node，后点击的为 to_node**
-- 水泵方向：from_node=进水端(吸入)，to_node=出水端(压出)
-- PRV 方向：from_node=高压侧，to_node=低压侧
-- 图层渲染：使用**箭头符号**显示 Link 方向，Pump 用特殊泵图标箭头
-- 右键菜单提供 **[反转方向]** 功能，交换 from_node/to_node
-- 拓扑检查会自动验证：有方向约束的设备是否安装正确
+| 图层 | 几何类型 | 对应 DripNetwork | 字段 | 说明 |
+|------|---------|------------------|------|------|
+| `aqd_fields` | Polygon | FieldInfo | id, name, area, crop_type, planting_pattern, row_spacings, ridge_count, row_direction, emitter_spacing | 农田地块，由 FieldDrawTool 或 Shapefile 导入 |
+| `aqd_pipes` | **LineString** | Pipe / Pump / Valve | id, pipe_type(mainline/submain/lateral), **device**(none/pump/valve), **valve_type**(prv/fcv/psv/gate/solenoid/check), status(open/closed), diameter, material, roughness, **pump_head**, **pump_flow**, **pump_power**, efficiency, speed, curve, **from_node**(自动维护), **to_node**(自动维护), lateral_spacing, emitter_spacing, zone_id | **唯一管道图层**：干管/支管/毛管均在此图层。管道通过 `device` 字段转换为水泵或阀门，通过 `pipe_type` 区分层级 |
+| `aqd_nodes` | **Point** | SourceNode / Junction | id, **node_type**(source/fertilizer/junction), source_type(well/reservoir/canal/outlet), head, available_flow, **fertilizer_volume**, **fertilizer_concentration**, elevation | **唯一节点图层**：水源、施肥罐在此创建。普通 Junction 由 sync_to_network() 自动从管道端点推导，用户无需手动管理 |
+
+#### 辅助图层
+
+| 图层 | 几何类型 | 用途 |
+|------|---------|------|
+| `aqd_obs_points` | Point | 校准观测点（仅在校准模式下显示），存储实测压力/流量值 |
+
+#### 被移除的独立图层及原因
+
+| 原计划图层 | 去向 |
+|-----------|------|
+| 滴头 (EmitterNode) | **不可见** — 由 wdrip-core 在毛管自动生成时内部创建，模拟结果通过统计图表展示，不在 QGIS 地图上逐个标记 |
+| 普通 Junction | **自动推导** — 管道端点自动匹配最近节点生成 from_node/to_node，用户无需手动管理节点 |
+| 过滤器 | **合并到管道属性** — 作为 Pipe 的附加水头损失 (minor_loss 字段)，在属性对话框中配置 |
+| 水泵 / 阀门 | **合并到 aqd_pipes** — 管道通过 `device` 字段转换为水泵或阀门，避免额外图层 |
+
+#### 管道类型连接规则矩阵
+
+SmartSnapTool 强制执行的拓扑约束：
+
+```
+正在绘制的管道类型 → 可以捕捉/连接的目标
+─────────────────────────────────────────
+mainline  (干管) → mainline, submain, source(水源), fertilizer(施肥罐)
+submain   (支管) → submain, mainline, lateral(毛管 — 含段捕捉)
+lateral   (毛管) → lateral, submain
+source    (水源) → mainline, source
+fertilizer(施肥罐) → mainline, submain
+```
+
+违反规则的连接操作会被立即阻止并给出提示。
+
+#### 物理存储
+
+采用 **GeoPackage (.gpkg)** 作为默认存储格式，不再使用 Memory Layer 加序列化：
+
+```
+项目文件.aqd/                     ← ZIP 打包
+├── VERSION
+├── metadata.json
+├── network.gpkg                 ← ★ 一个 GeoPackage 包含所有图层
+│   ├── aqd_fields
+│   ├── aqd_pipes
+│   ├── aqd_nodes
+│   └── aqd_obs_points
+├── equipment.json               ← 泵曲线点集等复杂参数
+├── simulation.json
+├── results/
+└── style.qml
+```
+
+**好处**：用户可直接在 QGIS 中右键导出任意图层为 Shapefile，可用字段计算器、过滤器等原生功能。
+
+#### 方向管理要点
+
+- 管道方向由几何的绘制顺序决定：**起点 = from_node，终点 = to_node**
+- Pump/PRV 等有方向约束的设备：绘制时先点击**进水端/高压侧**，后点击**出水端/低压侧**
+- 图层渲染：使用**箭头符号**显示所有 LineString 的方向
+  - 普通管道：单箭头
+  - Pump：特殊泵图标箭头
+  - PRV 等方向约束阀门：红色单箭头
+  - 手动阀等双向阀门：双箭头
+- 右键菜单提供 **[反转方向]** 功能（`ReverseDirectionTool`），交换 from_node/to_node
+- 拓扑检查会自动验证有方向约束的设备是否安装正确
 
 ### 6.4 文件格式版本管理
 
@@ -1103,9 +1169,9 @@ AQUADRIP_PROJECT_VERSION = "1.0"
 | 1. 确定地块 | FieldDrawTool / FieldImportTool | 手动 |
 | 2. 毛管整体布置 | RectangularBuilder / ContourBuilder | **自动** |
 | 3. 毛管管理（分区） | LateralManageTool（删除/截断） | **手动** |
-| 4. 连接水源→干管 | PipeDrawTool + OutletSource | **手动** |
+| 4. 连接水源→干管 | SmartSnapTool（QGIS 添加线要素+规则捕捉） + OutletSource | **手动** |
 | 5. 支管连接（交叉-连接） | SubmainBuilder（与毛管求交→生成节点→建立连接） | **自动** |
-| 6. 阀门安装 | ValveDrawTool + 分区分配 | 手动 |
+| 6. 阀门安装 | SmartSnapTool（绘制管道→右键转换为阀门）+ 分区分配 | 手动 |
 | 7. 参数设置 | ParameterDialog | 手动 |
 | 8. 运行模拟 | DripSimulation | 自动 |
 | 9. 验证校准 | CalibrationTool（对比+校正） | 手动+自动 |
@@ -1238,7 +1304,7 @@ AQUADRIP_PROJECT_VERSION = "1.0"
 
 ```
 1. 在 QGIS 画布上显示所有毛管
-2. 用户使用 SelectionTool 选择要操作的毛管
+2. 用户使用 QGIS "选择要素" 工具选择要操作的毛管
 3. 右键菜单：
    ├─ 删除（整根移除）
    ├─ 截断...（弹出对话框：输入截断位置或在地图上点选）
@@ -1522,19 +1588,33 @@ def optimize_topology(graph: TopologyGraph) -> TopologyGraph:
 - [ ] 2.3.2 项目树
 
 #### Sprint 2.4: 图层管理（0.5周）
-- [ ] 2.4.1 `LayerManager`
-- [ ] 2.4.2 `StyleManager`
+- [ ] 2.4.1 `LayerManager`（简化版：仅管理 3 个核心图层 + 1 个辅助图层）
+  - `aqd_fields` (Polygon)：农田地块
+  - `aqd_pipes` (LineString)：所有管道（干管/支管/毛管），含 device 字段区分普通管道/水泵/阀门
+  - `aqd_nodes` (Point)：所有节点（水源/施肥罐），含 node_type 字段
+  - `aqd_obs_points` (Point)：校准观测点（辅助图层）
+- [ ] 2.4.2 `sync_to_network()`：从 QGIS 图层反读几何和属性，重建 DripNetwork（管道端点自动匹配最近节点，推导 from_node/to_node）
+- [ ] 2.4.3 `sync_from_network()`：将 wdrip-core 计算结果写回 QGIS 图层
+- [ ] 2.4.4 `StyleManager`：按 pipe_type 分色渲染（干管绿/支管橙/毛管紫）+ 方向箭头 + 设备图标
 
-#### Sprint 2.5: 地图交互工具（1周）
-- [ ] 2.5.1 `FieldDrawTool`（绘制农田）
-- [ ] 2.5.2 `PipeDrawTool`（手动绘制管道，选择层级类型）
-- [ ] 2.5.3 **`PumpDrawTool`（绘制水泵，作为 Link）**
-- [ ] 2.5.4 **`ValveDrawTool`（绘制阀门，作为 Link）**
-- [ ] 2.5.5 `LateralManageTool`（毛管删除/截断/分区）
-- [ ] 2.5.6 **`ReverseDirectionTool`（反转 Link 方向，交换 from_node/to_node）**
-- [ ] 2.5.7 `NodeEditTool` / `SelectionTool` / `DeleteTool`
-- [ ] 2.5.8 `CalibrationObservationTool`（选择观测节点）
-- [ ] 2.5.9 农田属性表单
+#### Sprint 2.5: 智能捕捉与交互工具（1周）
+- [ ] 2.5.1 **`SmartSnapTool`**（★ 核心 — 取代旧的 PipeDrawTool/PumpDrawTool/ValveDrawTool）
+  - [ ] 连接规则矩阵：定义管道类型间的合法连接关系
+    - `mainline ↔ mainline / submain / source / fertilizer`
+    - `submain ↔ submain / mainline / lateral`
+    - `lateral ↔ lateral / submain`
+  - [ ] QGIS 原生捕捉 + 规则过滤双层机制（合法=绿色吸附，非法=红色❌+提示）
+  - [ ] 动态捕捉状态：根据当前绘制类型自动切换 Snap 配置
+  - [ ] **毛管段捕捉（Segment Snap）**：支管连接毛管中部时自动吸附
+  - [ ] **实时管线分割**：支管与毛管交叉时自动在交叉点创建 Junction 并分割毛管几何
+  - [ ] 非法连接视觉反馈 + 引导提示
+- [ ] 2.5.2 `FieldDrawTool`（保留—农田多边形绘制+农艺参数表单）
+- [ ] 2.5.3 `LateralManageTool`（保留—毛管删除/截断/分区）
+- [ ] 2.5.4 `ReverseDirectionTool`（保留—Link 方向反转）
+- [ ] 2.5.5 `ConvertToDeviceAction`（新增—管道→水泵/阀门转换的右键菜单）
+- [ ] 2.5.6 `CalibrationObservationTool`（保留—校准观测点标记）
+- [ ] 2.5.7 `LayerSetupAction`（新增—一键创建标准 GeoPackage 图层和字段约束）
+- [ ] 2.5.8 领域工具与 QGIS 原生工具的交互规范文档
 
 ### Phase 3 — 核心功能集成（预估：4周）
 
@@ -1610,32 +1690,36 @@ pytest, flake8/black, sphinx, pb_tool, mkdocs
 ┌───────────────────────────────────────┐
 │ aQuaDrip 智能滴灌设计                  │
 ├───────────────────────────────────────┤
-│ [新建] [打开] [保存] [导出] [INP]     │
+│ [新建] [打开] [保存] [导出INP]        │
 ├───────────────────────────────────────┤
 │ ▼ 项目树                              │
 │  ├─ 📍 农田1 (3.2 ha)                │
-│  │  ├─ 🔵 水源: 机井                 │
-│  │  ├─ 🟢 干管 (120m)    ← LineString│
-│  │  ├─ 🟡 支管 × 8      ← LineString│
-│  │  ├─ 🟣 毛管 × 120    ← LineString│
-│  │  ├─ 💧 滴头 × 3600   ← Point     │
-│  │  ├─ ⚡ 水泵           ← LineString│
-│  │  ├─ 🔧 阀门 × 3      ← LineString│
-│  │  ├─ 🧪 施肥罐                    │
-│  │  └─ 🌀 过滤器                    │
-│  ├─ 📊 模拟结果                      │
-│  └─ ...                               │
+│  │  ├─ 📐 管道 (干管×1, 支管×8, 毛管×120)│
+│  │  │  ├─ 🟢 干管 (120m)            │
+│  │  │  ├─ 🟡 支管 × 8               │
+│  │  │  └─ 🟣 毛管 × 120             │
+│  │  ├─ 📍 节点                       │
+│  │  │  ├─ 🔵 水源: 机井             │
+│  │  │  └─ 🟤 施肥罐                 │
+│  │  ├─ ⚙️ 设备                       │
+│  │  │  ├─ ⚡ 水泵                    │
+│  │  │  └─ 🔧 阀门 × 3              │
+│  │  └─ 📊 模拟结果                   │
 ├───────────────────────────────────────┤
-│ 🔽 方向状态                          │
-│  ├─ ⚡ 水泵 P01: 进水(N01)→出水(N08)│
-│  ├─ 🔧 阀门 V1:  高压(N12)→低压(N15)│
-│  ├─ 🔧 阀门 V2:  双向(无约束)       │
-│  └─ [选中Link后按 R 反转方向]        │
+│ 🔽 方向状态（选中管道时显示）          │
+│  ├─ ⚡ P01 水泵: N01→N08  [反转]     │
+│  ├─ 🔧 V1 PRV:  N12→N15  [反转]     │
+│  └─ 🔧 V2 手动阀: 双向(无约束)      │
 ├───────────────────────────────────────┤
-│ [自动生成] [手动绘制] [参数配置]      │
-│ [运行模拟] [结果分析] [导出报告]      │
+│ [⚡ 自动生成毛管] [🔗 支管交叉连接]    │
+│ [▶ 运行模拟] [📊 结果分析]            │
 ├───────────────────────────────────────┤
-│ 📋 日志                              │
+│ 💡 提示：在 aqd_pipes 图层上使用       │
+│    QGIS "添加线要素" 绘制管道。        │
+│    绘制后右键 → 转换为水泵/阀门。      │
+│    SmartSnap 自动检查连接规则。        │
+├───────────────────────────────────────┤
+│ 📋 日志                               │
 └───────────────────────────────────────┘
 ```
 
@@ -1952,8 +2036,8 @@ qepanet/
 
 | 模块 | 借鉴方式 | 对应 aQuaDrip 需求 |
 |------|---------|-------------------|
-| **`tools/data_stores.py`** | 六层独立图层的 MemoryDS 创建模式：每种元素独立图层 + 空间索引 | 6 种 QGIS 图层管理 |
-| **`tools/*_tool.py`** | canvasPress/Move/Release 三件套模式 + snapping 精细化配置 | 手动绘制工具（Pipe/Pump/ValveDrawTool） |
+| **`tools/data_stores.py`** | 图层创建模式：独立图层 + 空间索引 + 字段定义 | 参考其图层创建方式（aQuaDrip 简化为 3 个核心图层） |
+| **`tools/*_tool.py`** | canvasPress/Move/Release 三件套模式 + snapping 精细化配置 | SmartSnapTool 的捕捉过滤逻辑（aQuaDrip 用 SmartSnapTool 取代独立 DrawTool） |
 | **`model/network_handling.py`** | `NodeHandler`/`LinkHandler` 静态类 + `find_next_id()` 自动 ID + `split_pipe()` 分割管道 | 交叉连接时管道分割 |
 | **`model/network.py`** | 字段定义与 `QgsField` 列表的映射方式 + 图层属性对应的 Python 类 | 滴灌管网数据模型 |
 | **`geo_utils/raster_utils.py`** | `read_layer_val_from_coord()` 从 DEM 提取高程 | DEM 地形集成 |
@@ -2016,14 +2100,14 @@ qepanet/
 | 借鉴内容 | 来源 | 优先级 | 原因 |
 |---------|------|--------|------|
 | DockWidget 为主控制器的架构 | QEPANET | ★★★★★ | 直接影响插件整体框架 |
-| 六层独立图层 + 空间索引 | QEPANET | ★★★★★ | 直接影响数据模型设计 |
-| MapTool 三件套模式 | QEPANET | ★★★★★ | 直接影响手动绘制工具 |
+| 图层创建模式（独立图层 + 空间索引） | QEPANET | ★★★★★ | 参考其创建方式（aQuaDrip 简化为 3 个核心图层 + 1 个辅助图层） |
+| SmartSnapTool 智能捕捉逻辑 | QEPANET | ★★★★★ | 在 QGIS 原生数字化工具上叠加连接规则矩阵 + 段捕捉（取代独立的 Pipe/Pump/ValveDrawTool） |
 | "交叉-连接"节点生成 | aQuaDrip 独创 | ★★★★★ | 核心创新点 |
 | 模板替换式 INP 写入 | GHydraulics | ★★★★☆ | INP 导出功能 |
 | 模型检查器 | GHydraulics | ★★★★☆ | 拓扑验证功能 |
 | Processing Provider 注册 | qgis-epanet | ★★★★☆ | Processing 集成 |
 | 输出自动 JOIN | qgis-epanet | ★★★☆☆ | 结果可视化 |
-| 泵阀块逻辑 | QEPANET | ★★★☆☆ | 地图编辑 |
+| 泵阀作为 Link 的建模思路 | QEPANET | ★★★☆☆ | 管道→设备的右键菜单转换模式 |
 | DEM 高程提取 | QEPANET/GHydraulics | ★★★☆☆ | 地形集成 |
 | 结果双通道（图表+专题图）| QEPANET | ★★★☆☆ | 结果可视化 |
 | 观察者模式 | QEPANET | ★★☆☆☆ | 状态管理（已有 EventBus）|
