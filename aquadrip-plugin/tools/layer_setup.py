@@ -85,6 +85,8 @@ FIELD_DEFS = {
             _int_field("zone_id"),
             _text_field("from_node", 50),
             _text_field("to_node", 50),
+            _double_field("flow"),          # 模拟结果
+            _double_field("velocity"),      # 模拟结果
         ],
         "value_maps": {
             "pipe_type": {
@@ -319,11 +321,6 @@ class LayerSetupAction:
 
     def _add_to_project(self, layer: QgsVectorLayer, key: str):
         """将图层添加到 QGIS 项目"""
-        # 设置显示名（中文）
-        defn = FIELD_DEFS.get(key)
-        if defn:
-            layer.setName(defn["name"])
-        
         self.project.addMapLayer(layer, False)
         root = self.project.layerTreeRoot()
         
