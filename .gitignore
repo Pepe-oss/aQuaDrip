@@ -30,3 +30,5 @@ env/
 *.inp~
 .reasonix
 .zcode/plans/
+
+已有示例/

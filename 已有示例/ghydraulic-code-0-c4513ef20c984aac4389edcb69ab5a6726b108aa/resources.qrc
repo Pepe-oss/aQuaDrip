@@ -1,8 +1,0 @@
-<RCC>
-    <qresource prefix="/python/plugins/ghydraulic" >
-        <file>icon.xpm</file>
-    </qresource>
-	<qresource prefix="/plugins/ghydraulic" >
-        <file>about_icon.png</file>
-    </qresource>
-</RCC>

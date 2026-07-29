@@ -1,9 +1,0 @@
-*.pyc
-*.bak
-*.zip
-*~
-.project
-.pydevproject
-.settings
-.DS_STORE
-**/.DS_STORE
