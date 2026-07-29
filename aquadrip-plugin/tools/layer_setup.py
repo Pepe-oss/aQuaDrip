@@ -318,4 +318,6 @@ class LayerSetupAction:
 
     def _log(self, msg: str):
         """输出日志"""
+        if self.iface:
+            self.iface.messageBar().pushMessage("aQuaDrip", msg, level=0, duration=2)
         print(f"[aQuaDrip] {msg}")

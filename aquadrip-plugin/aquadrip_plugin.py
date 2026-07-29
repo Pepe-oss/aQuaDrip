@@ -72,25 +72,34 @@ class AQuaDripPlugin:
 
     def on_setup_layers(self):
         """一键创建标准图层"""
-        from .tools.layer_setup import LayerSetupAction
+        self.iface.messageBar().pushMessage(
+            "aQuaDrip", "正在创建图层...", level=0, duration=3)
         
-        setup = LayerSetupAction(self.iface)
-        success = setup.setup()
-        
-        if success:
-            QMessageBox.information(
-                self.iface.mainWindow(),
-                "aQuaDrip",
-                f"图层已创建完成\n\n"
-                f"文件位置: {setup.gpkg_path}\n\n"
-                f"• 农田地块 (aqd_fields)\n"
-                f"• 管道 (aqd_pipes) — 含泵/阀设备字段\n"
-                f"• 节点 (aqd_nodes) — 水源/施肥罐\n"
-                f"• 观测点 (aqd_obs_points) — 校准用"
-            )
-        else:
-            QMessageBox.warning(
-                self.iface.mainWindow(),
-                "aQuaDrip",
-                "图层创建失败，请查看日志"
-            )
+        try:
+            from .tools.layer_setup import LayerSetupAction
+            
+            setup = LayerSetupAction(self.iface)
+            success = setup.setup()
+            
+            if success:
+                QMessageBox.information(
+                    self.iface.mainWindow(),
+                    "aQuaDrip",
+                    f"图层已创建完成\n\n"
+                    f"文件位置: {setup.gpkg_path}\n\n"
+                    f"• 农田地块 (aqd_fields)\n"
+                    f"• 管道 (aqd_pipes) — 含泵/阀设备字段\n"
+                    f"• 节点 (aqd_nodes) — 水源/施肥罐\n"
+                    f"• 观测点 (aqd_obs_points) — 校准用"
+                )
+            else:
+                QMessageBox.warning(
+                    self.iface.mainWindow(),
+                    "aQuaDrip",
+                    "图层创建失败，请查看 Python 日志"
+                )
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self.iface.messageBar().pushWarning(
+                "aQuaDrip", f"创建失败: {e}")
