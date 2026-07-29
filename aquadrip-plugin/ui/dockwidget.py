@@ -1,16 +1,19 @@
-"""aQuaDrip 主面板 — 日志 + 农田参数编辑"""
+"""aQuaDrip 主面板 — 操作日志区
+
+功能入口已全部移至工具栏（生成图层/毛管生成/切割管道/生成交叉节点/
+编辑属性/运行模拟）。本面板当前只保留日志显示，后期将用于展示和
+修改选中设备的参数。
+"""
 
 from qgis.PyQt.QtWidgets import (
-    QDockWidget, QWidget, QVBoxLayout, QTextEdit, QSplitter,
+    QDockWidget, QWidget, QVBoxLayout, QTextEdit, QLabel,
 )
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QFont
 
-from .field_properties import FieldPropertiesPanel
-
 
 class AQuaDripDockWidget(QDockWidget):
-    """aQuaDrip 主面板"""
+    """aQuaDrip 主面板（日志区）"""
 
     def __init__(self, iface, parent=None):
         super().__init__(parent)
@@ -20,21 +23,19 @@ class AQuaDripDockWidget(QDockWidget):
         self.setMinimumWidth(280)
         self.setAllowedAreas(Qt.RightDockWidgetArea | Qt.LeftDockWidgetArea)
 
-        # 主组件
         main = QWidget()
         self.setWidget(main)
         layout = QVBoxLayout(main)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(4)
 
-        # 农艺参数面板（上半部分）
-        self.field_panel = FieldPropertiesPanel(iface)
-        layout.addWidget(self.field_panel, stretch=3)
+        hint = QLabel("功能入口在顶部 aQuaDrip 工具栏")
+        hint.setStyleSheet("color: gray;")
+        layout.addWidget(hint)
 
-        # 日志（下半部分）
+        # 日志区
         self.log = QTextEdit()
         self.log.setReadOnly(True)
-        self.log.setMaximumHeight(150)
         self.log.setPlaceholderText("操作日志...")
         font = QFont("Menlo", 9)
         self.log.setFont(font)

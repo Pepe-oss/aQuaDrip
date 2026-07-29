@@ -1,33 +1,51 @@
 """LayerSetupAction — 一键创建标准图层的基类
 
-创建 5 个核心图层（农田地块/毛管/支管/干管/观测点），
-配置字段约束和域值。所有图层存储在同一个 .gpkg 文件中。
+使用 sqlite3 直接创建 GeoPackage 图层，确保：
+1. fid INTEGER PRIMARY KEY AUTOINCREMENT（QGIS 可编辑的必要条件）
+2. gpkg_geometry_columns 元数据完整
+3. gpkg_contents 注册正确
+4. 所有图层存储在同一个 .gpkg 文件中
 """
 
 import os
+import sqlite3
 from qgis.core import (
-    QgsVectorLayer, QgsCoordinateReferenceSystem,
-    QgsField, QgsProject, QgsEditorWidgetSetup, QgsDefaultValue,
-    QgsFieldConstraints, QgsLayerTreeGroup,
-    QgsSnappingConfig,
+    QgsVectorLayer, QgsProject, QgsEditorWidgetSetup,
+    QgsDefaultValue, QgsSnappingConfig, QgsMessageLog,
+    QgsCoordinateReferenceSystem,
 )
-from qgis.PyQt.QtCore import QVariant, QMetaType
+from qgis.PyQt.QtCore import QMetaType
+from datetime import datetime
 from typing import Optional
 
-# ---- 图层字段定义 ----
+# ── 字段创建辅助 ──
 
-def _text_field(name: str, length: int = 255) -> QgsField:
-    """创建文本字段"""
-    return QgsField(name, QMetaType.QString)
+def _text_field(name: str, length: int = 255):
+    return {"name": name, "type": QMetaType.QString, "sql": "TEXT"}
 
-def _double_field(name: str, precision: int = 2) -> QgsField:
-    """创建双精度字段"""
-    return QgsField(name, QMetaType.Double)
+def _double_field(name: str):
+    return {"name": name, "type": QMetaType.Double, "sql": "REAL"}
 
-def _int_field(name: str) -> QgsField:
-    """创建整数字段"""
-    return QgsField(name, QMetaType.Int)
+def _int_field(name: str):
+    return {"name": name, "type": QMetaType.Int, "sql": "INTEGER"}
 
+
+# ── GPKG 几何类型映射 ──
+
+GEOM_GPKG_MAP = {
+    "Polygon": "POLYGON",
+    "LineString": "LINESTRING",
+    "Point": "POINT",
+}
+
+SQL_TYPE_MAP = {
+    QMetaType.QString: "TEXT",
+    QMetaType.Double: "REAL",
+    QMetaType.Int: "INTEGER",
+}
+
+
+# ── 图层字段定义 ──
 
 FIELD_DEFS = {
     "aqd_fields": {
@@ -96,6 +114,29 @@ FIELD_DEFS = {
             "material": "'PE'",
         },
     },
+    "aqd_nodes": {
+        "name": "节点",
+        "geom": "Point",
+        "fields": [
+            _text_field("node_type", 20),
+            _text_field("source_type", 20),
+            _double_field("head"),
+            _double_field("available_flow"),
+            _double_field("fertilizer_volume"),
+            _double_field("fertilizer_concentration"),
+            _double_field("elevation"),
+            _double_field("pressure"),
+        ],
+        "value_maps": {
+            "node_type": {"水源": "source", "施肥罐": "fertilizer", "连接点": "junction"},
+            "source_type": {"机井": "well", "蓄水池": "reservoir", "河渠": "canal", "出水口": "outlet"},
+        },
+        "defaults": {
+            "node_type": "'junction'",
+            "head": "20",
+            "elevation": "0",
+        },
+    },
     "aqd_obs_points": {
         "name": "观测点",
         "geom": "Point",
@@ -117,13 +158,48 @@ FIELD_DEFS = {
     },
 }
 
+# ── 字段中文别名（要素表单/属性表显示用）──
+
+FIELD_ALIASES = {
+    # aqd_fields
+    "name": "名称", "crop_type": "作物类型", "planting_pattern": "耕作模式",
+    "direction_type": "滴灌带方向", "row_spacing": "垄间距(m)",
+    "tapes_per_ridge": "每垄滴灌带数", "tape_spacing": "滴灌带间距(m)",
+    "ridge_count": "垄数", "row_direction": "自定义角度(°)",
+    "emitter_spacing": "滴头间距(m)",
+    # aqd_pipes
+    "pipe_type": "管道类型", "device": "设备", "valve_type": "阀门类型",
+    "status": "状态", "diameter": "管径(mm)", "material": "材质",
+    "roughness": "糙率C", "pump_head": "泵扬程(m)", "pump_flow": "泵流量",
+    "pump_power": "泵功率(kW)", "minor_loss": "局部损失系数",
+    "lateral_spacing": "毛管间距(m)", "zone_id": "分区号",
+    "from_node": "起点节点", "to_node": "终点节点",
+    "flow": "流量(模拟)", "velocity": "流速(模拟)",
+    # aqd_nodes
+    "node_type": "节点类型", "source_type": "水源类型", "head": "水头(m)",
+    "available_flow": "可用流量(m³/s)", "fertilizer_volume": "施肥罐容积(L)",
+    "fertilizer_concentration": "肥液浓度(%)", "elevation": "高程(m)",
+    "pressure": "压力(模拟)",
+}
+
 
 class LayerSetupAction:
-    """初始化标准 GeoPackage 图层"""
+    """初始化标准 GeoPackage 图层（sqlite3 直写，确保可编辑）"""
+
+    # WGS 84 的完整定义（GPKG 标准要求）
+    WGS84_DEF = (
+        'GEOGCS["WGS 84",DATUM["WGS_1984",'
+        'SPHEROID["WGS 84",6378137,298.257223563,'
+        'AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],'
+        'PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],'
+        'UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],'
+        'AUTHORITY["EPSG","4326"]]'
+    )
 
     def __init__(self, iface):
         self.iface = iface
         self.project = QgsProject.instance()
+        self.gpkg_path = ""
 
     def setup_layers(self, gpkg_path: str = "") -> bool:
         """一键创建所有标准图层"""
@@ -131,97 +207,153 @@ class LayerSetupAction:
             gpkg_path = self._default_path()
         self.gpkg_path = gpkg_path
 
+        # 确保目录存在
         dirname = os.path.dirname(gpkg_path)
         if dirname and not os.path.exists(dirname):
             os.makedirs(dirname, exist_ok=True)
 
-        # 删除旧 GPKG
+        # 删除旧文件
         if os.path.exists(gpkg_path):
             try:
                 os.remove(gpkg_path)
                 self._log("  已删除旧 GPKG")
-            except OSError:
-                self._log("  ⚠️ 无法删除旧 GPKG，尝试覆盖")
+            except OSError as e:
+                self._log(f"  ⚠️ 无法删除: {e}")
 
-        self.iface.messageBar().pushMessage("aQuaDrip", f"创建图层: {gpkg_path}", level=0, duration=3)
         self._log(f"创建 GeoPackage: {gpkg_path}")
 
-        # 使用 native:package 批量写入 GPKG
-        from qgis import processing
-        memory_layers = []
+        # 确定 SRS ID
+        crs = self.project.crs()
+        srs_id = 4326  # WGS 84 默认
+        if crs.isValid():
+            srs_code = crs.authid()  # "EPSG:4326"
+            try:
+                srs_id = int(srs_code.split(":")[1])
+            except (ValueError, IndexError):
+                srs_id = 4326
 
-        for key, defn in FIELD_DEFS.items():
-            geom = defn["geom"]
-            crs = self.project.crs()
-            crs_str = crs.authid() if crs.isValid() else "EPSG:4326"
-            uri = f"{geom}?crs={crs_str}"
-            mem_layer = QgsVectorLayer(uri, defn["name"], "memory")
-            if not mem_layer.isValid():
-                self._log(f"  ❌ 无法创建: {defn['name']}")
-                continue
-            provider = mem_layer.dataProvider()
-            provider.addAttributes(defn["fields"])
-            mem_layer.updateFields()
-            mem_layer.setName(key)
-            memory_layers.append(mem_layer)
-            self._log(f"  ✅ 内存: {defn['name']} ({key})")
-
-        if not memory_layers:
-            return False
-
-        try:
-            result = processing.run("native:package", {
-                'LAYERS': memory_layers,
-                'OUTPUT': gpkg_path,
-                'OVERWRITE': True,
-                'SAVE_STYLES': False,
-            })
-        except Exception as e:
-            self._log(f"  ❌ native:package 失败: {e}")
-            return False
-
-        # 直接使用 native:package 返回的图层 URI 打开
         created_layers = []
-        for layer_uri in result.get('OUTPUT_LAYERS', []):
-            # 从 URI 中提取 layername
-            if '|layername=' not in layer_uri:
-                continue
-            layer_key = layer_uri.split('|layername=')[-1]
-            if layer_key not in FIELD_DEFS:
-                continue
-            defn = FIELD_DEFS[layer_key]
 
-            gpkg_layer = QgsVectorLayer(layer_uri, defn["name"], "ogr")
-            if not gpkg_layer.isValid():
-                self._log(f"  ⚠️ 无法打开: {defn['name']}")
-                continue
-            gpkg_layer.setReadOnly(False)
-            gpkg_layer.dataProvider().reloadData()
-            # 验证字段
-            actual = [f.name() for f in gpkg_layer.fields()]
-            expected = [f.name() for f in defn["fields"]]
-            missing = set(expected) - set(actual)
-            if missing:
-                self._log(f"  ⚠️ {defn['name']} 缺字段: {missing}")
-                continue
-            self._setup_editor_widgets(gpkg_layer, defn)
-            self._add_to_project(gpkg_layer)
-            created_layers.append(layer_key)
-            self._log(f"  ✅ {defn['name']} ({len(actual)} 字段)")
+        for idx, (key, defn) in enumerate(FIELD_DEFS.items()):
+            try:
+                self._create_gpkg_layer(gpkg_path, key, defn, srs_id, idx == 0)
+
+                # 打开并添加到项目
+                uri = f"{gpkg_path}|layername={key}"
+                layer = QgsVectorLayer(uri, defn["name"], "ogr")
+
+                if not layer.isValid():
+                    self._log(f"  ❌ {defn['name']} 打开失败")
+                    continue
+
+                self._setup_editor_widgets(layer, defn)
+                self._add_to_project(layer, srs_id)
+                created_layers.append(key)
+                self._log(f"  ✅ {defn['name']} ({key})")
+
+            except Exception as e:
+                self._log(f"  ❌ {defn['name']} 失败: {e}")
 
         if not created_layers:
             return False
 
-        # 捕捉配置
         self._setup_snapping()
-
-        self._log(f"完成: {len(created_layers)} 个图层")
-        self.iface.messageBar().pushMessage(
-            "aQuaDrip", f"{len(created_layers)} 个图层已创建", level=0, duration=5)
+        self._log(f"完成: {len(created_layers)}/{len(FIELD_DEFS)} 个图层")
         return True
 
+    def _create_gpkg_layer(self, gpkg_path: str, key: str,
+                           defn: dict, srs_id: int, is_first: bool):
+        """直接使用 SQL 在 GPKG 中创建可编辑的图层表"""
+        conn = sqlite3.connect(gpkg_path)
+        conn.execute("PRAGMA journal_mode=WAL")
+        c = conn.cursor()
+
+        # ── 第 1 次：初始化 GPKG 标准元数据表 ──
+        if is_first:
+            c.execute("""
+                CREATE TABLE gpkg_contents (
+                    table_name TEXT NOT NULL PRIMARY KEY,
+                    data_type TEXT NOT NULL,
+                    identifier TEXT,
+                    description TEXT DEFAULT '',
+                    last_change DATETIME DEFAULT (
+                        strftime('%Y-%m-%dT%H:%M:%fZ','now')
+                    ),
+                    min_x DOUBLE, min_y DOUBLE,
+                    max_x DOUBLE, max_y DOUBLE,
+                    srs_id INTEGER
+                )
+            """)
+            c.execute("""
+                CREATE TABLE gpkg_geometry_columns (
+                    table_name TEXT NOT NULL,
+                    column_name TEXT NOT NULL,
+                    geometry_type_name TEXT NOT NULL,
+                    srs_id INTEGER NOT NULL,
+                    z TINYINT NOT NULL DEFAULT 0,
+                    m TINYINT NOT NULL DEFAULT 0,
+                    PRIMARY KEY (table_name, column_name)
+                )
+            """)
+            c.execute("""
+                CREATE TABLE gpkg_spatial_ref_sys (
+                    srs_id INTEGER PRIMARY KEY,
+                    organization TEXT NOT NULL,
+                    organization_coordsys_id INTEGER NOT NULL,
+                    definition TEXT NOT NULL,
+                    description TEXT
+                )
+            """)
+            # 插入 WGS 84
+            c.execute(
+                "INSERT OR IGNORE INTO gpkg_spatial_ref_sys "
+                "VALUES (?, ?, ?, ?, ?)",
+                (4326, "EPSG", 4326, self.WGS84_DEF, "WGS 84"),
+            )
+
+        # ── 第 2 步：构建字段 SQL ──
+        gpkg_geom = GEOM_GPKG_MAP.get(defn["geom"], "GEOMETRY")
+        col_defs = []
+        for f in defn["fields"]:
+            sql_type = SQL_TYPE_MAP.get(f["type"], "TEXT")
+            col_defs.append(f'"{f["name"]}" {sql_type}')
+        cols_sql = ",\n    ".join(col_defs)
+
+        # ── 第 3 步：创建数据表 ──
+        # fid INTEGER PRIMARY KEY AUTOINCREMENT 是 QGIS 可编辑的关键！
+        # 注意：几何列定义为 GEOMETRY，类型约束由 gpkg_geometry_columns 管理
+        c.execute(f"""
+            CREATE TABLE "{key}" (
+                fid INTEGER PRIMARY KEY AUTOINCREMENT,
+                geom GEOMETRY,
+                {cols_sql}
+            )
+        """)
+
+        # ── 第 4 步：注册到 GPKG 元数据 ──
+        c.execute(
+            "INSERT OR IGNORE INTO gpkg_geometry_columns "
+            'VALUES (?, "geom", ?, ?, 0, 0)',
+            (key, gpkg_geom, srs_id),
+        )
+        c.execute(
+            "INSERT OR IGNORE INTO gpkg_contents "
+            "(table_name, data_type, identifier, srs_id) "
+            "VALUES (?, 'features', ?, ?)",
+            (key, key, srs_id),
+        )
+
+        # ── 第 5 步：创建空间索引（提升性能） ──
+        try:
+            c.execute(f'CREATE INDEX idx_{key}_geom ON "{key}" (geom)')
+        except sqlite3.OperationalError:
+            pass
+
+        conn.commit()
+        conn.close()
+
     def _setup_snapping(self):
-        """启用跨图层捕捉（端点 + 线段）"""
+        """启用跨图层捕捉"""
         try:
             config = QgsProject.instance().snappingConfig()
             config.setEnabled(True)
@@ -233,29 +365,8 @@ class LayerSetupAction:
         except Exception as e:
             self._log(f"  捕捉配置跳过: {e}")
 
-    def _find_layer_by_key(self, key: str):
-        """通过 source URI 中的图层名查找已添加的图层"""
-        for layer in QgsProject.instance().mapLayers().values():
-            s = layer.source() if hasattr(layer, 'source') else ""
-            if key in s:
-                return layer
-        return None
-
-    def _log(self, msg: str):
-        """日志输出"""
-        from qgis.core import QgsMessageLog
-        from datetime import datetime
-        ts = datetime.now().strftime("%H:%M:%S")
-        QgsMessageLog.logMessage(msg, "aQuaDrip", 0)
-        print(f"[{ts}] {msg}")
-
-    def _default_path(self) -> str:
-        """默认路径：用户文档目录/aquadrip.gpkg"""
-        home = os.path.expanduser("~")
-        return os.path.join(home, "Documents", "aquadrip.gpkg")
-
     def _setup_editor_widgets(self, layer, defn: dict):
-        """为图层配置编辑器控件（ValueMap + 默认值）"""
+        """配置编辑器控件（ValueMap + 默认值 + 中文别名）"""
         value_maps = defn.get("value_maps", {})
         defaults = defn.get("defaults", {})
 
@@ -272,10 +383,38 @@ class LayerSetupAction:
                 continue
             layer.setDefaultValueDefinition(idx, QgsDefaultValue(expr))
 
-    def _add_to_project(self, layer):
-        """将图层添加到项目中的 aQuaDrip 分组"""
+        # 中文别名（属性表/要素表单显示）
+        for fname, alias in FIELD_ALIASES.items():
+            idx = layer.fields().lookupField(fname)
+            if idx >= 0:
+                layer.setFieldAlias(idx, alias)
+
+    def _add_to_project(self, layer, srs_id=4326):
+        """添加到 aQuaDrip 分组，不重复"""
+        # 0. 显式设置 CRS（确保 GPKG 元数据读取正常）
+        crs = QgsCoordinateReferenceSystem.fromEpsgId(srs_id)
+        if crs.isValid():
+            layer.setCrs(crs)
+
+        # 1. 注册到项目（addToLegend=False 不创建图例节点）
+        QgsProject.instance().addMapLayer(layer, False)
+
+        # 2. 添加到 aQuaDrip 分组
         root = QgsProject.instance().layerTreeRoot()
         aq_group = root.findGroup("aQuaDrip")
         if not aq_group:
             aq_group = root.insertGroup(0, "aQuaDrip")
-        aq_group.addLayer(layer)
+
+        # 3. 手动创建图层节点（避免重复）
+        from qgis.core import QgsLayerTreeLayer
+        node = QgsLayerTreeLayer(layer)
+        aq_group.addChildNode(node)
+
+    def _default_path(self) -> str:
+        home = os.path.expanduser("~")
+        return os.path.join(home, "Documents", "aquadrip.gpkg")
+
+    def _log(self, msg: str):
+        ts = datetime.now().strftime("%H:%M:%S")
+        QgsMessageLog.logMessage(msg, "aQuaDrip", 0)
+        print(f"[{ts}] {msg}")

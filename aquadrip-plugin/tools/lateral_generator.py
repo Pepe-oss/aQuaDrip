@@ -20,17 +20,24 @@ class LateralGenerator:
     def __init__(self, iface):
         self.iface = iface
         self.project = QgsProject.instance()
+        # 凹形地块时，一条扫描线与地块交成多段，仅保留最长段，
+        # 此处累计被丢弃的段数用于提示用户
+        self._dropped_parts = 0
 
     def generate(self, feat) -> int:
         """根据一条农田要素的农艺参数生成毛管
-        
+
         Args:
             feat: aqd_fields 中的要素（需包含农艺参数字段）
-            
+
         Returns:
             生成的毛管条数
+
+        Raises:
+            ValueError: 参数非法（间距 ≤ 0 会导致布局死循环，必须前置拦截）
         """
         # 1. 读取参数
+        self._dropped_parts = 0
         geom = feat.geometry()
         if not geom or geom.isEmpty():
             raise ValueError("农田几何为空")
@@ -44,10 +51,25 @@ class LateralGenerator:
         custom_angle = float(feat.attribute("row_direction") or 0)
         emitter_spacing = float(feat.attribute("emitter_spacing") or 0.3)
 
-        # 2. 计算方向角度
+        # 2. 参数校验（间距 ≤ 0 会让布局 while 循环永不退出，必须拦截）
+        errors = []
+        if tape_spacing <= 0:
+            errors.append(f"滴灌带间距必须大于 0（当前 {tape_spacing}）")
+        if tapes_per_ridge < 1:
+            errors.append(f"每垄滴灌带数必须 ≥ 1（当前 {tapes_per_ridge}）")
+        if tapes_per_ridge > 1 and row_spacing <= 0:
+            errors.append(f"垄间距必须大于 0（当前 {row_spacing}）")
+        if planting_pattern == "ridge_count" and ridge_count <= 0:
+            errors.append(f"按垄数模式必须指定垄数 > 0（当前 {ridge_count}）")
+        if emitter_spacing <= 0:
+            errors.append(f"滴头间距必须大于 0（当前 {emitter_spacing}）")
+        if errors:
+            raise ValueError("农艺参数非法：\n" + "\n".join(errors))
+
+        # 3. 计算方向角度
         angle = self._calc_direction_angle(geom, direction_type, custom_angle)
 
-        # 3. 计算毛管位置
+        # 4. 计算毛管位置
         if planting_pattern == "ridge_count" and ridge_count > 0:
             lines = self._ridge_count_layout(geom, ridge_count, tapes_per_ridge,
                                               tape_spacing, angle)
@@ -55,8 +77,19 @@ class LateralGenerator:
             lines = self._ridge_layout(geom, row_spacing, tapes_per_ridge,
                                         tape_spacing, angle)
 
-        # 4. 写入 aqd_pipes
-        return self._write_to_pipes(lines, emitter_spacing)
+        if not lines:
+            raise ValueError(
+                "未生成任何毛管：地块可能太小，或间距参数过大")
+
+        # 5. 写入 aqd_pipes（先清除该地块的旧毛管，避免重复生成叠加）
+        count = self._write_to_pipes(lines, emitter_spacing, field_geom=geom)
+        if self._dropped_parts > 0:
+            self.iface.messageBar().pushMessage(
+                "aQuaDrip",
+                f"注意：地块为凹形，{self._dropped_parts} 个毛管分段被省略"
+                f"（每行仅保留最长段）",
+                level=1, duration=6)
+        return count
 
     def _calc_direction_angle(self, geom: QgsGeometry,
                                direction_type: str,
@@ -88,30 +121,68 @@ class LateralGenerator:
                       tapes_per_ridge: int,
                       tape_spacing: float,
                       angle: float) -> List[QgsLineString]:
-        """垄模式：等距生成毛管"""
+        """垄模式生成毛管
+
+        规则（与 UI 联动一致）：
+        - tapes_per_ridge == 1：单带模式，滴灌带按"滴灌带间距"(tape_spacing)等距排列
+        - tapes_per_ridge > 1 ：垄模式，每垄 tapes_per_ridge 条带（垄内间距
+          tape_spacing）；"垄间距"(row_spacing) 指相邻两垄之间的**净距离**
+          （宽行宽度，即上一垄最后一条带到下一垄第一条带的间隔）。
+          因此相邻垄第一条带的步进 = (n-1)*tape_spacing + row_spacing。
+        """
         center = geom.centroid().asPoint()
         rot_geom = self._rotate_around(geom, angle, center)
         bbox = rot_geom.boundingBox()
-        effective_ts = tape_spacing if tapes_per_ridge > 1 else row_spacing
 
-        raw_lines = []
-        y = bbox.yMinimum()
-        while y < bbox.yMaximum():
-            for t in range(tapes_per_ridge):
-                ly = y + t * effective_ts
-                if ly > bbox.yMaximum():
+        # 1. 计算所有滴灌带的 y 位置
+        #    用索引乘法而非累加，避免浮点累积误差在地块边界多生成一条线
+        ys: List[float] = []
+        if tapes_per_ridge <= 1:
+            i = 0
+            while True:
+                ly = bbox.yMinimum() + i * tape_spacing
+                if ly >= bbox.yMaximum():
                     break
-                line = QgsGeometry.fromPolylineXY([
-                    QgsPointXY(bbox.xMinimum(), ly),
-                    QgsPointXY(bbox.xMaximum(), ly)])
-                clipped = line.intersection(rot_geom)
-                if clipped.isEmpty() or clipped.isNull() or clipped.type() != QgsWkbTypes.LineGeometry:
-                    continue
-                pts = clipped.asPolyline() if not clipped.isMultipart() else \
-                      max(clipped.asMultiPolyline(), key=lambda p: QgsGeometry(p).length())
-                if len(pts) >= 2 and QgsGeometry.fromPolylineXY(pts).length() > 0.5:
-                    raw_lines.append(QgsLineString(pts))
-            y += row_spacing
+                ys.append(ly)
+                i += 1
+        else:
+            # 相邻垄第一条带的步进 = 垄内宽度 + 垄间净距
+            step = (tapes_per_ridge - 1) * tape_spacing + row_spacing
+            i = 0
+            while True:
+                y_base = bbox.yMinimum() + i * step
+                if y_base >= bbox.yMaximum():
+                    break
+                for t in range(tapes_per_ridge):
+                    ly = y_base + t * tape_spacing
+                    if ly >= bbox.yMaximum():
+                        break
+                    ys.append(ly)
+                i += 1
+
+        # 2. 逐位置生成水平线并裁剪到地块内
+        raw_lines = []
+        last_y = None
+        for ly in ys:
+            # 参数过密（垄间距 < 垄内宽度）时，跳过与前一条重复的位置
+            if last_y is not None and abs(ly - last_y) < 1e-6:
+                continue
+            line = QgsGeometry.fromPolylineXY([
+                QgsPointXY(bbox.xMinimum(), ly),
+                QgsPointXY(bbox.xMaximum(), ly)])
+            clipped = line.intersection(rot_geom)
+            if clipped.isEmpty() or clipped.isNull() or clipped.type() != QgsWkbTypes.LineGeometry:
+                continue
+            if clipped.isMultipart():
+                # 凹形地块：一条扫描线交成多段，仅保留最长段并计数
+                parts = clipped.asMultiPolyline()
+                self._dropped_parts += len(parts) - 1
+                pts = max(parts, key=lambda p: QgsGeometry(p).length())
+            else:
+                pts = clipped.asPolyline()
+            if len(pts) >= 2 and QgsGeometry.fromPolylineXY(pts).length() > 0.5:
+                raw_lines.append(QgsLineString(pts))
+                last_y = ly
 
         # 统一绕多边形中心逆旋转
         return [QgsLineString(self._rotate_points(
@@ -120,28 +191,43 @@ class LateralGenerator:
     def _ridge_count_layout(self, geom: QgsGeometry,
                             ridge_count: int, tapes_per_ridge: int,
                             tape_spacing: float, angle: float) -> List[QgsLineString]:
+        """按垄数生成：地块高度 ridge_count 等分，每垄中线处布置滴灌带
+
+        每垄 tapes_per_ridge 条带以垄中线对称分布（垄内间距 tape_spacing）。
+        """
         center = geom.centroid().asPoint()
         rot_geom = self._rotate_around(geom, angle, center)
         bbox = rot_geom.boundingBox()
         row_sp = bbox.height() / max(ridge_count, 1)
-        effective_ts = tape_spacing if tapes_per_ridge > 1 else row_sp
+        # 垄内带相对垄中线的对称偏移
+        half = (tapes_per_ridge - 1) * tape_spacing / 2.0
 
         raw_lines = []
+        last_y = None
         for r in range(ridge_count):
             y = bbox.yMinimum() + row_sp * (r + 0.5)
             for t in range(tapes_per_ridge):
-                ly = y + t * effective_ts
-                if ly > bbox.yMaximum(): break
+                ly = y - half + t * tape_spacing
+                if ly >= bbox.yMaximum():
+                    break
+                # 带间距过大导致与邻垄重叠时，跳过重复位置
+                if last_y is not None and abs(ly - last_y) < 1e-6:
+                    continue
                 line = QgsGeometry.fromPolylineXY([
                     QgsPointXY(bbox.xMinimum(), ly),
                     QgsPointXY(bbox.xMaximum(), ly)])
                 clipped = line.intersection(rot_geom)
                 if clipped.isEmpty() or clipped.isNull() or clipped.type() != QgsWkbTypes.LineGeometry:
                     continue
-                pts = clipped.asPolyline() if not clipped.isMultipart() else \
-                      max(clipped.asMultiPolyline(), key=lambda p: QgsGeometry.fromPolyline(p).length())
+                if clipped.isMultipart():
+                    parts = clipped.asMultiPolyline()
+                    self._dropped_parts += len(parts) - 1
+                    pts = max(parts, key=lambda p: QgsGeometry.fromPolyline(p).length())
+                else:
+                    pts = clipped.asPolyline()
                 if len(pts) >= 2 and QgsGeometry.fromPolylineXY(pts).length() > 0.5:
                     raw_lines.append(QgsLineString(pts))
+                    last_y = ly
 
         return [QgsLineString(self._rotate_points(
             [p for p in l.vertices()], angle, center)) for l in raw_lines]
@@ -180,31 +266,68 @@ class LateralGenerator:
         return g
 
     def _write_to_pipes(self, lines: List[QgsLineString],
-                        emitter_spacing: float) -> int:
-        """写入 aqd_pipes 图层"""
+                        emitter_spacing: float,
+                        field_geom: QgsGeometry = None) -> int:
+        """写入 aqd_pipes 图层（先清除该地块旧毛管，避免重复生成叠加）"""
         layer = self._get_pipes_layer()
         if not layer:
             raise RuntimeError("aqd_pipes 图层未找到，请先初始化图层")
 
-        layer.startEditing()
-        count = 0
-        for i, line in enumerate(lines):
-            feat = QgsFeature(layer.fields())
-            feat.setGeometry(QgsGeometry(line))
-            feat.setAttribute("pipe_type", "lateral")
-            feat.setAttribute("device", "none")
-            feat.setAttribute("status", "open")
-            feat.setAttribute("material", "PE")
-            feat.setAttribute("roughness", 130)
-            feat.setAttribute("emitter_spacing", emitter_spacing)
-            layer.addFeature(feat)
-            count += 1
+        need_edit = not layer.isEditable()
+        if need_edit:
+            layer.startEditing()
+        try:
+            # 清除该地块的旧毛管
+            deleted = 0
+            if field_geom is not None:
+                deleted = self._delete_existing_laterals(layer, field_geom)
 
-        layer.commitChanges()
+            count = 0
+            for line in lines:
+                feat = QgsFeature(layer.fields())
+                feat.setGeometry(QgsGeometry(line))
+                feat.setAttribute("pipe_type", "lateral")
+                feat.setAttribute("device", "none")
+                feat.setAttribute("status", "open")
+                feat.setAttribute("material", "PE")
+                feat.setAttribute("roughness", 130)
+                feat.setAttribute("emitter_spacing", emitter_spacing)
+                if not layer.addFeature(feat):
+                    raise RuntimeError("写入毛管要素失败")
+                count += 1
+
+            if need_edit and not layer.commitChanges():
+                raise RuntimeError(
+                    f"提交失败: {'; '.join(layer.commitErrors())}")
+        except Exception:
+            if need_edit:
+                layer.rollBack()
+            raise
+
         layer.triggerRepaint()
-        self.iface.messageBar().pushMessage(
-            "aQuaDrip", f"已生成 {count} 条毛管", level=0, duration=5)
+        msg = f"已生成 {count} 条毛管"
+        if deleted:
+            msg += f"（已清除 {deleted} 条旧毛管）"
+        self.iface.messageBar().pushMessage("aQuaDrip", msg, level=0, duration=5)
         return count
+
+    @staticmethod
+    def _delete_existing_laterals(layer: QgsVectorLayer,
+                                   field_geom: QgsGeometry) -> int:
+        """删除质心位于该地块内的现有毛管（避免重复生成叠加）
+
+        用质心判定而非相交，避免误删跨地块边界的手画毛管。
+        """
+        to_delete = []
+        for feat in layer.getFeatures():
+            if str(feat.attribute("pipe_type") or "") != "lateral":
+                continue
+            g = feat.geometry()
+            if g and not g.isEmpty() and field_geom.contains(g.centroid()):
+                to_delete.append(feat.id())
+        if to_delete:
+            layer.deleteFeatures(to_delete)
+        return len(to_delete)
 
     # ── 几何辅助 ──
 
@@ -259,6 +382,8 @@ class LateralGenerator:
 
     def _get_pipes_layer(self) -> Optional[QgsVectorLayer]:
         for layer in self.project.mapLayers().values():
+            if not isinstance(layer, QgsVectorLayer):
+                continue
             s = layer.source() if hasattr(layer, 'source') else ""
             if "aqd_pipes" in s:
                 return layer

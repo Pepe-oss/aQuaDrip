@@ -78,8 +78,10 @@ class IterativeWNTRSimulatorEngine(SimulationEngine):
     display_name = "WNTR迭代求解器"
     description = "通过迭代逼近 emitter 沿程损失，无需 EPANET，但速度较慢"
     
-    def __init__(self, max_iter: int = 10, tolerance: float = 0.001):
+    def __init__(self, max_iter: int = 10, tolerance: float = 1e-7):
         super().__init__()
+        # tolerance 单位 m³/s：1e-7 ≈ 0.36 L/h，与滴头流量量级匹配
+        # （原默认 0.001 m³/s = 3.6 m³/h，远大于滴头流量会假收敛）
         self.max_iter = max_iter
         self.tolerance = tolerance
     
@@ -112,7 +114,10 @@ class IterativeWNTRSimulatorEngine(SimulationEngine):
             max_change = 0
             for n in emitter_nodes:
                 try:
-                    p = float(wntr_results.node['pressure'].loc[0, n['id']])
+                    # 用 iloc[0] 取首个时间步：WNTR 1.5 在同一模型上重复
+                    # run_sim() 时结果时间戳会推进（0→3600→7200…），
+                    # loc[0] 只在首次求解有效，后续会 KeyError 误判 p=0
+                    p = float(wntr_results.node['pressure'][n['id']].iloc[0])
                 except (KeyError, IndexError):
                     p = 0
                 
@@ -141,7 +146,12 @@ class IterativeWNTRSimulatorEngine(SimulationEngine):
 
 
 def auto_detect_engine() -> SimulationEngine:
-    """自动检测可用的最佳引擎"""
+    """自动检测可用的最佳引擎
+
+    滴灌场景含 emitter 滴头，WNTRSimulator 会忽略 emitter_coefficient
+    （管网静压、不出水），因此 EPANET 库缺失时回退到迭代求解器
+    而非 WNTRSimulator。
+    """
     try:
         import ctypes, ctypes.util
         # 只检查库是否存在，不初始化模型
@@ -151,5 +161,5 @@ def auto_detect_engine() -> SimulationEngine:
             return EpanetSimulatorEngine()
     except Exception:
         pass
-    logger.info("EPANET 库未找到，使用 WNTRSimulator")
-    return WNTRSimulatorEngine()
+    logger.info("EPANET 库未找到，使用 WNTR 迭代求解器（逼近 emitter 出水）")
+    return IterativeWNTRSimulatorEngine()

@@ -62,6 +62,9 @@ class DripSimulation:
         # 3. 设置模拟选项
         wn.options.time.duration = 0  # 稳态模拟
         wn.options.hydraulic.headloss = "H-W"  # Hazen-Williams
+        # PDD（压力依赖用水）：emitter 滴头才能按 q=k·P^x 出水；
+        # 默认 DDA 模式下 emitter 被忽略，管网不出水、全静压
+        wn.options.hydraulic.demand_model = "PDD"
         
         return wn
     
@@ -85,6 +88,9 @@ class DripSimulation:
             # 转换: 1 L/h = 2.77778e-7 m³/s
             emitter_coeff_si = node.emitter_k * 2.77778e-7
             wn.get_node(nid).emitter_coefficient = emitter_coeff_si
+            # 挂自定义属性：迭代求解器通过 getattr(node, 'emitter_exponent', 0.5)
+            # 读取每个滴头的流态指数（WNTR Junction 原生无此属性）
+            wn.get_node(nid).emitter_exponent = node.emitter_x
             logger.debug(f"  Emitter: {nid} k={node.emitter_k} x={node.emitter_x}")
         
         else:
@@ -108,9 +114,11 @@ class DripSimulation:
         elif hasattr(link, "valve_type"):
             # Valve (Link!)
             vtype = str(link.valve_type.name).upper()
+            # links 约定 diameter 为 mm，WNTR 需要 m
+            diameter_m = link.diameter / 1000.0 if link.diameter > 0 else None
             wn.add_valve(lid, link.from_node, link.to_node,
                         valve_type=vtype,
-                        diameter=link.diameter if link.diameter > 0 else None,
+                        diameter=diameter_m,
                         setting=link.setting)
             logger.debug(f"  Valve: {lid} type={vtype} setting={link.setting}")
         

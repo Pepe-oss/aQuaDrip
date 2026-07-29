@@ -61,13 +61,13 @@ class RectangularLayoutBuilder(LayoutBuilder):
         # 2. 为每条毛管生成拓扑结构
         for pos in lateral_positions:
             self._build_lateral_topology(pos, length, emitter_spacing)
-        
-        # 3. 生成干管（简单模式：沿长边）
+
+        # 3. 生成干管（简化占位，见 _build_mainline_topology 说明）
         self._build_mainline_topology(length)
-        
-        # 4. 生成支管（等距连接）
+
+        # 4. 生成支管（简化占位，见 _build_submain_topology 说明）
         self._build_submain_topology(length)
-        
+
         return self.graph
     
     def _get_field_dimensions(self) -> Tuple[float, float]:
@@ -209,7 +209,16 @@ class RectangularLayoutBuilder(LayoutBuilder):
         pos.end_x = length
     
     def _build_mainline_topology(self, length: float):
-        """生成干管拓扑（沿长边策略）"""
+        """生成干管拓扑（**简化占位实现**）
+
+        仅生成一条 M_SRC→M_END 的单线干管，忽略 LayoutParams.mainline_strategy。
+
+        注意：生产环境中干管采用**手动绘制范式**（用户在 QGIS 的
+        aqd_pipes 图层中绘制，pipe_type=mainline）。此方法仅为
+        端到端拓扑测试（test_topology / test_integration）保留，
+        不代表最终的干管布局算法。文档 7.3 的沿长边/短边/中央/边界
+        等策略未在此实现。
+        """
         # 简单模式：一条干管沿地块长边
         mainline_id = "M001"
         mainline_start = "M_SRC"
@@ -224,7 +233,16 @@ class RectangularLayoutBuilder(LayoutBuilder):
         )
     
     def _build_submain_topology(self, length: float):
-        """生成支管拓扑（等距连接干管和毛管）"""
+        """生成支管拓扑（**简化占位实现**）
+
+        把每条毛管的起始 Junction 直连到单一节点 M_END，忽略
+        LayoutParams.submain_strategy / submain_spacing。
+
+        注意：生产环境中支管采用**手动绘制范式**（用户在 QGIS 中绘制，
+        交叉节点由插件 aquadrip-plugin/tools/crossing_node_tool.py 在
+        支管与毛管的几何交点处生成）。此方法仅为端到端拓扑测试保留，
+        文档 7.3.3 的"交叉-连接"等距/MST/骨架线/最短路策略未在此实现。
+        """
         # 对于每条毛管，从干管引出一条支管连接到毛管的起始 Junction
         submain_count = 0
         for pos in self._get_lateral_positions():

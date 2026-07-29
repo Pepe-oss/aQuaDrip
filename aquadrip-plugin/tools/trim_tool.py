@@ -45,31 +45,38 @@ class TrimTool(QgsMapTool):
             point = event.snapPoint()
             self._trim_pipe(point)
         elif event.button() == Qt.RightButton:
-            self.deactivate()
+            # deactivate() 只是停用回调，工具仍是当前 mapTool；
+            # 必须 unsetMapTool 才真正退出（恢复光标、停止响应）
+            self.canvas.unsetMapTool(self)
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Escape:
-            self.deactivate()
+            self.canvas.unsetMapTool(self)
 
     def _find_pipe_layer(self):
-        """查找管道图层"""
+        """查找 aqd_pipes 图层（所有管道都在此）"""
         for layer in QgsProject.instance().mapLayers().values():
             s = layer.source() if hasattr(layer, 'source') else ""
             if "aqd_pipes" in s:
                 return layer
         return None
-        return None
 
-    def _trim_pipe(self, point: QgsPointXY, tolerance=15):
+    def _trim_pipe(self, point: QgsPointXY, tolerance=None):
         layer = self._find_pipe_layer()
         if not layer:
             self.iface.messageBar().pushWarning("aQuaDrip", "aqd_pipes 未找到")
             return
 
+        # 容差与 snapping 一致（15 像素 → 地图单位，随缩放/CRS 自适应；
+        # 旧默认 tolerance=15 在经纬度下是 15 度，会误切到极远管道）
+        if tolerance is None:
+            tolerance = self.canvas.mapUnitsPerPixel() * 15
+
         # 1. 查找最近的管道
         best_feat = None
         best_dist = tolerance
         best_pos = 0.0  # 点击位置在管线上的比例(0~1)
+        skipped_multi = False
 
         for feat in layer.getFeatures():
             ptype = str(feat.attribute("pipe_type") or "")
@@ -80,6 +87,8 @@ class TrimTool(QgsMapTool):
                 continue
             line = geom.asPolyline()
             if len(line) < 2:
+                # asPolyline 对 MultiLineString 返回空
+                skipped_multi = skipped_multi or geom.isMultipart()
                 continue
             for i in range(len(line) - 1):
                 seg = QgsGeometry.fromPolylineXY([line[i], line[i+1]])
@@ -99,7 +108,10 @@ class TrimTool(QgsMapTool):
                             best_pos = cum / total_len
 
         if not best_feat:
-            self.iface.messageBar().pushWarning("aQuaDrip", "未选中有效管道")
+            msg = "未选中有效管道"
+            if skipped_multi:
+                msg += "（多部件管道暂不支持切割，请先用'拆分多部件'处理）"
+            self.iface.messageBar().pushWarning("aQuaDrip", msg)
             return
 
         # 2. 切割管道
@@ -151,27 +163,43 @@ class TrimTool(QgsMapTool):
             return
 
         # 3. 写入（跳过 fid，GPKG 自动管理）
-        layer.startEditing()
-        skip_fields = {"fid", "FID", "id"}
-        for pts in segments:
-            f = QgsFeature(layer.fields())
-            f.setGeometry(QgsGeometry.fromPolylineXY(pts))
-            for field in layer.fields():
-                fname = field.name()
-                if fname.lower() in skip_fields:
-                    continue
-                val = best_feat.attribute(fname)
-                if val is not None:
-                    try:
-                        f.setAttribute(fname, val)
-                    except TypeError:
-                        pass
-            if not layer.addFeature(f):
-                self.iface.messageBar().pushWarning("aQuaDrip", f"添加段失败")
+        need_edit = not layer.isEditable()
+        if need_edit:
+            layer.startEditing()
+        skip_fields = {"fid", "id"}
+        # 旧模拟结果不带入新段
+        clear_fields = {"flow", "velocity"}
+        try:
+            for idx, pts in enumerate(segments):
+                f = QgsFeature(layer.fields())
+                f.setGeometry(QgsGeometry.fromPolylineXY(pts))
+                for field in layer.fields():
+                    fname = field.name()
+                    if fname.lower() in skip_fields or fname in clear_fields:
+                        continue
+                    # 分割点处的 from/to 清空，由 sync 重新推导
+                    # （首段保留 from_node，末段保留 to_node）
+                    if fname == "to_node" and idx < len(segments) - 1:
+                        continue
+                    if fname == "from_node" and idx > 0:
+                        continue
+                    val = best_feat.attribute(fname)
+                    if val is not None:
+                        try:
+                            f.setAttribute(fname, val)
+                        except TypeError:
+                            pass
+                if not layer.addFeature(f):
+                    raise RuntimeError("添加切割段失败")
+            layer.deleteFeature(best_feat.id())
+            if need_edit and not layer.commitChanges():
+                raise RuntimeError(
+                    f"提交失败: {'; '.join(layer.commitErrors())}")
+        except Exception as e:
+            if need_edit:
                 layer.rollBack()
-                return
-        layer.deleteFeature(best_feat.id())
-        layer.commitChanges()
+            self.iface.messageBar().pushWarning("aQuaDrip", f"切割失败: {e}")
+            return
         layer.triggerRepaint()
         self.iface.messageBar().pushMessage(
             "aQuaDrip", f"管道已切割为{len(segments)}段", level=0, duration=3)

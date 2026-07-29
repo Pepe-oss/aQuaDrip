@@ -20,6 +20,7 @@ from .emitter import (
 from .field import FieldInfo
 from .schedule import IrrigationSchedule, IrrigationCycle, ShiftGroup
 from .network import DripNetwork
+from .expand import expand_lateral, expand_all_laterals
 
 __all__ = [
     # 节点
@@ -47,4 +48,7 @@ __all__ = [
     "ShiftGroup",
     # 管网
     "DripNetwork",
+    # 毛管展开
+    "expand_lateral",
+    "expand_all_laterals",
 ]
