@@ -251,20 +251,9 @@ class LayerSetupAction:
             self._add_to_project(gpkg_layer)
             created_layers.append(key)
             self._log(f"  ✅ {defn['name']} ({len(actual)} 字段)")
-            if error != QgsVectorFileWriter.NoError:
-                self._log(f"  ❌ 写入 GPKG 失败: {key}")
-                continue
-
-            # 从 GPKG 重新打开
-            gpkg_uri = f"{gpkg_path}|layername={key}"
-            gpkg_result = QgsVectorLayer(gpkg_uri, defn["name"], "ogr")
-            if not gpkg_result.isValid():
-                self._log(f"  ⚠️ 无法打开: {defn['name']}")
-                continue
-            self._setup_editor_widgets(gpkg_result, defn)
-            self._add_to_project(gpkg_result)
+            self._setup_editor_widgets(gpkg_layer, defn)
+            self._add_to_project(gpkg_layer)
             created_layers.append(key)
-            self._log(f"  ✅ 添加: {defn['name']}")
 
         if not created_layers:
             return False
