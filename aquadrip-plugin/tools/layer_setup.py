@@ -6,7 +6,7 @@
 
 import os
 from qgis.core import (
-    QgsVectorLayer, QgsCoordinateReferenceSystem,
+    QgsVectorLayer, QgsVectorFileWriter, QgsCoordinateReferenceSystem,
     QgsField, QgsProject, QgsEditorWidgetSetup, QgsDefaultValue,
     QgsFieldConstraints, QgsLayerTreeGroup,
     QgsSnappingConfig,
@@ -201,56 +201,49 @@ class LayerSetupAction:
         self.iface.messageBar().pushMessage("aQuaDrip", f"创建图层: {gpkg_path}", level=0, duration=3)
         self._log(f"创建 GeoPackage: {gpkg_path}")
 
-        # 使用 native:package 批量写入 GPKG
-        from qgis import processing
-        memory_layers = []
+        # 逐个 QGIS 原生方式创建 GPKG 图层
+        created_layers = []
 
         for key, defn in FIELD_DEFS.items():
             geom = defn["geom"]
             crs = self.project.crs()
             crs_str = crs.authid() if crs.isValid() else "EPSG:4326"
-            uri = f"{geom}?crs={crs_str}"
-            mem_layer = QgsVectorLayer(uri, defn["name"], "memory")
-            if not mem_layer.isValid():
+
+            # QGIS 原生方式创建 GPKG 图层
+            uri = f"{geom}?crs={crs_str}&index=yes"
+            gpkg_layer = QgsVectorLayer(uri, key, "memory")
+            if not gpkg_layer.isValid():
                 self._log(f"  ❌ 无法创建: {defn['name']}")
                 continue
-            provider = mem_layer.dataProvider()
+            provider = gpkg_layer.dataProvider()
             provider.addAttributes(defn["fields"])
-            mem_layer.updateFields()
-            mem_layer.setName(key)
-            memory_layers.append(mem_layer)
+            gpkg_layer.updateFields()
             self._log(f"  ✅ 内存: {defn['name']} ({key})")
 
-        if not memory_layers:
-            return False
-
-        try:
-            result = processing.run("native:package", {
-                'LAYERS': memory_layers,
-                'OUTPUT': gpkg_path,
-                'OVERWRITE': True,
-                'SAVE_STYLES': False,
-            })
-        except Exception as e:
-            self._log(f"  ❌ native:package 失败: {e}")
-            return False
-
-        created_layers = []
-        for key, defn in FIELD_DEFS.items():
+            # 复制到 GPKG
             gpkg_uri = f"{gpkg_path}|layername={key}"
-            gpkg_layer = QgsVectorLayer(gpkg_uri, defn["name"], "ogr")
-            if not gpkg_layer.isValid():
+            write_opts = QgsVectorFileWriter.SaveVectorOptions()
+            write_opts.driverName = "GPKG"
+            write_opts.layerName = key
+            write_opts.actionOnExistingFile = QgsVectorFileWriter.CreateOrOverwriteLayer
+            write_opts.fileEncoding = "UTF-8"
+            
+            error, msg = QgsVectorFileWriter.writeAsVectorFormatV2(
+                gpkg_layer, gpkg_path, write_opts
+            )
+            if error != QgsVectorFileWriter.NoError:
+                self._log(f"  ❌ 写入 GPKG 失败: {key}")
+                continue
+
+            # 从 GPKG 重新打开
+            gpkg_result = QgsVectorLayer(gpkg_uri, defn["name"], "ogr")
+            if not gpkg_result.isValid():
                 self._log(f"  ⚠️ 无法打开: {defn['name']}")
                 continue
-            gpkg_layer.setReadOnly(False)
-            actual = [f.name() for f in gpkg_layer.fields()]
-            expected = [f.name() for f in defn["fields"]]
-            missing = [f for f in expected if f not in actual]
-            if missing:
-                self._log(f"  ⚠️ {defn['name']} 缺字段: {missing}")
-            self._setup_editor_widgets(gpkg_layer, defn)
-            self._add_to_project(gpkg_layer)
+            self._setup_editor_widgets(gpkg_result, defn)
+            self._add_to_project(gpkg_result)
             created_layers.append(key)
+            self._log(f"  ✅ 添加: {defn['name']}")
 
         if not created_layers:
             return False

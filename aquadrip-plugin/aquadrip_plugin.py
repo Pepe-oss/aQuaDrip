@@ -103,9 +103,10 @@ class AQuaDripPlugin:
                     f"图层已创建完成\n\n"
                     f"文件位置: {setup.gpkg_path}\n\n"
                     f"• 农田地块 (aqd_fields)\n"
-                    f"• 管道 (aqd_pipes) — 含泵/阀设备字段\n"
-                    f"• 节点 (aqd_nodes) — 水源/施肥罐\n"
-                    f"• 观测点 (aqd_obs_points) — 校准用"
+                    f"• 毛管 (aqd_laterals)\n"
+                    f"• 支管 (aqd_submains)\n"
+                    f"• 干管 (aqd_maines)\n"
+                    f"• 观测点 (aqd_obs_points)"
                 )
             else:
                 QMessageBox.warning(
