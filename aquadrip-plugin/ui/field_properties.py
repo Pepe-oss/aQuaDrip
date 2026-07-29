@@ -188,28 +188,6 @@ class FieldPropertiesPanel(QFrame):
         self._current_layer = layer
         self._current_feat_id = feat.id()
 
-        # 自动计算面积
-        geom = feat.geometry()
-        if geom and not geom.isEmpty():
-            from qgis.core import QgsDistanceArea, QgsProject
-            da = QgsDistanceArea()
-            project = QgsProject.instance()
-            da.setSourceCrs(project.crs(), project.transformContext())
-            ellipsoid = project.ellipsoid()
-            if ellipsoid and ellipsoid != "NONE":
-                da.setEllipsoid(ellipsoid)
-                area_sqm = da.measureArea(geom)
-            else:
-                area_sqm = geom.area()
-            if not area_sqm or area_sqm != area_sqm:
-                area_sqm = geom.area()
-            # 保存面积到字段
-            if not feat.attribute("area") or float(feat.attribute("area") or 0) < 1:
-                layer.startEditing()
-                feat.setAttribute("area", round(area_sqm, 1))
-                layer.updateFeature(feat)
-                layer.commitChanges()
-
         self.edt_name.setText(str(feat.attribute("name") or ""))
         self._set_combo_val(self.cmb_crop, feat.attribute("crop_type"))
         self._set_combo_val(self.cmb_pattern, feat.attribute("planting_pattern"))

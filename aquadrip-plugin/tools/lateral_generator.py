@@ -90,16 +90,14 @@ class LateralGenerator:
                       angle: float) -> List[QgsLineString]:
         """垄模式：等距生成毛管"""
         # 旋转多边形，使毛管方向与 X 轴平行
-        rotated = self._rotate_geom(geom, -angle)
-        bbox = rotated.boundingBox()
+        rotated_geom = self._rotate_geom(geom, -angle)
+        bbox = rotated_geom.boundingBox()
 
         lines = []
         effective_tape_spacing = tape_spacing if tapes_per_ridge > 1 else row_spacing
 
         y = bbox.yMinimum()
-        ridge_idx = 0
         while y < bbox.yMaximum():
-            # 每垄生成 tapes_per_ridge 条毛管
             for t in range(tapes_per_ridge):
                 ly = y + t * effective_tape_spacing
                 if ly > bbox.yMaximum():
@@ -108,15 +106,18 @@ class LateralGenerator:
                     [QgsPointXY(bbox.xMinimum(), ly),
                      QgsPointXY(bbox.xMaximum(), ly)]
                 )
-                clipped = self._clip_line(line, rotated)
+                clipped = self._clip_line(line, rotated_geom)
                 if clipped and clipped.length() > 0.5:
-                    lines.append(clipped)
-
+                    # 将裁剪后的线逆旋转回原坐标
+                    line_geom = QgsGeometry(clipped)
+                    rotated_back = self._rotate_geometry(line_geom, angle)
+                    if rotated_back and not rotated_back.isEmpty():
+                        rp = rotated_back.asPolyline()
+                        if len(rp) >= 2:
+                            lines.append(QgsLineString(rp))
             y += row_spacing
-            ridge_idx += 1
 
-        # 逆旋转回原坐标
-        return [self._rotate_line(l, angle) for l in lines]
+        return lines
 
     def _ridge_count_layout(self, geom: QgsGeometry,
                             ridge_count: int,
@@ -124,8 +125,8 @@ class LateralGenerator:
                             tape_spacing: float,
                             angle: float) -> List[QgsLineString]:
         """按垄数模式"""
-        rotated = self._rotate_geom(geom, -angle)
-        bbox = rotated.boundingBox()
+        rotated_geom = self._rotate_geom(geom, -angle)
+        bbox = rotated_geom.boundingBox()
         width = bbox.height()
         row_spacing = width / max(ridge_count, 1)
 
@@ -142,11 +143,26 @@ class LateralGenerator:
                     [QgsPointXY(bbox.xMinimum(), ly),
                      QgsPointXY(bbox.xMaximum(), ly)]
                 )
-                clipped = self._clip_line(line, rotated)
+                clipped = self._clip_line(line, rotated_geom)
                 if clipped and clipped.length() > 0.5:
-                    lines.append(clipped)
+                    rotated_back = self._rotate_geometry(
+                        QgsGeometry(clipped), angle)
+                    if rotated_back and not rotated_back.isEmpty():
+                        rp = rotated_back.asPolyline()
+                        if len(rp) >= 2:
+                            lines.append(QgsLineString(rp))
 
-        return [self._rotate_line(l, angle) for l in lines]
+        return lines
+
+    @staticmethod
+    def _rotate_geometry(geom: QgsGeometry, angle_rad: float) -> Optional[QgsGeometry]:
+        """绕几何中心旋转"""
+        centroid = geom.centroid().asPoint()
+        g = QgsGeometry(geom)
+        g.translate(-centroid.x(), -centroid.y())
+        g.rotate(math.degrees(angle_rad), QgsPointXY(0, 0))
+        g.translate(centroid.x(), centroid.y())
+        return g
 
     def _write_to_pipes(self, lines: List[QgsLineString],
                         emitter_spacing: float) -> int:
