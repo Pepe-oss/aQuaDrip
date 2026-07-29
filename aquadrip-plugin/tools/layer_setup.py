@@ -233,14 +233,14 @@ class LayerSetupAction:
         options = QgsVectorFileWriter.SaveVectorOptions()
         options.driverName = "GPKG"
         options.layerName = key
+        options.fileEncoding = "UTF-8"
         options.actionOnExistingFile = QgsVectorFileWriter.CreateOrOverwriteLayer
         
-        write_result, error_msg = QgsVectorFileWriter.writeAsVectorFormatV3(
-            layer, self.gpkg_path, layer.dataProvider().encoding(),
-            layer.crs(), options
+        result, error_msg = QgsVectorFileWriter.writeAsVectorFormatV3(
+            layer, self.gpkg_path, options, layer.crs()
         )
         
-        if write_result != QgsVectorFileWriter.NoError:
+        if result != QgsVectorFileWriter.NoError:
             self._log(f"  写入失败: {error_msg}")
             return False
         
