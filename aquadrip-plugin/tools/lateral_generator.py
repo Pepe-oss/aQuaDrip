@@ -90,7 +90,7 @@ class LateralGenerator:
                       angle: float) -> List[QgsLineString]:
         """垄模式：等距生成毛管"""
         center = geom.centroid().asPoint()
-        rot_geom = self._rotate_around(geom, -angle, center)
+        rot_geom = self._rotate_around(geom, angle, center)
         bbox = rot_geom.boundingBox()
         effective_ts = tape_spacing if tapes_per_ridge > 1 else row_spacing
 
@@ -121,7 +121,7 @@ class LateralGenerator:
                             ridge_count: int, tapes_per_ridge: int,
                             tape_spacing: float, angle: float) -> List[QgsLineString]:
         center = geom.centroid().asPoint()
-        rot_geom = self._rotate_around(geom, -angle, center)
+        rot_geom = self._rotate_around(geom, angle, center)
         bbox = rot_geom.boundingBox()
         row_sp = bbox.height() / max(ridge_count, 1)
         effective_ts = tape_spacing if tapes_per_ridge > 1 else row_sp
