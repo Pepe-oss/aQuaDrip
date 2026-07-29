@@ -59,6 +59,14 @@ class AQuaDripPlugin:
 
         # 分隔线
         menu.addSeparator()
+        
+        # 切割毛管
+        action = QAction(QgsApplication.getThemeIcon("mActionSplitFeatures"),
+                        "切割毛管", self.iface.mainWindow())
+        action.triggered.connect(self.on_trim_lateral)
+        action.setToolTip("点击毛管在任意位置将其分割为两段")
+        menu.addAction(action)
+        self.actions.append(action)
 
     def unload(self):
         """卸载插件"""
@@ -110,3 +118,8 @@ class AQuaDripPlugin:
             traceback.print_exc()
             self.iface.messageBar().pushWarning(
                 "aQuaDrip", f"创建失败: {e}")
+
+    def on_trim_lateral(self):
+        """激活毛管切割工具"""
+        from .tools.lateral_trim_tool import LateralTrimTool
+        self.iface.mapCanvas().setMapTool(LateralTrimTool(self.iface))
