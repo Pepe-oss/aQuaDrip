@@ -89,70 +89,85 @@ class LateralGenerator:
                       tape_spacing: float,
                       angle: float) -> List[QgsLineString]:
         """垄模式：等距生成毛管"""
-        # 旋转多边形，使毛管方向与 X 轴平行
-        rotated_geom = self._rotate_geom(geom, -angle)
-        bbox = rotated_geom.boundingBox()
+        center = geom.centroid().asPoint()
+        rot_geom = self._rotate_around(geom, -angle, center)
+        bbox = rot_geom.boundingBox()
+        effective_ts = tape_spacing if tapes_per_ridge > 1 else row_spacing
 
-        lines = []
-        effective_tape_spacing = tape_spacing if tapes_per_ridge > 1 else row_spacing
-
+        raw_lines = []
         y = bbox.yMinimum()
         while y < bbox.yMaximum():
             for t in range(tapes_per_ridge):
-                ly = y + t * effective_tape_spacing
+                ly = y + t * effective_ts
                 if ly > bbox.yMaximum():
                     break
-                line = QgsLineString(
-                    [QgsPointXY(bbox.xMinimum(), ly),
-                     QgsPointXY(bbox.xMaximum(), ly)]
-                )
-                clipped = self._clip_line(line, rotated_geom)
-                if clipped and clipped.length() > 0.5:
-                    # 将裁剪后的线逆旋转回原坐标
-                    line_geom = QgsGeometry(clipped)
-                    rotated_back = self._rotate_geometry(line_geom, angle)
-                    if rotated_back and not rotated_back.isEmpty():
-                        rp = rotated_back.asPolyline()
-                        if len(rp) >= 2:
-                            lines.append(QgsLineString(rp))
+                line = QgsGeometry.fromPolylineXY([
+                    QgsPointXY(bbox.xMinimum(), ly),
+                    QgsPointXY(bbox.xMaximum(), ly)])
+                clipped = line.intersection(rot_geom)
+                if clipped.isEmpty() or clipped.isNull() or clipped.type() != QgsWkbTypes.LineGeometry:
+                    continue
+                pts = clipped.asPolyline() if not clipped.isMultipart() else \
+                      max(clipped.asMultiPolyline(), key=lambda p: QgsGeometry(p).length())
+                if len(pts) >= 2 and QgsGeometry(pts).length() > 0.5:
+                    raw_lines.append(QgsLineString(pts))
             y += row_spacing
 
-        return lines
+        # 统一绕多边形中心逆旋转
+        return [QgsLineString(self._rotate_points(
+            [p for p in l.vertices()], angle, center)) for l in raw_lines]
 
     def _ridge_count_layout(self, geom: QgsGeometry,
-                            ridge_count: int,
-                            tapes_per_ridge: int,
-                            tape_spacing: float,
-                            angle: float) -> List[QgsLineString]:
-        """按垄数模式"""
-        rotated_geom = self._rotate_geom(geom, -angle)
-        bbox = rotated_geom.boundingBox()
-        width = bbox.height()
-        row_spacing = width / max(ridge_count, 1)
+                            ridge_count: int, tapes_per_ridge: int,
+                            tape_spacing: float, angle: float) -> List[QgsLineString]:
+        center = geom.centroid().asPoint()
+        rot_geom = self._rotate_around(geom, -angle, center)
+        bbox = rot_geom.boundingBox()
+        row_sp = bbox.height() / max(ridge_count, 1)
+        effective_ts = tape_spacing if tapes_per_ridge > 1 else row_sp
 
-        effective_tape_spacing = tape_spacing if tapes_per_ridge > 1 else row_spacing
-
-        lines = []
+        raw_lines = []
         for r in range(ridge_count):
-            y = bbox.yMinimum() + row_spacing * (r + 0.5)
+            y = bbox.yMinimum() + row_sp * (r + 0.5)
             for t in range(tapes_per_ridge):
-                ly = y + t * effective_tape_spacing
-                if ly > bbox.yMaximum():
-                    break
-                line = QgsLineString(
-                    [QgsPointXY(bbox.xMinimum(), ly),
-                     QgsPointXY(bbox.xMaximum(), ly)]
-                )
-                clipped = self._clip_line(line, rotated_geom)
-                if clipped and clipped.length() > 0.5:
-                    rotated_back = self._rotate_geometry(
-                        QgsGeometry(clipped), angle)
-                    if rotated_back and not rotated_back.isEmpty():
-                        rp = rotated_back.asPolyline()
-                        if len(rp) >= 2:
-                            lines.append(QgsLineString(rp))
+                ly = y + t * effective_ts
+                if ly > bbox.yMaximum(): break
+                line = QgsGeometry.fromPolylineXY([
+                    QgsPointXY(bbox.xMinimum(), ly),
+                    QgsPointXY(bbox.xMaximum(), ly)])
+                clipped = line.intersection(rot_geom)
+                if clipped.isEmpty() or clipped.isNull() or clipped.type() != QgsWkbTypes.LineGeometry:
+                    continue
+                pts = clipped.asPolyline() if not clipped.isMultipart() else \
+                      max(clipped.asMultiPolyline(), key=lambda p: QgsGeometry(p).length())
+                if len(pts) >= 2 and QgsGeometry(pts).length() > 0.5:
+                    raw_lines.append(QgsLineString(pts))
 
-        return lines
+        return [QgsLineString(self._rotate_points(
+            [p for p in l.vertices()], angle, center)) for l in raw_lines]
+
+    @staticmethod
+    def _rotate_around(geom: QgsGeometry, angle_rad: float,
+                       center: QgsPointXY) -> QgsGeometry:
+        """绕指定中心旋转"""
+        g = QgsGeometry(geom)
+        g.translate(-center.x(), -center.y())
+        g.rotate(math.degrees(angle_rad), QgsPointXY(0, 0))
+        g.translate(center.x(), center.y())
+        return g
+
+    @staticmethod
+    def _rotate_points(pts: list, angle_rad: float,
+                       center: QgsPointXY) -> list:
+        """绕指定中心旋转点列表"""
+        cos_a, sin_a = math.cos(angle_rad), math.sin(angle_rad)
+        result = []
+        for p in pts:
+            dx, dy = p.x() - center.x(), p.y() - center.y()
+            rx = dx * cos_a - dy * sin_a + center.x()
+            ry = dx * sin_a + dy * cos_a + center.y()
+            result.append(QgsPointXY(rx, ry))
+        return result
 
     @staticmethod
     def _rotate_geometry(geom: QgsGeometry, angle_rad: float) -> Optional[QgsGeometry]:

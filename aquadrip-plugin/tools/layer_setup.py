@@ -34,16 +34,15 @@ FIELD_DEFS = {
         "geom": "Polygon",
         "fields": [
             _text_field("name"),
-            _double_field("area", 1),
             _text_field("crop_type", 50),
-            _text_field("planting_pattern", 20),  # ridge/ridge_count
-            _text_field("direction_type", 20),    # long_edge/short_edge/custom
-            _double_field("row_spacing"),         # 垄间距
-            _int_field("tapes_per_ridge"),        # 每垄滴灌带数
-            _double_field("tape_spacing"),        # 滴灌带间距
-            _int_field("ridge_count"),            # 垄数
-            _double_field("row_direction"),       # 种植方向角度
-            _double_field("emitter_spacing"),     # 滴头间距
+            _text_field("planting_pattern", 20),
+            _text_field("direction_type", 20),
+            _double_field("row_spacing"),
+            _int_field("tapes_per_ridge"),
+            _double_field("tape_spacing"),
+            _int_field("ridge_count"),
+            _double_field("row_direction"),
+            _double_field("emitter_spacing"),
         ],
         "value_maps": {
             "planting_pattern": {
