@@ -178,43 +178,77 @@ class LayerSetupAction:
         self.iface = iface
         self.project = QgsProject.instance()
         self.gpkg_path = ""
+        self._memory_layers = {}
 
     def setup(self, gpkg_path: str = "") -> bool:
-        """创建所有标准图层
-        
-        Args:
-            gpkg_path: .gpkg 文件路径。为空时自动选择项目目录。
-            
-        Returns:
-            是否成功
-        """
         if not gpkg_path:
             gpkg_path = self._default_path()
-        
         self.gpkg_path = gpkg_path
         self._log(f"创建 GeoPackage: {gpkg_path}")
-        
+
+        # 1. 创建所有内存图层
+        self._memory_layers.clear()
         for key, defn in FIELD_DEFS.items():
-            success = self._create_layer(key, defn)
-            if not success:
+            layer = self._create_memory_layer(key, defn)
+            if not layer:
                 self._log(f"  ❌ 创建失败: {defn['name']}")
                 return False
-            self._log(f"  ✅ {defn['name']} ({key})")
-        
+            self._memory_layers[key] = layer
+            self._log(f"  ✅ 内存图层: {defn['name']} ({key})")
+
+        # 2. 一次性写入 GeoPackage
+        if not self._write_to_gpkg():
+            return False
+
+        # 3. 重新打开并配置
+        for key, defn in FIELD_DEFS.items():
+            uri = f"{self.gpkg_path}|layername={key}"
+            gpkg_layer = QgsVectorLayer(uri, defn["name"], "ogr")
+            if not gpkg_layer.isValid():
+                self._log(f"  ❌ 无法打开: {defn['name']}")
+                continue
+            self._setup_editor_widgets(gpkg_layer, defn)
+            self._add_to_project(gpkg_layer, key)
+            self._log(f"  ✅ 已添加: {defn['name']}")
+
         self._log("所有图层创建完成")
         return True
 
-    def _create_layer(self, key: str, defn: dict) -> bool:
-        """创建单个图层到 GeoPackage"""
-        # 检查是否已存在
-        uri = f"{self.gpkg_path}|layername={key}"
-        existing = QgsVectorLayer(uri, defn["name"], "ogr")
-        if existing.isValid():
-            # 已存在，直接添加到项目
-            self._add_to_project(existing, key)
-            return True
+    def _create_memory_layer(self, key: str, defn: dict):
+        """创建内存图层"""
+        geom_type = defn["geom"]
+        crs = self.project.crs()
+        crs_str = crs.authid() if crs.isValid() else "EPSG:4326"
+        uri = f"{geom_type}?crs={crs_str}"
+        layer = QgsVectorLayer(uri, defn["name"], "memory")
+        if not layer.isValid():
+            return None
+        provider = layer.dataProvider()
+        provider.addAttributes(defn["fields"])
+        layer.updateFields()
+        layer.setReadOnly(False)
+        return layer
 
-        # 创建内存图层
+    def _write_to_gpkg(self) -> bool:
+        """将所有内存图层写入 GeoPackage"""
+        try:
+            import processing
+            layers = list(self._memory_layers.values())
+            if not layers:
+                return False
+            result = processing.run("native:package", {
+                'LAYERS': layers,
+                'OUTPUT': self.gpkg_path,
+                'OVERWRITE': True,
+                'SAVE_STYLES': False,
+            })
+            if not result or not result.get('OUTPUT'):
+                self._log("  写入失败: processing.run 返回空")
+                return False
+            return True
+        except Exception as e:
+            self._log(f"  写入失败: {e}")
+            return False
         geom_type = defn["geom"]
         crs = self.project.crs()
         crs_str = crs.authid() if crs.isValid() else "EPSG:4326"
@@ -229,18 +263,19 @@ class LayerSetupAction:
         provider.addAttributes(defn["fields"])
         layer.updateFields()
         
-        # 写入 GeoPackage
-        options = QgsVectorFileWriter.SaveVectorOptions()
-        options.driverName = "GPKG"
-        options.layerName = key
-        options.fileEncoding = "UTF-8"
-        options.actionOnExistingFile = QgsVectorFileWriter.CreateOrOverwriteLayer
-        
-        result, error_msg = QgsVectorFileWriter.writeAsVectorFormatV3(
-            layer, self.gpkg_path, options, layer.crs()
+        # 写入 GeoPackage（使用 V1 API，兼容 QGIS 3.44）
+        from qgis.core import QgsVectorFileWriter
+        result = QgsVectorFileWriter.writeAsVectorFormat(
+            layer,
+            self.gpkg_path,
+            "UTF-8",
+            layer.crs(),
+            "GPKG",
         )
         
         if result != QgsVectorFileWriter.NoError:
+            self._log(f"  写入失败: error code {result}")
+            return False
             self._log(f"  写入失败: {error_msg}")
             return False
         
