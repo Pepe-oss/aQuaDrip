@@ -235,21 +235,33 @@ class LayerSetupAction:
             self._log(f"  ❌ native:package 失败: {e}")
             return False
 
+        # 直接使用 native:package 返回的图层 URI 打开
         created_layers = []
-        for key, defn in FIELD_DEFS.items():
-            gpkg_uri = f"{gpkg_path}|layername={key}"
-            gpkg_layer = QgsVectorLayer(gpkg_uri, defn["name"], "ogr")
+        for layer_uri in result.get('OUTPUT_LAYERS', []):
+            # 从 URI 中提取 layername
+            if '|layername=' not in layer_uri:
+                continue
+            layer_key = layer_uri.split('|layername=')[-1]
+            if layer_key not in FIELD_DEFS:
+                continue
+            defn = FIELD_DEFS[layer_key]
+
+            gpkg_layer = QgsVectorLayer(layer_uri, defn["name"], "ogr")
             if not gpkg_layer.isValid():
                 self._log(f"  ⚠️ 无法打开: {defn['name']}")
                 continue
             gpkg_layer.setReadOnly(False)
+            gpkg_layer.dataProvider().reloadData()
+            # 验证字段
             actual = [f.name() for f in gpkg_layer.fields()]
             expected = [f.name() for f in defn["fields"]]
-            if set(expected) - set(actual):
-                self._log(f"  ⚠️ {defn['name']} 缺字段")
+            missing = set(expected) - set(actual)
+            if missing:
+                self._log(f"  ⚠️ {defn['name']} 缺字段: {missing}")
+                continue
             self._setup_editor_widgets(gpkg_layer, defn)
             self._add_to_project(gpkg_layer)
-            created_layers.append(key)
+            created_layers.append(layer_key)
             self._log(f"  ✅ {defn['name']} ({len(actual)} 字段)")
 
         if not created_layers:
