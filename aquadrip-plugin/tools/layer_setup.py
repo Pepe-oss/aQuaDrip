@@ -252,19 +252,11 @@ class LayerSetupAction:
         """启用跨图层捕捉（端点 + 线段）"""
         config = QgsProject.instance().snappingConfig()
         config.setEnabled(True)
-        config.setMode(QgsSnappingConfig.AdvancedConfig)
+        config.setMode(QgsSnappingConfig.AllLayers)
+        config.setType(QgsSnappingConfig.VertexAndSegment)
         config.setTolerance(15)
-        config.setToleranceType(QgsSnappingConfig.Pixels)
+        config.setToleranceType(QgsTolerance.Pixels)
         config.setIntersectionSnapping(True)
-
-        for key in ["aqd_laterals", "aqd_submains", "aqd_maines"]:
-            layer = self._find_layer_by_key(key)
-            if layer:
-                layer_config = QgsSnappingConfig.IndividualLayerSettings(
-                    True, QgsSnappingConfig.VertexAndSegment, 15, QgsTolerance.Pixels
-                )
-                config.setIndividualLayerSettings(layer, layer_config)
-
         QgsProject.instance().setSnappingConfig(config)
 
     def _find_layer_by_key(self, key: str):
