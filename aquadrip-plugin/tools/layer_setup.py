@@ -206,6 +206,7 @@ class LayerSetupAction:
             provider = layer.dataProvider()
             provider.addAttributes(defn["fields"])
             layer.updateFields()
+            layer.setName(key)  # GPKG 用 key 作为内部表名
             memory_layers.append(layer)
             self._log(f"  ✅ 内存: {defn['name']} ({key})")
 
