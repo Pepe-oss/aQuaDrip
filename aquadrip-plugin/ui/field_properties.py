@@ -253,22 +253,22 @@ class FieldPropertiesPanel(QFrame):
     def _on_generate(self):
         """生成毛管"""
         if not self._current_layer or self._current_feat_id is None:
-            return
-        request = QgsFeatureRequest().setFilterFid(self._current_feat_id)
-        feat = next(self._current_layer.getFeatures(request), None)
-        if not feat:
+            QMessageBox.information(self, "aQuaDrip", "请先选中一个农田地块")
             return
         try:
+            request = QgsFeatureRequest().setFilterFid(self._current_feat_id)
+            feat = next(self._current_layer.getFeatures(request), None)
+            if not feat:
+                QMessageBox.warning(self, "aQuaDrip", "未找到选中的地块，请重新选择")
+                return
             from ..tools.lateral_generator import LateralGenerator
             gen = LateralGenerator(self.iface)
             n = gen.generate(feat)
-            self.iface.messageBar().pushMessage(
-                "aQuaDrip", f"✅ 已生成 {n} 条毛管", level=0, duration=5)
+            QMessageBox.information(self, "aQuaDrip", f"已生成 {n} 条毛管")
         except Exception as e:
             import traceback
             traceback.print_exc()
-            self.iface.messageBar().pushWarning(
-                "aQuaDrip", f"生成失败: {e}")
+            QMessageBox.critical(self, "aQuaDrip", f"生成失败:\n{e}")
 
     def _on_edge_selected(self, angle: float):
         """边选择完成回调"""
