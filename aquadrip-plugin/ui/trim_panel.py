@@ -16,6 +16,7 @@ class TrimPanel(QFrame):
         super().__init__(parent)
         self.setFrameShape(QFrame.StyledPanel)
         self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+        self.setMaximumHeight(260)
         self._build_ui()
 
     def setVisible(self, visible: bool):
