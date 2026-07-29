@@ -220,7 +220,8 @@ class LayerSetupAction:
         crs = self.project.crs()
         crs_str = crs.authid() if crs.isValid() else "EPSG:4326"
         uri = f"{geom_type}?crs={crs_str}"
-        layer = QgsVectorLayer(uri, defn["name"], "memory")
+        # 使用 key 作为图层名（GPKG 内部名称）
+        layer = QgsVectorLayer(uri, key, "memory")
         if not layer.isValid():
             return None
         provider = layer.dataProvider()
@@ -318,6 +319,11 @@ class LayerSetupAction:
 
     def _add_to_project(self, layer: QgsVectorLayer, key: str):
         """将图层添加到 QGIS 项目"""
+        # 设置显示名（中文）
+        defn = FIELD_DEFS.get(key)
+        if defn:
+            layer.setName(defn["name"])
+        
         self.project.addMapLayer(layer, False)
         root = self.project.layerTreeRoot()
         
