@@ -112,17 +112,20 @@ class FieldPropertiesPanel(QFrame):
         """连接 QGIS 选择变化信号"""
         project = QgsProject.instance()
         project.layersAdded.connect(self._on_layers_changed)
+        # 立即检查一次已有的图层
+        self._on_layers_changed()
 
     def _on_layers_changed(self):
         """图层结构变化时重新连接信号"""
-        # 连接当前 aqd_fields 图层的选中变化信号
         layer = self._find_field_layer()
         if layer:
             try:
-                layer.selectionChanged.disconnect()
+                layer.selectionChanged.disconnect(self._on_selection_changed)
             except TypeError:
                 pass
             layer.selectionChanged.connect(self._on_selection_changed)
+            if layer.selectedFeatureCount() > 0:
+                self._on_selection_changed()
 
     def _on_selection_changed(self):
         """选中要素变化时加载属性"""
@@ -134,6 +137,9 @@ class FieldPropertiesPanel(QFrame):
             return
 
         selected = layer.selectedFeatures()
+        self.iface.messageBar().pushMessage(
+            "aQuaDrip", f"选中 {len(selected)} 个要素", level=0, duration=2)
+
         if len(selected) != 1:
             self._clear()
             if len(selected) > 1:
@@ -201,9 +207,12 @@ class FieldPropertiesPanel(QFrame):
     def _find_field_layer(self) -> QgsVectorLayer:
         """查找 aqd_fields 图层"""
         for layer in QgsProject.instance().mapLayers().values():
-            if isinstance(layer, QgsVectorLayer) and layer.name() == "aqd_fields":
-                if layer.isValid():
-                    return layer
+            if not isinstance(layer, QgsVectorLayer) or not layer.isValid():
+                continue
+            name = layer.name()
+            source = layer.source()
+            if name == "aqd_fields" or "aqd_fields" in source:
+                return layer
         return None
 
     def _on_pattern_changed(self, idx: int):
