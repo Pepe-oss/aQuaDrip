@@ -148,19 +148,26 @@ class TrimTool(QgsMapTool):
             self.iface.messageBar().pushWarning("aQuaDrip", "分割后线段太短")
             return
 
-        # 3. 写入
+        # 3. 写入（跳过 fid，GPKG 自动管理）
         layer.startEditing()
+        skip_fields = {"fid", "FID", "id"}
         for pts in segments:
             f = QgsFeature(layer.fields())
             f.setGeometry(QgsGeometry.fromPolylineXY(pts))
-            # 复制旧属性（跳过不存在的字段）
             for field in layer.fields():
                 fname = field.name()
-                try:
-                    f.setAttribute(fname, best_feat.attribute(fname))
-                except:
-                    pass
-            layer.addFeature(f)
+                if fname.lower() in skip_fields:
+                    continue
+                val = best_feat.attribute(fname)
+                if val is not None:
+                    try:
+                        f.setAttribute(fname, val)
+                    except TypeError:
+                        pass
+            if not layer.addFeature(f):
+                self.iface.messageBar().pushWarning("aQuaDrip", f"添加段失败")
+                layer.rollBack()
+                return
         layer.deleteFeature(best_feat.id())
         layer.commitChanges()
         layer.triggerRepaint()

@@ -7,7 +7,6 @@ from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QFont
 
 from .field_properties import FieldPropertiesPanel
-from .trim_panel import TrimPanel
 
 
 class AQuaDripDockWidget(QDockWidget):
@@ -31,10 +30,6 @@ class AQuaDripDockWidget(QDockWidget):
         # 农艺参数面板（上半部分）
         self.field_panel = FieldPropertiesPanel(iface)
         layout.addWidget(self.field_panel, stretch=3)
-
-        # 切割参数面板（默认隐藏）
-        self.trim_panel = TrimPanel()
-        layout.addWidget(self.trim_panel)
 
         # 日志（下半部分）
         self.log = QTextEdit()

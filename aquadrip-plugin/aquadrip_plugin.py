@@ -121,10 +121,10 @@ class AQuaDripPlugin:
 
     def on_trim_lateral(self):
         """激活管道切割工具"""
-        # 显示切割面板
-        if self.dockwidget:
-            self.dockwidget.trim_panel.setVisible(True)
-            self.dockwidget.trim_panel.apply_clicked.connect(self._on_trim_apply)
+        from .ui.trim_dialog import TrimDialog
+        dlg = TrimDialog(self.iface.mainWindow())
+        dlg.apply_clicked.connect(self._on_trim_apply)
+        dlg.show()
 
     def _on_trim_apply(self, params):
         """切割参数确认后激活工具"""
