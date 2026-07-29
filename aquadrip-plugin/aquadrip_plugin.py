@@ -8,6 +8,7 @@ import sys
 from qgis.core import QgsApplication
 from qgis.gui import QgisInterface
 from qgis.PyQt.QtWidgets import QAction, QMessageBox
+from qgis.PyQt.QtCore import Qt
 
 
 class AQuaDripPlugin:
@@ -50,6 +51,12 @@ class AQuaDripPlugin:
         menu.addAction(action)
         self.actions.append(action)
         
+        # 创建主面板
+        from .ui.dockwidget import AQuaDripDockWidget
+        self.dockwidget = AQuaDripDockWidget(self.iface)
+        self.iface.addDockWidget(Qt.RightDockWidgetArea, self.dockwidget)
+        self.dockwidget.log_message("aQuaDrip 已加载")
+
         # 分隔线
         menu.addSeparator()
 
