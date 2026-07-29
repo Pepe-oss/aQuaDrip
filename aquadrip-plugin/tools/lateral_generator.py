@@ -9,7 +9,7 @@ from typing import List, Tuple, Optional
 
 from qgis.core import (
     QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry,
-    QgsPointXY, QgsLineString,
+    QgsPointXY, QgsLineString, QgsWkbTypes,
 )
 from qgis.PyQt.QtCore import QVariant
 
