@@ -109,7 +109,7 @@ class LateralGenerator:
                     continue
                 pts = clipped.asPolyline() if not clipped.isMultipart() else \
                       max(clipped.asMultiPolyline(), key=lambda p: QgsGeometry(p).length())
-                if len(pts) >= 2 and QgsGeometry(pts).length() > 0.5:
+                if len(pts) >= 2 and QgsGeometry.fromPolylineXY(pts).length() > 0.5:
                     raw_lines.append(QgsLineString(pts))
             y += row_spacing
 
@@ -139,8 +139,8 @@ class LateralGenerator:
                 if clipped.isEmpty() or clipped.isNull() or clipped.type() != QgsWkbTypes.LineGeometry:
                     continue
                 pts = clipped.asPolyline() if not clipped.isMultipart() else \
-                      max(clipped.asMultiPolyline(), key=lambda p: QgsGeometry(p).length())
-                if len(pts) >= 2 and QgsGeometry(pts).length() > 0.5:
+                      max(clipped.asMultiPolyline(), key=lambda p: QgsGeometry.fromPolyline(p).length())
+                if len(pts) >= 2 and QgsGeometry.fromPolylineXY(pts).length() > 0.5:
                     raw_lines.append(QgsLineString(pts))
 
         return [QgsLineString(self._rotate_points(
