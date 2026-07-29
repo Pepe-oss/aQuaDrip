@@ -249,10 +249,9 @@ class LayerSetupAction:
 
     def _setup_snapping(self):
         """启用跨图层捕捉（端点 + 线段）"""
-        config = QgsSnappingConfig()
+        config = QgsProject.instance().snappingConfig()
         config.setEnabled(True)
         config.setMode(QgsSnappingConfig.AdvancedConfig)
-        config.setType(QgsSnappingConfig.VertexAndSegment)
         config.setTolerance(15)
         config.setToleranceType(QgsSnappingConfig.Pixels)
         config.setIntersectionSnapping(True)
@@ -260,9 +259,11 @@ class LayerSetupAction:
         for key in ["aqd_laterals", "aqd_submains", "aqd_maines"]:
             layer = self._find_layer_by_key(key)
             if layer:
-                from qgis.core import QgsSnappingConfigLayer
-                layer_config = QgsSnappingConfigLayer(layer, QgsSnappingConfig.VertexAndSegment, 15)
-                config.addLayerConfig(layer_config)
+                from qgis.core import QgsSnappingConfig, QgsTolerance
+                layer_config = QgsSnappingConfig.IndividualLayerSettings(
+                    True, QgsSnappingConfig.VertexAndSegment, 15, QgsTolerance.Pixels
+                )
+                config.setIndividualLayerSettings(layer, layer_config)
 
         QgsProject.instance().setSnappingConfig(config)
 
@@ -276,9 +277,10 @@ class LayerSetupAction:
 
     def _log(self, msg: str):
         """日志输出"""
+        from qgis.core import QgsMessageLog
         from datetime import datetime
         ts = datetime.now().strftime("%H:%M:%S")
-        QgsProject.instance().messageLog().logMessage(msg, "aQuaDrip")
+        QgsMessageLog.logMessage(msg, "aQuaDrip", 0)
         print(f"[{ts}] {msg}")
 
     def _default_path(self) -> str:
