@@ -25,6 +25,7 @@ PATTERN_TYPES = [
 DIRECTION_TYPES = [
     ("与田块长边平行", "long_edge"),
     ("与田块短边平行", "short_edge"),
+    ("选择边...", "pick_edge"),
     ("自定义角度", "custom"),
 ]
 
@@ -105,7 +106,14 @@ class FieldPropertiesPanel(QFrame):
         for label, value in DIRECTION_TYPES:
             self.cmb_direction.addItem(label, value)
         self.cmb_direction.currentIndexChanged.connect(self._on_direction_changed)
-        form.addRow("滴灌带方向:", self.cmb_direction)
+
+        dir_layout = QHBoxLayout()
+        dir_layout.addWidget(self.cmb_direction)
+        self.btn_pick_edge = QPushButton("点击选择")
+        self.btn_pick_edge.setVisible(False)
+        self.btn_pick_edge.clicked.connect(self._on_pick_edge)
+        dir_layout.addWidget(self.btn_pick_edge)
+        form.addRow("滴灌带方向:", dir_layout)
 
         self.spin_angle = QDoubleSpinBox()
         self.spin_angle.setRange(0, 360)
@@ -229,6 +237,20 @@ class FieldPropertiesPanel(QFrame):
     def _on_direction_changed(self, idx):
         data = self.cmb_direction.itemData(idx)
         self.spin_angle.setEnabled(data == "custom")
+        self.btn_pick_edge.setVisible(data == "pick_edge")
+
+    def _on_pick_edge(self):
+        """激活边选择工具"""
+        from .tools.edge_select_tool import EdgeSelectTool
+        tool = EdgeSelectTool(self.iface)
+        tool.angle_selected.connect(self._on_edge_selected)
+        self.iface.mapCanvas().setMapTool(tool)
+
+    def _on_edge_selected(self, angle: float):
+        """边选择完成回调"""
+        self._set_combo_val(self.cmb_direction, "custom")
+        self.spin_angle.setValue(round(angle, 1))
+        self.iface.mapCanvas().unsetMapTool(self.iface.mapCanvas().mapTool())
 
     def _update_ui(self):
         """更新 UI 状态"""
