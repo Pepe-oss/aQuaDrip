@@ -184,6 +184,7 @@ class LayerSetupAction:
         """一键创建所有标准图层"""
         if not gpkg_path:
             gpkg_path = self._default_path()
+        self.gpkg_path = gpkg_path
 
         dirname = os.path.dirname(gpkg_path)
         if dirname and not os.path.exists(dirname):
