@@ -237,15 +237,9 @@ class LayerSetupAction:
 
         created_layers = []
         for key, defn in FIELD_DEFS.items():
-            gpkg_layer = None
-            # 尝试用 key 名和中文名两种方式打开
-            for try_name in [key, defn["name"]]:
-                gpkg_uri = f"{gpkg_path}|layername={try_name}"
-                candidate = QgsVectorLayer(gpkg_uri, defn["name"], "ogr")
-                if candidate.isValid():
-                    gpkg_layer = candidate
-                    break
-            if not gpkg_layer:
+            gpkg_uri = f"{gpkg_path}|layername={key}"
+            gpkg_layer = QgsVectorLayer(gpkg_uri, defn["name"], "ogr")
+            if not gpkg_layer.isValid():
                 self._log(f"  ⚠️ 无法打开: {defn['name']}")
                 continue
             gpkg_layer.setReadOnly(False)
