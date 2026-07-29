@@ -349,7 +349,11 @@ class LayerSetupAction:
         if project_path:
             base = os.path.splitext(project_path)[0]
             return f"{base}_{self.DEFAULT_FILE}"
-        return self.DEFAULT_FILE
+        # 项目未保存时，写入用户文档目录
+        docs = os.path.expanduser("~/Documents")
+        if not os.path.isdir(docs):
+            docs = os.path.expanduser("~")
+        return os.path.join(docs, self.DEFAULT_FILE)
 
     def _log(self, msg: str):
         """输出日志"""
