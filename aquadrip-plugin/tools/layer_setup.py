@@ -10,22 +10,22 @@ from qgis.core import (
     QgsField, QgsProject, QgsEditorWidgetSetup, QgsDefaultValue,
     QgsFieldConstraints, QgsLayerTreeGroup,
 )
-from qgis.PyQt.QtCore import QVariant
+from qgis.PyQt.QtCore import QVariant, QMetaType
 from typing import Optional
 
 # ---- 图层字段定义 ----
 
 def _text_field(name: str, length: int = 255) -> QgsField:
     """创建文本字段"""
-    return QgsField(name, QVariant.String, "text", length)
+    return QgsField(name, QMetaType.QString)
 
 def _double_field(name: str, precision: int = 2) -> QgsField:
     """创建双精度字段"""
-    return QgsField(name, QVariant.Double, "double", 20, precision)
+    return QgsField(name, QMetaType.Double)
 
 def _int_field(name: str) -> QgsField:
     """创建整数字段"""
-    return QgsField(name, QVariant.Int, "Integer")
+    return QgsField(name, QMetaType.Int)
 
 
 FIELD_DEFS = {
