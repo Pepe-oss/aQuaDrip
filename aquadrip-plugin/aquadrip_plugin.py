@@ -94,7 +94,7 @@ class AQuaDripPlugin:
             from .tools.layer_setup import LayerSetupAction
             
             setup = LayerSetupAction(self.iface)
-            success = setup.setup()
+            success = setup.setup_layers()
             
             if success:
                 QMessageBox.information(
