@@ -121,9 +121,12 @@ class AQuaDripPlugin:
 
     def on_trim_lateral(self):
         """激活管道切割工具"""
+        self._trim_dlg = None
         from .ui.trim_dialog import TrimDialog
         dlg = TrimDialog(self.iface.mainWindow())
-        dlg.apply_clicked.connect(self._on_trim_apply)
+        dlg.apply_clicked.connect(lambda p: self._on_trim_apply(p))
+        dlg.finished.connect(lambda: setattr(self, '_trim_dlg', None))
+        self._trim_dlg = dlg
         dlg.show()
 
     def _on_trim_apply(self, params):
