@@ -60,9 +60,9 @@ class AQuaDripPlugin:
         # 分隔线
         menu.addSeparator()
         
-        # 切割毛管
+        # 切割管道
         action = QAction(QgsApplication.getThemeIcon("mActionSplitFeatures"),
-                        "切割毛管", self.iface.mainWindow())
+                        "切割管道", self.iface.mainWindow())
         action.triggered.connect(self.on_trim_lateral)
         action.setToolTip("点击毛管在任意位置将其分割为两段")
         menu.addAction(action)
