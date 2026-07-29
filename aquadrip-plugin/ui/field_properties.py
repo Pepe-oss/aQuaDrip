@@ -132,9 +132,13 @@ class FieldPropertiesPanel(QFrame):
 
         layout.addLayout(form)
 
-        # 保存按钮
+        # 操作按钮
         btn_layout = QHBoxLayout()
-        btn_layout.addStretch()
+        self.btn_gen = QPushButton("🌱 生成毛管")
+        self.btn_gen.clicked.connect(self._on_generate)
+        self.btn_gen.setStyleSheet("font-weight: bold;")
+        btn_layout.addWidget(self.btn_gen)
+
         self.btn_save = QPushButton("💾 保存参数")
         self.btn_save.clicked.connect(self._on_save)
         btn_layout.addWidget(self.btn_save)
@@ -241,10 +245,30 @@ class FieldPropertiesPanel(QFrame):
 
     def _on_pick_edge(self):
         """激活边选择工具"""
-        from .tools.edge_select_tool import EdgeSelectTool
+        from ..tools.edge_select_tool import EdgeSelectTool
         tool = EdgeSelectTool(self.iface)
         tool.angle_selected.connect(self._on_edge_selected)
         self.iface.mapCanvas().setMapTool(tool)
+
+    def _on_generate(self):
+        """生成毛管"""
+        if not self._current_layer or self._current_feat_id is None:
+            return
+        request = QgsFeatureRequest().setFilterFid(self._current_feat_id)
+        feat = next(self._current_layer.getFeatures(request), None)
+        if not feat:
+            return
+        try:
+            from ..tools.lateral_generator import LateralGenerator
+            gen = LateralGenerator(self.iface)
+            n = gen.generate(feat)
+            self.iface.messageBar().pushMessage(
+                "aQuaDrip", f"✅ 已生成 {n} 条毛管", level=0, duration=5)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self.iface.messageBar().pushWarning(
+                "aQuaDrip", f"生成失败: {e}")
 
     def _on_edge_selected(self, angle: float):
         """边选择完成回调"""
