@@ -77,20 +77,24 @@ class SyncManager:
                 net.add_node(node)
                 node_positions[(round(pt.x(), 3), round(pt.y(), 3))] = nid
 
-        # 3. 读取管道 + 自动推导 from_node/to_node
-        pipe_layer = self._get_layer("aqd_pipes")
-        if pipe_layer:
+        # 3. 从三个管道图层读取
+        pipe_layers = {
+            "lateral": self._get_layer("aqd_laterals"),
+            "submain": self._get_layer("aqd_submains"),
+            "mainline": self._get_layer("aqd_maines"),
+        }
+        for pipe_type, pipe_layer in pipe_layers.items():
+            if not pipe_layer:
+                continue
             for feat in pipe_layer.getFeatures():
                 geom = feat.geometry()
-                if not geom or not geom.isMultipart():
+                if not geom or geom.isEmpty():
                     continue
                 line = geom.asPolyline()
                 if len(line) < 2:
                     continue
 
                 lid = str(feat.attribute("id") or f"L{feat.id()}")
-                pipe_type = str(feat.attribute("pipe_type") or "mainline")
-                device = str(feat.attribute("device") or "none")
 
                 # 从几何端点推导 from_node / to_node
                 start_pt = line[0]
@@ -107,16 +111,16 @@ class SyncManager:
                     net.add_node(Junction(to_node, end_pt.x(), end_pt.y()))
 
                 # 字段读取
-                diameter = float(feat.attribute("diameter") or 0) / 1000  # mm → m
+                diameter = float(feat.attribute("diameter") or 0) / 1000
                 length = geom.length()
                 roughness = float(feat.attribute("roughness") or 130)
 
-                if device == "pump":
+                if pipe_type == "mainline" and str(feat.attribute("device") or "none") == "pump":
                     link = Pump(lid, from_node, to_node,
                                 rated_head=float(feat.attribute("pump_head") or 0),
                                 rated_flow=float(feat.attribute("pump_flow") or 0),
                                 rated_power=float(feat.attribute("pump_power") or 0))
-                elif device == "valve":
+                elif pipe_type == "mainline" and str(feat.attribute("device") or "none") == "valve":
                     vtype_str = str(feat.attribute("valve_type") or "gate").upper()
                     vtype = getattr(ValveType, vtype_str, ValveType.GATE)
                     link = Valve(lid, from_node, to_node,
@@ -153,11 +157,17 @@ class SyncManager:
     def sync_from_network(self, network: 'DripNetwork',
                           result: 'SimulationResult' = None):
         """将 DripNetwork 及模拟结果写回 QGIS 图层"""
-        pipe_layer = self._get_layer("aqd_pipes")
+        pipe_layers = {
+            "lateral": self._get_layer("aqd_laterals"),
+            "submain": self._get_layer("aqd_submains"),
+            "mainline": self._get_layer("aqd_maines"),
+        }
         node_layer = self._get_layer("aqd_nodes")
 
         # 写入管道结果（流量、流速）
-        if pipe_layer and result:
+        for pipe_type, pipe_layer in pipe_layers.items():
+            if not pipe_layer or not result:
+                continue
             pipe_layer.startEditing()
             for feat in pipe_layer.getFeatures():
                 lid = str(feat.attribute("id") or "")

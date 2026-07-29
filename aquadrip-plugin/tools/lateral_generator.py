@@ -1,7 +1,7 @@
 """LateralGenerator — 从农艺参数自动生成毛管
 
 读取已保存的农田参数（垄间距、每垄滴灌带数、滴灌带间距、方向角度等），
-调用 wdrip-core builder 生成毛管拓扑，然后写入 aqd_pipes 图层。
+调用 wdrip-core builder 生成毛管拓扑，然后写入 aqd_laterals 图层。
 """
 
 import math
@@ -55,7 +55,7 @@ class LateralGenerator:
             lines = self._ridge_layout(geom, row_spacing, tapes_per_ridge,
                                         tape_spacing, angle)
 
-        # 4. 写入 aqd_pipes
+        # 4. 写入 aqd_laterals
         return self._write_to_pipes(lines, emitter_spacing)
 
     def _calc_direction_angle(self, geom: QgsGeometry,
@@ -181,10 +181,10 @@ class LateralGenerator:
 
     def _write_to_pipes(self, lines: List[QgsLineString],
                         emitter_spacing: float) -> int:
-        """写入 aqd_pipes 图层"""
+        """写入 aqd_laterals 图层"""
         layer = self._get_pipes_layer()
         if not layer:
-            raise RuntimeError("aqd_pipes 图层未找到，请先初始化图层")
+            raise RuntimeError("aqd_laterals 图层未找到，请先初始化图层")
 
         layer.startEditing()
         count = 0
@@ -260,6 +260,6 @@ class LateralGenerator:
     def _get_pipes_layer(self) -> Optional[QgsVectorLayer]:
         for layer in self.project.mapLayers().values():
             s = layer.source() if hasattr(layer, 'source') else ""
-            if "aqd_pipes" in s:
+            if "aqd_laterals" in s:
                 return layer
         return None
