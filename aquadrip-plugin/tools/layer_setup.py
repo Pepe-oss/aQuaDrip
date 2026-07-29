@@ -203,39 +203,44 @@ class LayerSetupAction:
 
         # 逐个 QGIS 原生方式创建 GPKG 图层
         created_layers = []
+        is_first = True
 
         for key, defn in FIELD_DEFS.items():
             geom = defn["geom"]
             crs = self.project.crs()
             crs_str = crs.authid() if crs.isValid() else "EPSG:4326"
 
-            # QGIS 原生方式创建 GPKG 图层
+            # 内存图层
             uri = f"{geom}?crs={crs_str}&index=yes"
-            gpkg_layer = QgsVectorLayer(uri, key, "memory")
-            if not gpkg_layer.isValid():
+            mem_layer = QgsVectorLayer(uri, key, "memory")
+            if not mem_layer.isValid():
                 self._log(f"  ❌ 无法创建: {defn['name']}")
                 continue
-            provider = gpkg_layer.dataProvider()
+            provider = mem_layer.dataProvider()
             provider.addAttributes(defn["fields"])
-            gpkg_layer.updateFields()
+            mem_layer.updateFields()
             self._log(f"  ✅ 内存: {defn['name']} ({key})")
 
-            # 复制到 GPKG
-            gpkg_uri = f"{gpkg_path}|layername={key}"
-            write_opts = QgsVectorFileWriter.SaveVectorOptions()
-            write_opts.driverName = "GPKG"
-            write_opts.layerName = key
-            write_opts.actionOnExistingFile = QgsVectorFileWriter.CreateOrOverwriteLayer
-            write_opts.fileEncoding = "UTF-8"
-            
-            error, msg = QgsVectorFileWriter.writeAsVectorFormatV2(
-                gpkg_layer, gpkg_path, write_opts
+            # 写入 GPKG
+            action = (QgsVectorFileWriter.CreateOrOverwriteFile if is_first
+                      else QgsVectorFileWriter.CreateOrOverwriteLayer)
+            error = QgsVectorFileWriter.writeAsVectorFormat(
+                mem_layer, gpkg_path, "UTF-8", mem_layer.crs(),
+                "GPKG", False, "",
+                [], [f'LAYER_NAME={key}'], False,
+                QgsVectorFileWriter.NoSymbology, key,
+                action,
             )
+            is_first = False
+
+            if error != QgsVectorFileWriter.NoError:
+                continue
             if error != QgsVectorFileWriter.NoError:
                 self._log(f"  ❌ 写入 GPKG 失败: {key}")
                 continue
 
             # 从 GPKG 重新打开
+            gpkg_uri = f"{gpkg_path}|layername={key}"
             gpkg_result = QgsVectorLayer(gpkg_uri, defn["name"], "ogr")
             if not gpkg_result.isValid():
                 self._log(f"  ⚠️ 无法打开: {defn['name']}")
