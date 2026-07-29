@@ -9,7 +9,7 @@ from qgis.core import (
     QgsVectorLayer, QgsVectorFileWriter, QgsCoordinateReferenceSystem,
     QgsField, QgsProject, QgsEditorWidgetSetup, QgsDefaultValue,
     QgsFieldConstraints, QgsLayerTreeGroup,
-    QgsSnappingConfig, QgsTolerance,
+    QgsSnappingConfig,
 )
 from qgis.PyQt.QtCore import QVariant, QMetaType
 from typing import Optional
@@ -250,14 +250,16 @@ class LayerSetupAction:
 
     def _setup_snapping(self):
         """启用跨图层捕捉（端点 + 线段）"""
-        config = QgsProject.instance().snappingConfig()
-        config.setEnabled(True)
-        config.setMode(QgsSnappingConfig.AllLayers)
-        config.setType(QgsSnappingConfig.VertexAndSegment)
-        config.setTolerance(15)
-        config.setToleranceType(QgsTolerance.Pixels)
-        config.setIntersectionSnapping(True)
-        QgsProject.instance().setSnappingConfig(config)
+        try:
+            config = QgsProject.instance().snappingConfig()
+            config.setEnabled(True)
+            config.setMode(QgsSnappingConfig.AllLayers)
+            config.setType(QgsSnappingConfig.VertexAndSegment)
+            config.setTolerance(15)
+            config.setIntersectionSnapping(True)
+            QgsProject.instance().setSnappingConfig(config)
+        except Exception as e:
+            self._log(f"  捕捉配置跳过: {e}")
 
     def _find_layer_by_key(self, key: str):
         """通过 source URI 中的图层名查找已添加的图层"""
