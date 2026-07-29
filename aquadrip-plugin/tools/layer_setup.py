@@ -9,7 +9,7 @@ from qgis.core import (
     QgsVectorLayer, QgsVectorFileWriter, QgsCoordinateReferenceSystem,
     QgsField, QgsProject, QgsEditorWidgetSetup, QgsDefaultValue,
     QgsFieldConstraints, QgsLayerTreeGroup,
-    QgsSnappingConfig,
+    QgsSnappingConfig, QgsTolerance,
 )
 from qgis.PyQt.QtCore import QVariant, QMetaType
 from typing import Optional
@@ -260,7 +260,6 @@ class LayerSetupAction:
         for key in ["aqd_laterals", "aqd_submains", "aqd_maines"]:
             layer = self._find_layer_by_key(key)
             if layer:
-                from qgis.core import QgsSnappingConfig, QgsTolerance
                 layer_config = QgsSnappingConfig.IndividualLayerSettings(
                     True, QgsSnappingConfig.VertexAndSegment, 15, QgsTolerance.Pixels
                 )
