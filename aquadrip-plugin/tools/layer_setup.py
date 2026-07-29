@@ -219,21 +219,20 @@ class LayerSetupAction:
             provider = mem_layer.dataProvider()
             provider.addAttributes(defn["fields"])
             mem_layer.updateFields()
+            mem_layer.setName(key)
             self._log(f"  ✅ 内存: {defn['name']} ({key})")
 
             # 写入 GPKG
             gpkg_uri = f"{gpkg_path}|layername={key}"
-            write_opts = QgsVectorFileWriter.SaveVectorOptions()
-            write_opts.driverName = "GPKG"
-            write_opts.layerName = key
-            write_opts.actionOnExistingFile = QgsVectorFileWriter.CreateOrOverwriteLayer
-            write_opts.fileEncoding = "UTF-8"
             
-            err, msg = QgsVectorFileWriter.writeAsVectorFormatV3(
-                mem_layer, gpkg_path, write_opts
+            write_result = QgsVectorFileWriter.writeAsVectorFormat(
+                mem_layer, gpkg_path, "UTF-8", mem_layer.crs(), "GPKG",
+                layerOptions=['OVERWRITE=YES', f'LAYER_NAME={key}']
             )
-            if err != QgsVectorFileWriter.NoError:
-                self._log(f"  ❌ 写入失败: {key} — {msg}")
+            if isinstance(write_result, tuple):
+                write_result = write_result[0]
+            if write_result != QgsVectorFileWriter.NoError:
+                self._log(f"  ❌ 写入失败: {key}")
                 continue
 
             # 重新打开并添加到项目
