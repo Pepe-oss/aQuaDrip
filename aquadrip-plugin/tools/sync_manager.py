@@ -77,15 +77,9 @@ class SyncManager:
                 net.add_node(node)
                 node_positions[(round(pt.x(), 3), round(pt.y(), 3))] = nid
 
-        # 3. 从三个管道图层读取
-        pipe_layers = {
-            "lateral": self._get_layer("aqd_laterals"),
-            "submain": self._get_layer("aqd_submains"),
-            "mainline": self._get_layer("aqd_maines"),
-        }
-        for pipe_type, pipe_layer in pipe_layers.items():
-            if not pipe_layer:
-                continue
+        # 3. 从管道图层读取
+        pipe_layer = self._get_layer("aqd_pipes")
+        if pipe_layer:
             for feat in pipe_layer.getFeatures():
                 geom = feat.geometry()
                 if not geom or geom.isEmpty():
@@ -95,8 +89,8 @@ class SyncManager:
                     continue
 
                 lid = str(feat.attribute("id") or f"L{feat.id()}")
-
-                # 从几何端点推导 from_node / to_node
+                pipe_type = str(feat.attribute("pipe_type") or "mainline")
+                device = str(feat.attribute("device") or "none")
                 start_pt = line[0]
                 end_pt = line[-1]
                 from_node = self._match_node(node_positions, start_pt)
@@ -157,17 +151,11 @@ class SyncManager:
     def sync_from_network(self, network: 'DripNetwork',
                           result: 'SimulationResult' = None):
         """将 DripNetwork 及模拟结果写回 QGIS 图层"""
-        pipe_layers = {
-            "lateral": self._get_layer("aqd_laterals"),
-            "submain": self._get_layer("aqd_submains"),
-            "mainline": self._get_layer("aqd_maines"),
-        }
+        pipe_layer = self._get_layer("aqd_pipes")
         node_layer = self._get_layer("aqd_nodes")
 
         # 写入管道结果（流量、流速）
-        for pipe_type, pipe_layer in pipe_layers.items():
-            if not pipe_layer or not result:
-                continue
+        if pipe_layer and result:
             pipe_layer.startEditing()
             for feat in pipe_layer.getFeatures():
                 lid = str(feat.attribute("id") or "")

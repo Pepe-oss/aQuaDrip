@@ -52,18 +52,11 @@ class TrimTool(QgsMapTool):
             self.deactivate()
 
     def _find_pipe_layer(self):
-        """根据选中的管道类型查找对应的图层"""
-        layer_keywords = {
-            "lateral": "aqd_laterals",
-            "submain": "aqd_submains",
-            "mainline": "aqd_maines",
-        }
+        """查找管道图层"""
         for layer in QgsProject.instance().mapLayers().values():
             s = layer.source() if hasattr(layer, 'source') else ""
-            for pt in self.pipe_types:
-                kw = layer_keywords.get(pt)
-                if kw and kw in s:
-                    return layer
+            if "aqd_pipes" in s:
+                return layer
         return None
         return None
 
