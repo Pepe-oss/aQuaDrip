@@ -251,9 +251,6 @@ class LayerSetupAction:
             self._add_to_project(gpkg_layer)
             created_layers.append(key)
             self._log(f"  ✅ {defn['name']} ({len(actual)} 字段)")
-            self._setup_editor_widgets(gpkg_layer, defn)
-            self._add_to_project(gpkg_layer)
-            created_layers.append(key)
 
         if not created_layers:
             return False
