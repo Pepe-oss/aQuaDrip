@@ -190,63 +190,72 @@ class LayerSetupAction:
         if dirname and not os.path.exists(dirname):
             os.makedirs(dirname, exist_ok=True)
 
+        # 删除旧 GPKG
+        if os.path.exists(gpkg_path):
+            try:
+                os.remove(gpkg_path)
+                self._log("  已删除旧 GPKG")
+            except OSError:
+                self._log("  ⚠️ 无法删除旧 GPKG，尝试覆盖")
+
         self.iface.messageBar().pushMessage("aQuaDrip", f"创建图层: {gpkg_path}", level=0, duration=3)
         self._log(f"创建 GeoPackage: {gpkg_path}")
 
+        # 逐个创建图层写入 GPKG
         from qgis import processing
-        memory_layers = []
+        created_layers = []
+
         for key, defn in FIELD_DEFS.items():
             geom = defn["geom"]
             crs = self.project.crs()
             crs_str = crs.authid() if crs.isValid() else "EPSG:4326"
+
+            # 创建内存图层
             uri = f"{geom}?crs={crs_str}"
-            layer = QgsVectorLayer(uri, defn["name"], "memory")
-            if not layer.isValid():
-                self._log(f"  ❌ 无法创建内存图层: {defn['name']}")
+            mem_layer = QgsVectorLayer(uri, defn["name"], "memory")
+            if not mem_layer.isValid():
+                self._log(f"  ❌ 无法创建: {defn['name']}")
                 continue
-            provider = layer.dataProvider()
+            provider = mem_layer.dataProvider()
             provider.addAttributes(defn["fields"])
-            layer.updateFields()
-            layer.setName(key)  # GPKG 用 key 作为内部表名
-            memory_layers.append(layer)
+            mem_layer.updateFields()
             self._log(f"  ✅ 内存: {defn['name']} ({key})")
 
-        if not memory_layers:
-            self._log("  ❌ 没有可写入的图层")
-            return False
+            # 写入 GPKG
+            gpkg_uri = f"{gpkg_path}|layername={key}"
+            write_opts = QgsVectorFileWriter.SaveVectorOptions()
+            write_opts.driverName = "GPKG"
+            write_opts.layerName = key
+            write_opts.actionOnExistingFile = QgsVectorFileWriter.CreateOrOverwriteLayer
+            write_opts.fileEncoding = "UTF-8"
+            
+            err, msg = QgsVectorFileWriter.writeAsVectorFormatV3(
+                mem_layer, gpkg_path, write_opts
+            )
+            if err != QgsVectorFileWriter.NoError:
+                self._log(f"  ❌ 写入失败: {key} — {msg}")
+                continue
 
-        try:
-            result = processing.run("native:package", {
-                'LAYERS': memory_layers,
-                'OUTPUT': gpkg_path,
-                'OVERWRITE': True,
-                'SAVE_STYLES': False,
-            })
-        except Exception as e:
-            self._log(f"  写入失败: {e}")
-            return False
-
-        if not result or not result.get('OUTPUT'):
-            self._log("  ❌ 处理结果为空")
-            return False
-
-        # 重新打开并配置
-        for key, defn in FIELD_DEFS.items():
-            uri = f"{gpkg_path}|layername={key}"
-            gpkg_layer = QgsVectorLayer(uri, defn["name"], "ogr")
+            # 重新打开并添加到项目
+            gpkg_layer = QgsVectorLayer(gpkg_uri, defn["name"], "ogr")
             if not gpkg_layer.isValid():
                 self._log(f"  ❌ 无法打开: {defn['name']}")
                 continue
             gpkg_layer.setReadOnly(False)
             self._setup_editor_widgets(gpkg_layer, defn)
             self._add_to_project(gpkg_layer)
+            created_layers.append(key)
             self._log(f"  ✅ 添加: {defn['name']}")
 
-        # 配置捕捉
+        if not created_layers:
+            return False
+
+        # 捕捉配置
         self._setup_snapping()
 
-        self._log("所有图层创建完成")
-        self.iface.messageBar().pushMessage("aQuaDrip", f"{len(FIELD_DEFS)} 个图层已创建", level=0, duration=5)
+        self._log(f"完成: {len(created_layers)} 个图层")
+        self.iface.messageBar().pushMessage(
+            "aQuaDrip", f"{len(created_layers)} 个图层已创建", level=0, duration=5)
         return True
 
     def _setup_snapping(self):
