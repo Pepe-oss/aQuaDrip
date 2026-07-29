@@ -215,7 +215,9 @@ class LateralGenerator:
         """将线裁剪到多边形内"""
         line_geom = QgsGeometry(line)
         clipped = line_geom.intersection(clip_geom)
-        if clipped.isEmpty():
+        if clipped.isEmpty() or clipped.isNull():
+            return None
+        if clipped.type() != QgsWkbTypes.LineGeometry:
             return None
         if clipped.isMultipart():
             parts = clipped.asMultiPolyline()
