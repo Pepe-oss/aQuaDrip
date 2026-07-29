@@ -1589,22 +1589,23 @@ def optimize_topology(graph: TopologyGraph) -> TopologyGraph:
 
 | 组件 | 文件 | 说明 |
 |:----|:-----|:-----|
-| `LayerSetupAction` | `tools/layer_setup.py` | ✅ 一键创建 4 个 GeoPackage 图层（aqd_fields/aqd_pipes/aqd_nodes/aqd_obs_points），含 ValueMap 字段约束 |
-| `SyncManager` | `tools/sync_manager.py` | ✅ QGIS↔DripNetwork 双向同步（aqd_fields → FieldInfo, aqd_pipes → Pipe[]） |
-| `FieldPropertiesPanel` | `ui/field_properties.py` | ✅ 右侧停靠面板：选中地块后显示并编辑农艺参数（耕作模式/垄数/滴灌带数量/方向） |
-| `EdgeSelectTool` | `tools/edge_select_tool.py` | ✅ 点击田块某条边确定滴灌带方向（替代下拉选择长/短边） |
-| `LateralGenerator` | `tools/lateral_generator.py` | ✅ 根据农艺参数自动生成毛管（等行距/宽窄行两种模式），写入 aqd_pipes 的 lateral 类型 |
-| `TrimTool` | `tools/trim_tool.py` | ✅ 点击管道任意位置分割/切除（可选毛管/支管/干管类型，可选切割长度>0=切除） |
-| `TrimDialog` | `ui/trim_dialog.py` | ✅ 切割参数浮动窗口（管道类型勾选 + 切割长度输入） |
+| `LayerSetupAction` | `tools/layer_setup.py` | ✅ 一键创建 5 个 GeoPackage 图层（aqd_fields/aqd_laterals/aqd_submains/aqd_maines/aqd_obs_points），含 ValueMap 字段约束 + 自动捕捉配置 |
+| `SyncManager` | `tools/sync_manager.py` | ✅ QGIS↔DripNetwork 双向同步（3 个管道图层分别读取） |
+| `FieldPropertiesPanel` | `ui/field_properties.py` | ✅ 右侧停靠面板：选中地块后显示并编辑农艺参数 |
+| `EdgeSelectTool` | `tools/edge_select_tool.py` | ✅ 点击田块某条边确定滴灌带方向 |
+| `LateralGenerator` | `tools/lateral_generator.py` | ✅ 根据农艺参数自动生成毛管，写入 aqd_laterals |
+| `TrimTool` | `tools/trim_tool.py` | ✅ 全管道切割（按 pipe_types 查找对应图层） |
+| `TrimDialog` | `ui/trim_dialog.py` | ✅ 切割参数浮动窗口 |
 | `AQuaDripDockWidget` | `ui/dockwidget.py` | ✅ 右侧主面板：FieldPropertiesPanel + 操作日志 |
 
 #### 待完成的组件
 
 | 组件 | 优先级 | 说明 |
 |:----|:------|:-----|
-| `ReverseDirectionTool` | ★★★ | 反转管道方向（水泵/有向阀门必须） |
-| `ConvertToDeviceAction` | ★★★ | 右键管道 → 转换为水泵/阀门（设置 device 字段 + 前端几何装饰） |
-| 干管/支管绘制 | ★★★ | 用户在 aqd_pipes 图层绘制干管/支管（QGIS 原生即可），写入 pipe_type 字段 |
+| `ReverseDirectionTool` | ★★★ | 反转管道方向（aqd_maines / aqd_submains） |
+| `ConvertToDeviceAction` | ★★★ | 右键干管 → 转换为水泵/阀门 |
+| 支管绘制 | ★★★ | 用户在 aqd_submains 图层用 QGIS 原生画线，自动捕捉毛管端点/中点 |
+| 干管绘制 | ★★★ | 用户在 aqd_maines 图层用 QGIS 原生画线，自动捕捉支管端点 |
 | 管网生成向导 | ★★ | 分步生成：毛管→干管策略→支管连接→拓扑检查 |
 | 模拟运行 | ★★ | 进度对话框 + 后台线程 + 日志 |
 | `CalibrationObservationTool` | ★★ | 标记校准观测点 |
