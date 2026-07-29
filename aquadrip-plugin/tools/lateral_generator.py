@@ -189,13 +189,10 @@ class LateralGenerator:
     @staticmethod
     def _rotate_geom(geom: QgsGeometry, angle_rad: float) -> QgsGeometry:
         """绕原点旋转几何"""
-        import math
-        cos_a = math.cos(angle_rad)
-        sin_a = math.sin(angle_rad)
         centroid = geom.centroid().asPoint()
         geom_copy = QgsGeometry(geom)
         geom_copy.translate(-centroid.x(), -centroid.y())
-        geom_copy.rotate(0, 0, math.degrees(angle_rad))
+        geom_copy.rotate(math.degrees(angle_rad), QgsPointXY(0, 0))
         geom_copy.translate(centroid.x(), centroid.y())
         return geom_copy
 
