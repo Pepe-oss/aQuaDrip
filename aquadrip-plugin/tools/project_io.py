@@ -254,7 +254,21 @@ def import_inp(iface) -> bool:
     crs = QgsProject.instance().crs()
     project = QgsProject.instance()
 
+    # ── 0. 统计节点引用次数（跳过毛管末端叶子节点）──
+    node_refs = {}
+    for link_list in [wn.pipe_name_list, wn.pump_name_list, wn.valve_name_list]:
+        for name in link_list:
+            link = wn.get_link(name)
+            if link is None:
+                continue
+            node_refs[link.start_node_name] = \
+                node_refs.get(link.start_node_name, 0) + 1
+            node_refs[link.end_node_name] = \
+                node_refs.get(link.end_node_name, 0) + 1
+
     # ── 节点图层（aQuaDrip 兼容字段）──
+    # 跳过叶子节点（只被 1 条管道引用的末端节点），
+    # 只保留连接节点（≥2 条管道）和水源节点
     node_layer = QgsVectorLayer(
         f"Point?crs={crs.authid()}", "aqd_nodes", "memory")
     node_provider = node_layer.dataProvider()
@@ -276,6 +290,12 @@ def import_inp(iface) -> bool:
         if node is None:
             continue
         ntype = type(node).__name__
+
+        # 跳过叶子节点（只被 1 条管道引用，通常是毛管/管段末端）
+        refs = node_refs.get(name, 0)
+        if ntype != "Reservoir" and refs <= 1:
+            continue
+
         coords = getattr(node, 'coordinates', (0, 0))
         if coords is None or len(coords) < 2:
             continue

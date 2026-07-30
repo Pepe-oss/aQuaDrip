@@ -235,9 +235,10 @@ class SyncManager:
                 if need_edit:
                     pipe_layer.commitChanges()
 
-        # 3.5 持久化 auto-N 节点：sync 中自动创建的节点写回 aqd_nodes，
+        # 3.5 持久化 auto-N 节点（仅模拟时，INP 导出不写 QGIS 图层）
+        #     sync 中自动创建的节点写回 aqd_nodes，
         #     使其在 QGIS 中可见，且下次 sync 可直接匹配（不再重复创建）
-        if node_layer and net.nodes:
+        if expand and node_layer and net.nodes:
             self._persist_auto_nodes(node_layer, net, node_positions)
 
         # 4. 毛管展开为 EmitterNode 滴头链（模拟出水的前提）
