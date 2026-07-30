@@ -132,8 +132,16 @@ class DripSimulation:
                        minor_loss=link.minor_loss)
             logger.debug(f"  Pipe: {lid} {link.from_node}→{link.to_node} L={link.length}")
     
+    def build_wntr_model(self):
+        """将 DripNetwork 构建为 WNTR WaterNetworkModel（不运行模拟）
+
+        用于 INP 导出 / 独立模型检查等场景。需要 wntr 已安装。
+        """
+        self._wn = self._build_wntr_model()
+        return self._wn
+
     # ---- 运行模拟 ----
-    
+
     def run(self, duration: int = 0, timestep: int = 3600) -> 'SimulationResult':
         """运行水力模拟
         

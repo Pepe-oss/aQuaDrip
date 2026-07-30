@@ -50,6 +50,8 @@ class LateralGenerator:
         direction_type = str(feat.attribute("direction_type") or "long_edge")
         custom_angle = float(feat.attribute("row_direction") or 0)
         emitter_spacing = float(feat.attribute("emitter_spacing") or 0.3)
+        emitter_k = float(feat.attribute("emitter_k") or 0.506)
+        emitter_x = float(feat.attribute("emitter_x") or 0.5)
 
         # 2. 参数校验（间距 ≤ 0 会让布局 while 循环永不退出，必须拦截）
         errors = []
@@ -77,12 +79,21 @@ class LateralGenerator:
             lines = self._ridge_layout(geom, row_spacing, tapes_per_ridge,
                                         tape_spacing, angle)
 
+        # 诊断：输出实际生成的毛管数量
+        self.iface.messageBar().pushMessage(
+            "aQuaDrip",
+            f"布局计算: pattern={planting_pattern} tpr={tapes_per_ridge} "
+            f"rs={row_spacing} ts={tape_spacing} rc={ridge_count} "
+            f"→ {len(lines)} 条毛管",
+            level=0, duration=6)
+
         if not lines:
             raise ValueError(
                 "未生成任何毛管：地块可能太小，或间距参数过大")
 
         # 5. 写入 aqd_pipes（先清除该地块的旧毛管，避免重复生成叠加）
-        count = self._write_to_pipes(lines, emitter_spacing, field_geom=geom)
+        count = self._write_to_pipes(lines, emitter_spacing, emitter_k, emitter_x,
+                                      field_geom=geom)
         if self._dropped_parts > 0:
             self.iface.messageBar().pushMessage(
                 "aQuaDrip",
@@ -124,11 +135,10 @@ class LateralGenerator:
         """垄模式生成毛管
 
         规则（与 UI 联动一致）：
-        - tapes_per_ridge == 1：单带模式，滴灌带按"滴灌带间距"(tape_spacing)等距排列
-        - tapes_per_ridge > 1 ：垄模式，每垄 tapes_per_ridge 条带（垄内间距
-          tape_spacing）；"垄间距"(row_spacing) 指相邻两垄之间的**净距离**
-          （宽行宽度，即上一垄最后一条带到下一垄第一条带的间隔）。
-          因此相邻垄第一条带的步进 = (n-1)*tape_spacing + row_spacing。
+        - tapes_per_ridge == 1：单带模式，滴灌带按"垄间距"(row_spacing)等距排列
+        - tapes_per_ridge > 1 ：垄模式，每垄 tapes_per_ridge 条带以垄中线
+          对称分布（垄内间距 tape_spacing）；"垄间距"(row_spacing) 指相邻
+          两垄**中心线**之间的距离。
         """
         center = geom.centroid().asPoint()
         rot_geom = self._rotate_around(geom, angle, center)
@@ -138,23 +148,25 @@ class LateralGenerator:
         #    用索引乘法而非累加，避免浮点累积误差在地块边界多生成一条线
         ys: List[float] = []
         if tapes_per_ridge <= 1:
+            # 单带模式：每垄 1 条带，垄间距 = row_spacing
             i = 0
             while True:
-                ly = bbox.yMinimum() + i * tape_spacing
+                ly = bbox.yMinimum() + i * row_spacing
                 if ly >= bbox.yMaximum():
                     break
                 ys.append(ly)
                 i += 1
         else:
-            # 相邻垄第一条带的步进 = 垄内宽度 + 垄间净距
-            step = (tapes_per_ridge - 1) * tape_spacing + row_spacing
+            # 垄模式：row_spacing = 相邻两垄中心线距离
+            # 每垄 tapes_per_ridge 条带以垄中线对称分布
+            half = (tapes_per_ridge - 1) * tape_spacing / 2.0
             i = 0
             while True:
-                y_base = bbox.yMinimum() + i * step
-                if y_base >= bbox.yMaximum():
+                y_center = bbox.yMinimum() + half + i * row_spacing
+                if y_center - half >= bbox.yMaximum():
                     break
                 for t in range(tapes_per_ridge):
-                    ly = y_base + t * tape_spacing
+                    ly = y_center - half + t * tape_spacing
                     if ly >= bbox.yMaximum():
                         break
                     ys.append(ly)
@@ -267,6 +279,8 @@ class LateralGenerator:
 
     def _write_to_pipes(self, lines: List[QgsLineString],
                         emitter_spacing: float,
+                        emitter_k: float,
+                        emitter_x: float,
                         field_geom: QgsGeometry = None) -> int:
         """写入 aqd_pipes 图层（先清除该地块旧毛管，避免重复生成叠加）"""
         layer = self._get_pipes_layer()
@@ -291,7 +305,10 @@ class LateralGenerator:
                 feat.setAttribute("status", "open")
                 feat.setAttribute("material", "PE")
                 feat.setAttribute("roughness", 130)
+                feat.setAttribute("diameter", 16)  # 毛管默认直径 16mm
                 feat.setAttribute("emitter_spacing", emitter_spacing)
+                feat.setAttribute("emitter_k", emitter_k)
+                feat.setAttribute("emitter_x", emitter_x)
                 if not layer.addFeature(feat):
                     raise RuntimeError("写入毛管要素失败")
                 count += 1
@@ -314,16 +331,23 @@ class LateralGenerator:
     @staticmethod
     def _delete_existing_laterals(layer: QgsVectorLayer,
                                    field_geom: QgsGeometry) -> int:
-        """删除质心位于该地块内的现有毛管（避免重复生成叠加）
+        """删除质心位于该地块内（或边界附近）的现有毛管
 
-        用质心判定而非相交，避免误删跨地块边界的手画毛管。
+        用质心判定避免误删跨地块手画毛管。
+        contains() 严格判定——边界上的质心不算"内部"，
+        而毛管横跨地块时质心恰好在边界附近。用距离容差补偿。
         """
         to_delete = []
         for feat in layer.getFeatures():
             if str(feat.attribute("pipe_type") or "") != "lateral":
                 continue
             g = feat.geometry()
-            if g and not g.isEmpty() and field_geom.contains(g.centroid()):
+            if not g or g.isEmpty():
+                continue
+            centroid = g.centroid()
+            # 质心在地块内，或距边界 < 0.01（边界上的毛管也算）
+            if field_geom.contains(centroid) or \
+               field_geom.distance(centroid) < 0.01:
                 to_delete.append(feat.id())
         if to_delete:
             layer.deleteFeatures(to_delete)

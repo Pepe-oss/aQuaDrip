@@ -81,16 +81,19 @@ class TestExpandLateral(unittest.TestCase):
         self.assertEqual(lateral_errors, [], f"lateral_id 校验失败: {lateral_errors}")
 
     def test_shared_end_node_keeps_references(self):
-        """末端被支管共享时，升级后引用关系保持"""
+        """末端被支管共享时，保留为 Junction 不升级（交叉连接点不出水）"""
         net = _make_net_with_lateral(10.0)
         net.add_node(Junction("J2", 60, 10))
         net.add_link(Pipe("S1", "B", "J2", pipe_type="submain",
                           diameter=40, length=10, roughness=130))
-        expand_lateral(net, "L1", emitter_spacing=0.5)
-        # 支管 S1 仍引用 B（B 已升级为 EmitterNode，id 未变）
+        n = expand_lateral(net, "L1", emitter_spacing=0.5)
+        # 支管 S1 仍引用 B，B 保留为 Junction（共享连接点不升级为滴头）
         s1 = net.get_link("S1")
         self.assertEqual(s1.from_node, "B")
-        self.assertIsInstance(net.get_node("B"), EmitterNode)
+        self.assertNotIsInstance(net.get_node("B"), EmitterNode)
+        self.assertIsInstance(net.get_node("B"), Junction)
+        # 滴头数比非共享时少 1（末端不放滴头）
+        self.assertEqual(n, 19)
 
     def test_reject_non_lateral(self):
         net = _make_net_with_lateral(10.0)

@@ -23,7 +23,7 @@ from ..tools.layer_setup import FIELD_DEFS
 FIELD_LABELS = {
     # aqd_fields
     "name": "名称", "crop_type": "作物类型", "planting_pattern": "耕作模式",
-    "direction_type": "滴灌带方向", "row_spacing": "垄间距 (m)",
+    "direction_type": "滴灌带方向", "row_spacing": "垄中心距 (m)",
     "tapes_per_ridge": "每垄滴灌带数", "tape_spacing": "滴灌带间距 (m)",
     "ridge_count": "垄数", "row_direction": "自定义角度 (°)",
     "emitter_spacing": "滴头间距 (m)",
@@ -46,10 +46,12 @@ FIELD_LABELS = {
 MODE_FIELDS = {
     "aqd_fields": ["name", "crop_type", "planting_pattern", "direction_type",
                    "row_spacing", "tapes_per_ridge", "tape_spacing",
-                   "ridge_count", "row_direction", "emitter_spacing"],
+                   "ridge_count", "row_direction", "emitter_spacing",
+                   "emitter_model", "emitter_k", "emitter_x"],
     "aqd_pipes": ["pipe_type", "device", "valve_type", "status", "diameter",
                   "material", "roughness", "pump_head", "pump_flow",
-                  "pump_power", "minor_loss", "emitter_spacing", "zone_id"],
+                  "pump_power", "minor_loss", "emitter_spacing",
+                  "emitter_k", "emitter_x", "zone_id"],
     "aqd_nodes": ["node_type", "source_type", "head", "available_flow",
                   "fertilizer_volume", "fertilizer_concentration", "elevation"],
 }
@@ -61,13 +63,16 @@ MODE_TITLES = {
 }
 
 # 数值字段的合法范围（防止间距等被设为 0/负值导致布局死循环）
-POSITIVE_FIELDS = {"row_spacing", "tape_spacing", "emitter_spacing",
-                   "lateral_spacing"}  # 必须 > 0
+# row_spacing 垄间距最小 0.1m（农业实际下限，防止误设 0.01）
+POSITIVE_FIELDS = {"tape_spacing", "emitter_spacing",
+                   "lateral_spacing"}  # 必须 > 0（范围 0.01~999999）
+SPACING_FIELDS = {"row_spacing"}  # 垄间距范围 0.1~100 m
 NONNEG_FIELDS = {"diameter", "roughness", "head", "available_flow",
                  "pump_head", "pump_flow", "pump_power", "minor_loss",
                  "elevation", "fertilizer_volume",
                  "fertilizer_concentration"}  # >= 0
 ANGLE_FIELDS = {"row_direction"}  # 0~360
+RANGE_0_1 = {"emitter_x"}  # 流态指数 0~1
 INT_RANGES = {  # int 字段范围
     "tapes_per_ridge": (1, 100), "ridge_count": (1, 10000), "zone_id": (0, 9999),
 }
@@ -79,16 +84,23 @@ class PropertyDialog(QDialog):
     Args:
         iface: QgisInterface
         layer: 要素所在图层（aqd_fields / aqd_pipes / aqd_nodes）
-        feat: 待编辑的要素
+        feats: 待编辑的要素列表（单选时长度为 1，多选时批量应用）
         show_generate: 农田模式下是否显示"保存并生成毛管"按钮
     """
 
-    def __init__(self, iface, layer: QgsVectorLayer, feat: QgsFeature,
+    def __init__(self, iface, layer: QgsVectorLayer,
+                 feats,  # List[QgsFeature] — 单选或多选
                  show_generate: bool = False, parent=None):
         super().__init__(parent or iface.mainWindow())
         self.iface = iface
         self.layer = layer
-        self.feat = feat
+
+        # 统一处理：确保是列表
+        if not isinstance(feats, list):
+            feats = [feats]
+        self._feats = feats
+        self.feat = feats[0]  # 表单填充第一要素的值
+
         self.mode = self._mode_of_layer(layer)
         if self.mode is None:
             raise ValueError(f"不支持的图层: {layer.name()}")
@@ -97,7 +109,10 @@ class PropertyDialog(QDialog):
         self._rows = {}      # {field_name: (label_widget, field_widget)}
         self._edge_tool = None
 
-        self.setWindowTitle(MODE_TITLES[self.mode])
+        title = MODE_TITLES[self.mode]
+        if len(self._feats) > 1:
+            title += f"（{len(self._feats)} 个要素）"
+        self.setWindowTitle(title)
         self.setMinimumWidth(340)
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
 
@@ -114,7 +129,11 @@ class PropertyDialog(QDialog):
 
         value_maps = FIELD_DEFS[self.mode].get("value_maps", {})
         for fname in MODE_FIELDS[self.mode]:
-            widget = self._make_widget(fname, value_maps.get(fname))
+            # 滴头型号下拉：从内置滴头库动态构建
+            if fname == "emitter_model":
+                widget = self._make_emitter_model_combo()
+            else:
+                widget = self._make_widget(fname, value_maps.get(fname))
             label = QLabel(FIELD_LABELS.get(fname, fname))
             form.addRow(label, widget)
             self._widgets[fname] = widget
@@ -143,6 +162,16 @@ class PropertyDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
+    def _make_emitter_model_combo(self) -> QComboBox:
+        """从内置滴头库构建型号下拉（含"自定义"选项）"""
+        from wdrip.network.emitter import BUILTIN_EMITTERS
+        w = QComboBox()
+        w.addItem("自定义", "")
+        for key, spec in BUILTIN_EMITTERS.items():
+            label = f"{spec.manufacturer} {spec.name}"
+            w.addItem(label, key)
+        return w
+
     def _make_widget(self, fname: str, vmap: Optional[dict]):
         """按字段类型/下拉选项创建控件"""
         if vmap:
@@ -157,12 +186,16 @@ class PropertyDialog(QDialog):
         qfield = self.layer.fields().field(fname)
         if qfield.type() == QVariant.Double:
             w = QDoubleSpinBox()
-            if fname in POSITIVE_FIELDS:
+            if fname in SPACING_FIELDS:
+                w.setRange(0.1, 100)
+            elif fname in POSITIVE_FIELDS:
                 w.setRange(0.01, 999999)
             elif fname in NONNEG_FIELDS:
                 w.setRange(0, 999999)
             elif fname in ANGLE_FIELDS:
                 w.setRange(0, 360)
+            elif fname in RANGE_0_1:
+                w.setRange(0, 1)
             else:
                 w.setRange(-999999, 999999)
             w.setDecimals(3)
@@ -195,16 +228,17 @@ class PropertyDialog(QDialog):
         if need_edit:
             self.layer.startEditing()
         try:
-            for fname, w in self._widgets.items():
-                if isinstance(w, QComboBox):
-                    self.feat.setAttribute(fname, w.currentData())
-                elif isinstance(w, QDoubleSpinBox):
-                    self.feat.setAttribute(fname, float(w.value()))
-                elif isinstance(w, QSpinBox):
-                    self.feat.setAttribute(fname, int(w.value()))
-                else:
-                    self.feat.setAttribute(fname, w.text())
-            self.layer.updateFeature(self.feat)
+            for feat in self._feats:
+                for fname, w in self._widgets.items():
+                    if isinstance(w, QComboBox):
+                        feat.setAttribute(fname, w.currentData())
+                    elif isinstance(w, QDoubleSpinBox):
+                        feat.setAttribute(fname, float(w.value()))
+                    elif isinstance(w, QSpinBox):
+                        feat.setAttribute(fname, int(w.value()))
+                    else:
+                        feat.setAttribute(fname, w.text())
+                self.layer.updateFeature(feat)
             if need_edit:
                 self.layer.commitChanges()
         except Exception:
@@ -215,8 +249,10 @@ class PropertyDialog(QDialog):
     def _on_save(self):
         try:
             self._save()
+            n = len(self._feats)
+            msg = f"{n} 个要素属性已保存" if n > 1 else "属性已保存"
             self.iface.messageBar().pushMessage(
-                "aQuaDrip", "属性已保存", level=0, duration=3)
+                "aQuaDrip", msg, level=0, duration=3)
         except Exception as e:
             QMessageBox.critical(self, "aQuaDrip", f"保存失败: {e}")
 
@@ -242,11 +278,19 @@ class PropertyDialog(QDialog):
             if pattern:
                 pattern.currentIndexChanged.connect(self._on_pattern_changed)
                 self._on_pattern_changed(pattern.currentIndex())
+            model = self._widgets.get("emitter_model")
+            if model:
+                model.currentIndexChanged.connect(self._on_emitter_model_changed)
+                self._on_emitter_model_changed(model.currentIndex())
         elif self.mode == "aqd_pipes":
             device = self._widgets.get("device")
             if device:
                 device.currentIndexChanged.connect(self._on_device_changed)
                 self._on_device_changed(device.currentIndex())
+            ptype = self._widgets.get("pipe_type")
+            if ptype:
+                ptype.currentIndexChanged.connect(self._on_pipe_type_changed)
+                self._on_pipe_type_changed(ptype.currentIndex())
         elif self.mode == "aqd_nodes":
             ntype = self._widgets.get("node_type")
             if ntype:
@@ -304,6 +348,41 @@ class PropertyDialog(QDialog):
         for f in ("fertilizer_volume", "fertilizer_concentration"):
             self._set_row_visible(f, data == "fertilizer")
 
+    # 滴头型号 → 自动填充 k/x
+    def _on_emitter_model_changed(self, idx):
+        w = self._widgets.get("emitter_model")
+        if not w:
+            return
+        model_key = w.itemData(idx)
+        if model_key:
+            # 从内置库读取参数
+            from wdrip.network.emitter import BUILTIN_EMITTERS
+            spec = BUILTIN_EMITTERS.get(model_key)
+            if spec:
+                kw = self._widgets.get("emitter_k")
+                xw = self._widgets.get("emitter_x")
+                if kw:
+                    kw.setValue(spec.k)
+                    kw.setEnabled(False)
+                if xw:
+                    xw.setValue(spec.x)
+                    xw.setEnabled(False)
+                return
+        # "自定义" 或未找到型号 → k/x 可编辑
+        for f in ("emitter_k", "emitter_x"):
+            w2 = self._widgets.get(f)
+            if w2:
+                w2.setEnabled(True)
+
+    # pipe_type 联动（毛管才显示滴头参数）
+    def _on_pipe_type_changed(self, idx):
+        w = self._widgets.get("pipe_type")
+        if not w:
+            return
+        is_lateral = (w.itemData(idx) == "lateral")
+        for f in ("emitter_spacing", "emitter_k", "emitter_x"):
+            self._set_row_visible(f, is_lateral)
+
     # ── 边选择（农田方向）──
 
     def _on_pick_edge(self):
@@ -330,8 +409,28 @@ class PropertyDialog(QDialog):
     def _on_generate(self):
         try:
             self._save()  # 先保存参数
+
+            # 防御：commitChanges 后重新获取要素，避免 QGIS 内部
+            # 使特征对象过期导致 geometry/attribute 读取失败
+            fid = self.feat.id()
+            fresh_feat = None
+            for f in self.layer.getFeatures():
+                if f.id() == fid:
+                    fresh_feat = f
+                    break
+            feat = fresh_feat if fresh_feat is not None else self.feat
+
+            # 校验关键参数
+            geom = feat.geometry()
+            if not geom or geom.isEmpty():
+                raise ValueError("农田几何为空，请重新绘制地块")
+            rs = feat.attribute("row_spacing") or 0
+            ts = feat.attribute("tape_spacing") or 0
+            if float(rs) <= 0 or float(ts) <= 0:
+                raise ValueError(f"间距参数无效: row_spacing={rs}, tape_spacing={ts}")
+
             from ..tools.lateral_generator import LateralGenerator
-            n = LateralGenerator(self.iface).generate(self.feat)
+            n = LateralGenerator(self.iface).generate(feat)
             QMessageBox.information(self, "aQuaDrip", f"已生成 {n} 条毛管")
         except Exception as e:
             import traceback

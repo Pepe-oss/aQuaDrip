@@ -62,6 +62,9 @@ FIELD_DEFS = {
             _int_field("ridge_count"),
             _double_field("row_direction"),
             _double_field("emitter_spacing"),
+            _text_field("emitter_model", 50),
+            _double_field("emitter_k"),
+            _double_field("emitter_x"),
         ],
         "value_maps": {
             "planting_pattern": {"垄模式": "ridge", "按垄数": "ridge_count"},
@@ -73,6 +76,8 @@ FIELD_DEFS = {
             "direction_type": "'long_edge'",
             "tapes_per_ridge": "1",
             "emitter_spacing": "0.3",
+            "emitter_k": "0.506",
+            "emitter_x": "0.5",
         },
     },
     "aqd_pipes": {
@@ -92,6 +97,8 @@ FIELD_DEFS = {
             _double_field("minor_loss"),
             _double_field("lateral_spacing"),
             _double_field("emitter_spacing"),
+            _double_field("emitter_k"),
+            _double_field("emitter_x"),
             _int_field("zone_id"),
             _text_field("from_node", 50),
             _text_field("to_node", 50),
@@ -112,6 +119,8 @@ FIELD_DEFS = {
             "diameter": "63",
             "roughness": "130",
             "material": "'PE'",
+            "emitter_k": "0.506",
+            "emitter_x": "0.5",
         },
     },
     "aqd_nodes": {
@@ -163,10 +172,11 @@ FIELD_DEFS = {
 FIELD_ALIASES = {
     # aqd_fields
     "name": "名称", "crop_type": "作物类型", "planting_pattern": "耕作模式",
-    "direction_type": "滴灌带方向", "row_spacing": "垄间距(m)",
+    "direction_type": "滴灌带方向", "row_spacing": "垄中心距(m)",
     "tapes_per_ridge": "每垄滴灌带数", "tape_spacing": "滴灌带间距(m)",
     "ridge_count": "垄数", "row_direction": "自定义角度(°)",
-    "emitter_spacing": "滴头间距(m)",
+    "emitter_spacing": "滴头间距(m)", "emitter_model": "滴头型号",
+    "emitter_k": "滴头流量系数 k", "emitter_x": "滴头流态指数 x",
     # aqd_pipes
     "pipe_type": "管道类型", "device": "设备", "valve_type": "阀门类型",
     "status": "状态", "diameter": "管径(mm)", "material": "材质",
@@ -222,7 +232,7 @@ class LayerSetupAction:
 
         self._log(f"创建 GeoPackage: {gpkg_path}")
 
-        # 确定 SRS ID
+        # 确定 SRS ID 和完整定义
         crs = self.project.crs()
         srs_id = 4326  # WGS 84 默认
         if crs.isValid():
@@ -231,6 +241,9 @@ class LayerSetupAction:
                 srs_id = int(srs_code.split(":")[1])
             except (ValueError, IndexError):
                 srs_id = 4326
+        # 获取项目 CRS 的完整 WKT 定义（写入 GPKG 元数据）
+        self._project_wkt = crs.toWkt() if crs.isValid() else self.WGS84_DEF
+        self._project_srs_id = srs_id
 
         created_layers = []
 
@@ -304,12 +317,21 @@ class LayerSetupAction:
                     description TEXT
                 )
             """)
-            # 插入 WGS 84
+            # 插入 WGS 84 和项目 CRS（如不同）
             c.execute(
                 "INSERT OR IGNORE INTO gpkg_spatial_ref_sys "
                 "VALUES (?, ?, ?, ?, ?)",
                 (4326, "EPSG", 4326, self.WGS84_DEF, "WGS 84"),
             )
+            if self._project_srs_id != 4326:
+                c.execute(
+                    "INSERT OR IGNORE INTO gpkg_spatial_ref_sys "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (self._project_srs_id, "EPSG",
+                     self._project_srs_id,
+                     self._project_wkt,
+                     f"EPSG:{self._project_srs_id}"),
+                )
 
         # ── 第 2 步：构建字段 SQL ──
         gpkg_geom = GEOM_GPKG_MAP.get(defn["geom"], "GEOMETRY")

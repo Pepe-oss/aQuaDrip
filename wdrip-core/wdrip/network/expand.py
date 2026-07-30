@@ -75,14 +75,38 @@ def expand_lateral(net, link_id: str,
     n = max(1, int(length / emitter_spacing))
     seg_len = length / n  # 滴头等距分布，末端对齐
 
+    # 末端节点是否被其他管道共享（交叉连接点）？
+    # 共享节点保留为 Junction 不升级——该点由支管/干管供水，不需要滴头
+    b_shared = _is_shared_node(net, b.id, link_id)
+
     if n == 1:
-        # 只有一个滴头：原 to_node 升级为滴头，原 Pipe 保留
-        _upgrade_to_emitter(net, b, link_id, 0,
-                            emitter_k, emitter_x, emitter_spec)
-        link.length = length
+        if b_shared:
+            # 共享端点：唯一滴头放在毛管中点，端点保留 Junction
+            mid_x = (a.x + b.x) / 2
+            mid_y = (a.y + b.y) / 2
+            eid = f"E_{link_id}_001"
+            net.add_node(EmitterNode(
+                eid, mid_x, mid_y, elevation=b.elevation,
+                emitter_k=emitter_k, emitter_x=emitter_x,
+                emitter_spec=emitter_spec,
+                lateral_id=link_id, segment_index=0,
+            ))
+            link.to_node = eid
+            link.length = length / 2
+            net.add_link(Pipe(
+                f"{link_id}_seg001", eid, b.id,
+                pipe_type="lateral",
+                diameter=link.diameter, length=length / 2,
+                roughness=link.roughness, material=link.material,
+            ))
+        else:
+            # 非共享端点：原 to_node 升级为滴头
+            _upgrade_to_emitter(net, b, link_id, 0,
+                                emitter_k, emitter_x, emitter_spec)
+            link.length = length
         return 1
 
-    # n >= 2：中间滴头 E_1..E_{n-1}，末端 b 升级为滴头
+    # n >= 2：中间滴头 E_1..E_{n-1}
     # 第一段保留原 link_id：from_node → E_1
     prev_id = a.id
     for i in range(1, n):
@@ -111,9 +135,10 @@ def expand_lateral(net, link_id: str,
             ))
         prev_id = eid
 
-    # 末端：原 to_node 原地升级为滴头（保持 id，支管引用不受影响）
-    _upgrade_to_emitter(net, b, link_id, n - 1,
-                        emitter_k, emitter_x, emitter_spec)
+    # 末端：共享节点不升级，非共享节点升级为滴头
+    if not b_shared:
+        _upgrade_to_emitter(net, b, link_id, n - 1,
+                            emitter_k, emitter_x, emitter_spec)
     net.add_link(Pipe(
         f"{link_id}_seg{n:03d}", prev_id, b.id,
         pipe_type="lateral",
@@ -121,7 +146,7 @@ def expand_lateral(net, link_id: str,
         roughness=link.roughness, material=link.material,
     ))
 
-    return n
+    return n if not b_shared else n - 1
 
 
 def expand_all_laterals(net,
@@ -150,6 +175,20 @@ def expand_all_laterals(net,
         result[lid] = expand_lateral(
             net, lid, spacing, emitter_k, emitter_x)
     return result
+
+
+def _is_shared_node(net, node_id: str, exclude_link_id: str) -> bool:
+    """节点是否被其他管道共享（交叉连接点）
+
+    若除当前毛管外还有其他 link 引用该节点，则它是连接点，
+    不应升级为滴头（连接点由其他管道供水，不需要出水）。
+    """
+    for lid, link in net.links.items():
+        if lid == exclude_link_id:
+            continue
+        if link.from_node == node_id or link.to_node == node_id:
+            return True
+    return False
 
 
 def _upgrade_to_emitter(net, node: DripNode, lateral_id: str,
