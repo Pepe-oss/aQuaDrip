@@ -2167,3 +2167,119 @@ def initGui(self):
 | **均匀度分析** | 无 | **CU/DU/EU 专业灌溉指标** |
 | **水肥模拟** | 无 | **WNTR 水质模拟（V2）** |
 | **耕作模式** | 无 | **4 种模式（等行距/宽窄行/垄数/自定义）** |
+
+---
+
+## 15. 实际开发进度与调整记录（2026-07-31 更新）
+
+> 本节记录 Phase 1 / Phase 2 的实际落地情况，以及开发过程中
+> 相对于原计划的重大调整。代码以 `main` 分支为准。
+
+### 15.1 阶段完成状态
+
+| 阶段 | 状态 | 说明 |
+|------|------|------|
+| Phase 0 项目初始化 | ✅ 完成 | 工作区、包结构、Git |
+| Phase 1 wdrip-core 核心库 | 🟡 **部分完成** | 数据模型/布局/模拟/分析完成；拓扑引擎/地形/设备/项目文件未做 |
+| Phase 2 QGIS 插件基础 | ✅ **完成（重写）** | 按手动绘制范式重写，UI 改为工具栏+浮动窗 |
+| Phase 3.5 模拟运行 | ✅ 完成 | sync→模拟→CU/DU→结果回写 |
+| Phase 3.7 结果可视化 | ⬜ 未开始 | **下一步重点** |
+| Phase 4 Processing 集成 | ⬜ 未开始 | |
+| Phase 5 测试/文档/发布 | 🟡 部分 | core 110 测试通过，插件待集成测试 |
+
+### 15.2 原计划 vs 实际交付的架构调整
+
+以下调整在开发过程中确定，**覆盖原计划对应章节**。
+
+#### 调整 1：管网构建范式 — 放弃自动布局，改为"手动绘制 + 交叉节点生成"
+
+原计划 Phase 1.3（Sprint 1.3 布局算法）规划了干管 4 策略、支管 MST/骨架线连接等全自动布网。
+实际开发中确定采用**手动绘制范式**：
+
+- 用户在 QGIS 中用原生"添加线要素"画干管/支管/毛管
+- 交付"生成毛管"工具（按农艺参数自动生成毛管）、"生成交叉节点"工具
+- 干管/支管不做自动布局（原 Sprint 1.3.3~1.3.6 搁置）
+
+**理由**：农田形状千变万化，自动布局结果几乎总要手工调整；手动绘制更符合
+设计师实际工作流，开发投入产出比更高。
+
+#### 调整 2：UI 架构 — DockWidget 精简为日志区，全部功能移至工具栏
+
+原计划 Phase 2 使用 DockWidget（FieldPropertiesPanel + 按钮）。实际重构为：
+
+- **工具栏（8 个图标）**：生成图层 / 打开项目 / 毛管生成 / 切割管道 /
+  生成交叉节点 / 编辑属性 / 运行模拟 / INP 处理
+- **PropertyDialog 统一浮动窗**：按选中要素图层（农田/管道/节点）动态生成表单
+- **DockWidget** 仅保留操作日志区
+
+#### 调整 3：单 GPKG 图层结构
+
+最终确定为 4 图层（非原计划的 5 层或 9 层）：
+
+| 图层 | 几何 | 关键字段 |
+|------|------|---------|
+| `aqd_fields` | Polygon | 农艺参数 + 滴头型号/k/x |
+| `aqd_pipes` | LineString | pipe_type / device / 直径/糙率/滴头参数 |
+| `aqd_nodes` | Point | node_type / 水头/高程 |
+| `aqd_obs_points` | Point | 观测点（校准用，暂未启用） |
+
+所有管道（干管/支管/毛管/泵阀）统一在 `aqd_pipes`，用 `pipe_type` 区分。
+
+#### 调整 4：管道连接机制 — 显式连接节点 + planarize 虚拟分段
+
+这是开发中投入最多、迭代最多次的部分：
+
+- **连接节点**：不同 `pipe_type` 管道交叉处必须有节点（由"生成交叉节点"工具创建）
+- **planarize**：sync 时在连接节点处把管道虚拟分段，建立拓扑连接
+  （管道在 QGIS 中保持整条线不变）
+- **节点匹配容差分层**：auto_N 节点用精确匹配（1mm），用户节点用容差匹配（1m）
+  —— 防止相邻毛管（间距 0.3m）端点被合并
+
+#### 调整 5：毛管展开策略 — 共享节点保护
+
+`expand_lateral` 检测端点是否被多条管道共享（交叉连接点）：
+- 共享节点保留为 Junction，不升级为 EmitterNode（该点不出水，由支管供水）
+- 非共享的毛管末端正常升级为 EmitterNode
+
+### 15.3 关键 Bug 修复记录
+
+开发中发现并修复的重要问题（按发现顺序）：
+
+| Bug | 根因 | 修复 |
+|-----|------|------|
+| 毛管重复生成叠加 | `contains(centroid)` 边界判定失效 | 加 `distance < 0.01` 兜底 |
+| 参数无校验→死循环 | 间距 ≤ 0 时 while 循环不退出 | `generate()` 前置校验 |
+| CU 为负数（管网不连通） | 交叉节点不在管道端点 | planarize 虚拟分段 |
+| 零长度段告警 | 在线容差(1m) > 毛管间距(0.3m) | `_online_tolerance` 收紧至 1mm |
+| 对话框按钮无效 | 局部变量 dlg 被 GC，信号断开 | 存为实例属性 |
+| 滴灌带间距可设负值 | spin 默认范围含负数 | 按字段类别设范围 |
+| 毛管端点被合并 | `_match_node` 容差(1m) > 毛管间距(0.3m) | auto_N 精确匹配，用户节点容差匹配 |
+| INP 导出展开后结构 | 导出在 expand_lateral 之后 | `expand=False` 导出原始结构 |
+| INP 导出无 CRS | load_layers 用项目 CRS 兜底 | `_read_gpkg_crs` 从元数据读 CRS |
+| 切割管道容差过大 | 固定 15 地图单位 | 改为 `mapUnitsPerPixel * 15` |
+
+### 15.4 当前文件清单
+
+**wdrip-core**（核心库，110 测试通过）：
+- `network/` — 数据模型（nodes/links/network/field/emitter/expand）
+- `simulation/` — WNTR 模拟封装（engine/result）+ `build_wntr_model()`
+- `analysis/` — CU/DU 均匀度分析
+- `topology/` — TopologyGraph（已有，未与 sync 对接）
+
+**aquadrip-plugin**（QGIS 插件）：
+- `aquadrip_plugin.py` — 工具栏注册 + 8 个 handler
+- `tools/` — layer_setup / sync_manager / lateral_generator /
+  crossing_node_tool / trim_tool / project_io / edge_select_tool
+- `ui/` — property_dialog / dockwidget / trim_dialog
+- `icons/` — 8 个 SVG 图标
+
+### 15.5 下一步计划
+
+1. **Phase 3.7 结果可视化**（最高优先级）
+   - 管道按压力/流量梯度着色
+   - 节点按压力着色
+   - 统计图表（压力分布直方图、滴头流量曲线）
+2. **Phase 3.4 DEM 地形集成** — 高程提取、坡度计算
+3. **Phase 1.2 拓扑引擎对接** — TopologyGraph 与 sync 连通性检查
+4. **Phase 3.2 自动推荐** — 管径/水泵选型建议
+

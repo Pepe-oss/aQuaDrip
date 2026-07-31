@@ -73,6 +73,8 @@ class AQuaDripPlugin:
              "选中地块/管道/节点后，修改其内部参数"),
             ("run_simulation.svg", "运行模拟", self.on_run_simulation,
              "同步图层→构建管网→WNTR 水力模拟→结果回写"),
+            ("visualize.svg", "可视化", self.on_visualize,
+             "查看历史模拟记录，生成结果可视化图层"),
             ("inp_tools.svg", "INP 处理", None,
              "导出当前管网为 EPANET INP 文件，或从 INP 文件导入为临时图层"),
         ]
@@ -383,6 +385,9 @@ class AQuaDripPlugin:
             cu = UniformityAnalyzer.cu(flows) if flows else 0.0
             du = UniformityAnalyzer.du(flows) if flows else 0.0
 
+            # 保存到模拟历史（sidecar 文件）
+            self._save_sim_history(net, result, cu, du)
+
             stats = [
                 f"✅ {result.message}",
                 f"节点 {len(net.nodes)} / 管道 {len(net.links)} / 滴头 {len(flows)}",
@@ -391,6 +396,7 @@ class AQuaDripPlugin:
                 stats.append(
                     f"滴头流量 {min(flows):.2f}~{max(flows):.2f} L/h")
                 stats.append(f"CU = {cu:.1f}%   DU = {du:.1f}%")
+            stats.append("结果已保存，可点击「可视化」工具查看")
 
             if self.dockwidget:
                 for line in stats:
@@ -410,6 +416,78 @@ class AQuaDripPlugin:
                     self.dockwidget.log_message(f"   {line}")
             self.iface.messageBar().pushWarning(
                 "aQuaDrip", f"模拟运行失败: {e}")
+
+    def _save_sim_history(self, net, result, cu: float, du: float):
+        """将模拟结果保存到 sidecar 历史文件"""
+        try:
+            from .tools.sim_history import SimHistory
+            from qgis.core import QgsProject, QgsVectorLayer
+
+            # 从项目找 GPKG 路径
+            gpkg_path = None
+            for layer in QgsProject.instance().mapLayers().values():
+                if not isinstance(layer, QgsVectorLayer):
+                    continue
+                s = layer.source() if hasattr(layer, "source") else ""
+                if "aqd_pipes" in s or layer.name() == "aqd_pipes":
+                    gpkg_path = s.split("|")[0]
+                    if gpkg_path.endswith(".gpkg"):
+                        break
+                    gpkg_path = None
+
+            if not gpkg_path:
+                return  # 找不到 GPKG，静默跳过
+
+            history = SimHistory(gpkg_path)
+
+            # 提取结果数据（取稳态值 arr[0]）
+            node_pressure = {nid: float(arr[0])
+                             for nid, arr in result.node_pressure.items()
+                             if len(arr) > 0}
+            link_flow = {lid: float(arr[0])
+                         for lid, arr in result.link_flow.items()
+                         if len(arr) > 0}
+            link_velocity = {lid: float(arr[0])
+                             for lid, arr in result.link_velocity.items()
+                             if len(arr) > 0}
+            emitter_flow = {eid: float(arr[0])
+                            for eid, arr in result.emitter_flow.items()
+                            if len(arr) > 0}
+            node_coords = {nid: [node.x, node.y]
+                           for nid, node in net.nodes.items()}
+
+            history.add(
+                cu=cu, du=du,
+                node_pressure=node_pressure,
+                link_flow=link_flow,
+                link_velocity=link_velocity,
+                emitter_flow=emitter_flow,
+                node_coords=node_coords,
+                message=result.message,
+            )
+        except Exception as e:
+            # 历史保存失败不影响模拟结果
+            import traceback
+            traceback.print_exc()
+            if self.dockwidget:
+                self.dockwidget.log_message(f"⚠️ 模拟历史保存失败: {e}")
+
+    def on_visualize(self):
+        """打开可视化对话框，选择历史记录进行可视化"""
+        from .ui.visualize_dialog import VisualizeDialog
+        from .tools.visualize import Visualizer
+
+        self._viz_dlg = VisualizeDialog(self.iface,
+                                         parent=self.iface.mainWindow())
+        visualizer = Visualizer(self.iface)
+
+        def on_request(record, mode):
+            visualizer.show_results(record, mode)
+
+        self._viz_dlg.visualize_requested.connect(on_request)
+        self._viz_dlg.finished.connect(
+            lambda: setattr(self, "_viz_dlg", None))
+        self._viz_dlg.show()
 
     def on_open_project(self):
         """打开已有的 aQuaDrip GPKG 项目"""

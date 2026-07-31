@@ -87,109 +87,77 @@ class SyncManager:
                 geometry=fgeom,
             )
 
-        # 2. 读取节点
+        # 2. 读取节点和管道要素
         node_layer = self._get_layer("aqd_nodes")
-        node_positions = {}  # {coord_key: id} 用于管道端点匹配
-        if node_layer:
-            for feat in node_layer.getFeatures():
+        node_features = list(node_layer.getFeatures()) if node_layer else []
+
+        pipe_features = []
+        if pipe_layer:
+            pipe_features = list(pipe_layer.getFeatures())
+
+        # 3. 统一拓扑构建（几何相交驱动，不经坐标匹配）
+        from .topology_builder import TopologyBuilder
+
+        if split_vertices:
+            # INP 导出：折线每个顶点都需 junction
+            recs = []
+            for feat in pipe_features:
                 geom = feat.geometry()
-                if not geom or geom.isEmpty():
-                    continue
-                pt = geom.asPoint()
-                nid = str(self._attr(feat, "id") or f"N{feat.id()}")
-                node_type = str(self._attr(feat, "node_type") or "junction")
-                elev = float(self._attr(feat, "elevation") or 0)
+                if not geom or geom.isEmpty(): continue
+                line = geom.asPolyline()
+                if len(line) < 2: continue
+                recs.append({
+                    "line": line,
+                    "lid": str(self._attr(feat, "id") or f"L{feat.id()}"),
+                    "geom": geom,
+                })
+            vertex_segs = self._split_at_vertices(recs)
+            # 转为 TopologyBuilder 需要的格式
+            builder_features = []
+            for seg in vertex_segs:
+                fake_feat = QgsFeature()
+                fake_feat.setGeometry(QgsGeometry.fromPolylineXY(seg["pts"]))
+                builder_features.append(fake_feat)
+            builder = TopologyBuilder(net, self._is_geographic())
+            segments = builder.build(node_features, builder_features)
+        else:
+            builder = TopologyBuilder(net, self._is_geographic())
+            segments = builder.build(node_features, pipe_features)
 
-                if node_type == "source":
-                    node = SourceNode(
-                        nid, pt.x(), pt.y(), elevation=elev,
-                        source_type=str(self._attr(feat, "source_type") or "well"),
-                        head=float(self._attr(feat, "head") or 0),
-                        available_flow=float(self._attr(feat, "available_flow") or 0))
-                else:
-                    node = Junction(nid, pt.x(), pt.y(), elevation=elev)
+        # 诊断
+        lat_count = len([s for s in segments if s["pipe_type"] == "lateral"])
+        self.log(f"拓扑构建: {len(segments)} 段（毛管 {lat_count}）"
+                 f" 节点 {len(net.nodes)}")
 
-                net.add_node(node)
-                node_positions[self._coord_key(pt.x(), pt.y())] = nid
-
-        # 3. 读取管道 → planarize 虚拟分段 → 建 link
-        #    CrossingNodeGenerator 在 aqd_nodes 中显式创建连接节点，
-        #    _planarize 在这些节点处把管道虚拟分段，建立拓扑连接。
+        # 4. 从 segments 建 link + 收集毛管
         laterals: List[dict] = []  # [{lid, spacing, k, x}]
         if pipe_layer:
             need_edit = not pipe_layer.isEditable()
             if need_edit:
                 pipe_layer.startEditing()
             try:
-                # 3.1 收集所有管道记录
-                records = []
-                for feat in pipe_layer.getFeatures():
-                    geom = feat.geometry()
-                    if not geom or geom.isEmpty():
-                        continue
-                    line = geom.asPolyline()
-                    if len(line) < 2:
-                        continue
-                    records.append({
-                        "feat": feat,
-                        "lid": str(self._attr(feat, "id") or f"L{feat.id()}"),
-                        "geom": geom,
-                        "line": line,
-                        "pipe_type": str(self._attr(feat, "pipe_type") or "mainline"),
-                        "device": str(self._attr(feat, "device") or "none"),
-                    })
-
-                # 3.2 虚拟分段：连接节点/管端点落在管道中间时自动断开
-                if split_vertices:
-                    # INP 导出：EPANET 只支持两点直线，
-                    # QGIS 折线的每个顶点都需要 junction
-                    segments = self._split_at_vertices(records)
-                else:
-                    # 模拟：只在连接节点处虚拟分段
-                    segments = self._planarize(records, node_positions)
-
-                # 诊断：输出分段统计
-                lat_segs = [s for s in segments
-                            if s["record"]["pipe_type"] == "lateral"]
-                if lat_segs:
-                    self.log(f"分段统计: 毛管 {len(lat_segs)} 段"
-                             f"（{len([r for r in records if r['pipe_type']=='lateral'])} 条毛管要素）")
-
-                # 3.3 逐段建 link
+                fid_to_segs = {}  # {fid: [segments]}
                 for seg in segments:
-                    rec = seg["record"]
+                    fid_to_segs.setdefault(seg["fid"], []).append(seg)
+
+                for seg in segments:
                     pts = seg["pts"]
                     seg_length = QgsGeometry.fromPolylineXY(pts).length()
                     if seg_length <= 0:
-                        continue  # 零长度段，跳过
-                    lid = rec["lid"] if seg["part"] == 0 else \
-                        f"{rec['lid']}_p{seg['part'] + 1}"
+                        continue
+                    rec_fid = seg["fid"]
+                    lid = seg["lid"] if seg["part"] == 0 else \
+                        f"{seg['lid']}_p{seg['part'] + 1}"
+                    from_node = seg["from_node"]
+                    to_node = seg["to_node"]
+                    if not from_node or not to_node:
+                        continue
 
-                    from_node = self._match_node(node_positions, pts[0])
-                    to_node = self._match_node(node_positions, pts[-1])
-
-                    # 端点无匹配节点时自动创建 Junction
-                    if not from_node:
-                        from_node = f"auto_N{len(net.nodes)}"
-                        net.add_node(Junction(from_node, pts[0].x(), pts[0].y()))
-                        node_positions[self._coord_key(pts[0].x(), pts[0].y())] = from_node
-                    if not to_node:
-                        to_node = f"auto_N{len(net.nodes)}"
-                        net.add_node(Junction(to_node, pts[-1].x(), pts[-1].y()))
-                        node_positions[self._coord_key(pts[-1].x(), pts[-1].y())] = to_node
-
-                    # 记录首/末段端节点，用于拓扑回写
-                    if seg["part"] == 0:
-                        rec["_first_from"] = from_node
-                    rec["_last_to"] = to_node
-
-                    # 字段读取（diameter 保持 mm，core 内统一转换）
-                    feat = rec["feat"]
+                    feat = seg["feat"]
                     diameter = float(self._attr(feat, "diameter") or 0)
-                    length = seg_length
                     roughness = float(self._attr(feat, "roughness") or 130)
-                    pipe_type = rec["pipe_type"]
-                    device = rec["device"]
+                    pipe_type = seg["pipe_type"]
+                    device = seg["device"]
 
                     if device == "pump":
                         link = Pump(lid, from_node, to_node,
@@ -199,7 +167,6 @@ class SyncManager:
                     elif device == "valve":
                         vtype_str = str(self._attr(feat, "valve_type") or "gate").upper()
                         vtype = getattr(ValveType, vtype_str, ValveType.GATE)
-                        # TODO: aqd_pipes 暂无 valve_setting 字段，先用默认 10.0
                         link = Valve(lid, from_node, to_node,
                                      valve_type=vtype,
                                      setting=10.0,
@@ -207,7 +174,7 @@ class SyncManager:
                     else:
                         link = Pipe(lid, from_node, to_node,
                                     pipe_type=pipe_type,
-                                    diameter=diameter, length=length,
+                                    diameter=diameter, length=seg_length,
                                     roughness=roughness)
 
                     net.add_link(link)
@@ -225,21 +192,17 @@ class SyncManager:
                             "x": float(ex) if ex is not None else None,
                         })
 
-                # 3.4 拓扑回写：QGIS 要素仍是整条管道，回写其首/末节点
-                for rec in records:
-                    feat = rec["feat"]
-                    feat.setAttribute("from_node", rec.get("_first_from", ""))
-                    feat.setAttribute("to_node", rec.get("_last_to", ""))
+                # 拓扑回写
+                for fid, segs in fid_to_segs.items():
+                    if not segs:
+                        continue
+                    feat = segs[0]["feat"]
+                    feat.setAttribute("from_node", segs[0]["from_node"] or "")
+                    feat.setAttribute("to_node", segs[-1]["to_node"] or "")
                     pipe_layer.updateFeature(feat)
             finally:
                 if need_edit:
                     pipe_layer.commitChanges()
-
-        # 3.5 持久化 auto-N 节点（仅模拟时，INP 导出不写 QGIS 图层）
-        #     sync 中自动创建的节点写回 aqd_nodes，
-        #     使其在 QGIS 中可见，且下次 sync 可直接匹配（不再重复创建）
-        if expand and node_layer and net.nodes:
-            self._persist_auto_nodes(node_layer, net, node_positions)
 
         # 4. 毛管展开为 EmitterNode 滴头链（模拟出水的前提）
         #    INP 导出时跳过展开，保留原始管网结构
@@ -310,7 +273,7 @@ class SyncManager:
                     node_layer.commitChanges()
             node_layer.triggerRepaint()
 
-    # ── T 型交叉分段（planarize）──
+    # ── 顶点切段（INP 导出用）──
 
     def _split_at_vertices(self, records: list) -> list:
         """INP 导出用：把每条管道在每个折线顶点处拆分为多段
@@ -380,9 +343,11 @@ class SyncManager:
                     hits.append((cum, key))
             hits.sort()
             # 分割点去重：多个兴趣点投影到同一/相近位置只保留一个
+            # 去重容差用 online_tol（1cm），而非 edge_margin（1m）——
+            # 交叉节点间距可能只有 0.3m（毛管间距），用 1m 会误合并
             deduped = []
             for cum, key in hits:
-                if deduped and abs(cum - deduped[-1][0]) < edge_margin:
+                if deduped and abs(cum - deduped[-1][0]) < online_tol * 2:
                     continue
                 deduped.append((cum, key))
             hits = deduped
@@ -416,61 +381,85 @@ class SyncManager:
 
     @staticmethod
     def _split_line(line: list, ratios: list) -> list:
-        """按沿线比例（0~1，已排序）把折线拆为多段"""
+        """按沿线比例（0~1，已排序）把折线拆为多段
+
+        关键：分段时保留折线中间的顶点，不跨拐点拉直。
+        """
+        if not ratios:
+            return [line]
+
         seg_lens = [line[i].distance(line[i + 1])
                     for i in range(len(line) - 1)]
         total = sum(seg_lens)
         if total <= 0:
             return [line]
 
-        # 各分割点坐标
-        split_pts = []
-        for ratio in ratios:
-            target = total * ratio
+        targets = [total * r for r in ratios]
+
+        # 计算每个分割点的坐标和所在段索引
+        split_infos = []  # [(cum_len, seg_index, point)]
+        for target in targets:
             cum = 0.0
-            pt = line[-1]
             for i, sl in enumerate(seg_lens):
                 if sl > 0 and cum + sl >= target:
                     r = (target - cum) / sl
                     pt = QgsPointXY(
                         line[i].x() + (line[i + 1].x() - line[i].x()) * r,
                         line[i].y() + (line[i + 1].y() - line[i].y()) * r)
+                    split_infos.append((target, i, pt))
                     break
                 cum += sl
-            split_pts.append(pt)
 
-        # 组装各段
+        if not split_infos:
+            return [line]
+
+        # 逐段遍历，遇到分割点就截断
         parts = []
         current = [line[0]]
         cum = 0.0
         si = 0
-        targets = [total * r for r in ratios]
-        for i, sl in enumerate(seg_lens):
-            next_cum = cum + sl
-            while si < len(split_pts) and cum < targets[si] <= next_cum:
-                current.append(split_pts[si])
+        for i in range(len(line) - 1):
+            seg_end = line[i + 1]
+            cum += seg_lens[i]
+
+            # 处理当前段内的所有分割点
+            while si < len(split_infos) and split_infos[si][1] == i:
+                _, _, pt = split_infos[si]
+                current.append(pt)
                 parts.append(current)
-                current = [split_pts[si]]
+                current = [pt]
                 si += 1
-            current.append(line[i + 1])
-            cum = next_cum
-        parts.append(current)
+
+            # 添加段终点（如果当前段没有分割点，或分割点之后还有剩余）
+            current.append(seg_end)
+
+        # 最后一段
+        if len(current) >= 2:
+            parts.append(current)
+
         return [p for p in parts if len(p) >= 2]
 
     def _persist_auto_nodes(self, node_layer: QgsVectorLayer,
                             net: 'DripNetwork',
                             node_positions: dict):
-        """把 sync 中自动创建的节点（auto_N*）写回 aqd_nodes 图层
+        """把 sync 中自动创建的连接节点（auto_N*）写回 aqd_nodes 图层
 
-        auto_N 节点在 sync 时创建在 DripNetwork 内存中，但默认不写回
-        QGIS。持久化后：① QGIS 中可见 ② 下次 sync 可直接匹配，
-        避免重复创建。
+        只持久化**被多条管道共享的连接节点**（真正的交叉连接点），
+        不持久化毛管的独立端点（只被 1 条管道引用），
+        避免地图上出现大量毛管端点节点。
         """
-        # 只处理 auto_N 节点（自动创建的），不碰用户手画的
+        # 统计每个 auto_N 节点被多少条管道引用
+        node_refs = {}
+        for lid, link in net.links.items():
+            node_refs[link.from_node] = node_refs.get(link.from_node, 0) + 1
+            node_refs[link.to_node] = node_refs.get(link.to_node, 0) + 1
+
+        # 只持久化共享连接点（被 ≥2 条管道引用）
         auto_nodes = []
         for nid, node in net.nodes.items():
             if nid.startswith("auto_N") and not nid.startswith("E_"):
-                auto_nodes.append(node)
+                if node_refs.get(nid, 0) >= 2:
+                    auto_nodes.append(node)
 
         if not auto_nodes:
             return
@@ -550,11 +539,11 @@ class SyncManager:
     def _online_tolerance(self) -> float:
         """点"在线上"的判定容差（远小于节点匹配容差）
 
-        交叉节点/管端点由 snapping 或投影生成、精确在线上，此容差只需
-        覆盖浮点误差。若误用节点匹配容差（1m），会把相邻毛管（间距
-        0.3m）的交叉节点误判到当前毛管上，产生大量重合分割点。
+        交叉节点由 intersection() 几何计算生成，浮点误差可达数毫米。
+        此容差需覆盖该误差，同时远小于毛管间距（0.3m），避免相邻毛管
+        的交叉节点误判到当前毛管上。1cm 是合理平衡。
         """
-        return 1e-8 if self._is_geographic() else 1e-3
+        return 1e-6 if self._is_geographic() else 0.01
 
     def _is_geographic(self) -> bool:
         layer = self._get_layer("aqd_nodes") or self._get_layer("aqd_pipes")

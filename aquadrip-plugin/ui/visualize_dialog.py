@@ -1,0 +1,145 @@
+"""VisualizeDialog — 模拟历史记录列表与可视化浮动窗
+
+显示历史记录列表，用户选择某条记录后点击"可视化"，
+生成 results 图层在地图上展示。
+"""
+
+from qgis.PyQt.QtWidgets import (
+    QDialog, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
+    QPushButton, QLabel, QComboBox, QMessageBox,
+)
+from qgis.PyQt.QtCore import Qt, pyqtSignal
+
+from ..tools.sim_history import SimHistory
+
+
+class VisualizeDialog(QDialog):
+    """模拟历史可视化浮动窗"""
+
+    visualize_requested = pyqtSignal(dict, str)  # (record, mode)
+
+    def __init__(self, iface, parent=None):
+        super().__init__(parent or iface.mainWindow())
+        self.iface = iface
+        self.history = None
+        self.records = []
+
+        self.setWindowTitle("aQuaDrip 模拟历史")
+        self.setMinimumWidth(420)
+        self.setMinimumHeight(360)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+
+        self._build_ui()
+        self._load_gpkg_path()
+
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+
+        # 说明
+        hint = QLabel("选择一条记录进行可视化（结果保存为临时图层）")
+        hint.setStyleSheet("color: gray; font-size: 11px;")
+        layout.addWidget(hint)
+
+        # 历史列表
+        self.list_widget = QListWidget()
+        self.list_widget.doubleClicked.connect(self._on_visualize)
+        layout.addWidget(self.list_widget)
+
+        # 着色模式选择
+        mode_layout = QHBoxLayout()
+        mode_layout.addWidget(QLabel("节点着色:"))
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItem("压力（蓝→红）", "pressure")
+        self.mode_combo.addItem("滴头流量（蓝→红）", "emitter")
+        mode_layout.addWidget(self.mode_combo)
+        mode_layout.addStretch()
+        layout.addLayout(mode_layout)
+
+        # 按钮
+        btn_layout = QHBoxLayout()
+        self.btn_visualize = QPushButton("📊 可视化")
+        self.btn_visualize.setStyleSheet("font-weight: bold;")
+        self.btn_visualize.clicked.connect(self._on_visualize)
+        btn_layout.addWidget(self.btn_visualize)
+
+        self.btn_delete = QPushButton("🗑 删除")
+        self.btn_delete.clicked.connect(self._on_delete)
+        btn_layout.addWidget(self.btn_delete)
+
+        self.btn_close = QPushButton("关闭")
+        self.btn_close.clicked.connect(self.reject)
+        btn_layout.addWidget(self.btn_close)
+        layout.addLayout(btn_layout)
+
+        # 空状态提示
+        self.empty_label = QLabel("暂无模拟记录\n\n请先运行模拟")
+        self.empty_label.setAlignment(Qt.AlignCenter)
+        self.empty_label.setStyleSheet("color: gray; font-size: 14px;")
+        self.empty_label.hide()
+        layout.addWidget(self.empty_label)
+
+    def _load_gpkg_path(self):
+        """从当前项目找 aqd_pipes 图层的 GPKG 路径"""
+        from qgis.core import QgsProject, QgsVectorLayer
+        for layer in QgsProject.instance().mapLayers().values():
+            if not isinstance(layer, QgsVectorLayer):
+                continue
+            s = layer.source() if hasattr(layer, "source") else ""
+            if "aqd_pipes" in s or layer.name() == "aqd_pipes":
+                # source 格式: /path/to/aquadrip.gpkg|layername=aqd_pipes
+                gpkg_path = s.split("|")[0]
+                if gpkg_path.endswith(".gpkg"):
+                    self.history = SimHistory(gpkg_path)
+                    self._refresh_list()
+                    return
+        # 没找到 GPKG
+        self.empty_label.setText("未找到 aQuaDrip 项目\n请先加载或创建项目")
+        self.empty_label.show()
+        self.list_widget.hide()
+
+    def _refresh_list(self):
+        """刷新历史列表"""
+        if not self.history:
+            return
+        self.records = self.history.load()
+        self.list_widget.clear()
+
+        if not self.records:
+            self.empty_label.show()
+            self.list_widget.hide()
+            return
+
+        self.empty_label.hide()
+        self.list_widget.show()
+        for i, record in enumerate(self.records):
+            summary = SimHistory.summary(record)
+            item = QListWidgetItem(summary)
+            self.list_widget.addItem(item)
+
+    def _on_visualize(self):
+        """可视化选中的记录"""
+        row = self.list_widget.currentRow()
+        if row < 0:
+            QMessageBox.information(self, "aQuaDrip", "请先选择一条记录")
+            return
+        record = self.records[row]
+        mode = self.mode_combo.currentData()
+        self.visualize_requested.emit(record, mode)
+
+    def _on_delete(self):
+        """删除选中的记录"""
+        row = self.list_widget.currentRow()
+        if row < 0:
+            QMessageBox.information(self, "aQuaDrip", "请先选择一条记录")
+            return
+
+        reply = QMessageBox.question(
+            self, "aQuaDrip", "确定删除该记录？",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply != QMessageBox.Yes:
+            return
+
+        if self.history.delete(row):
+            self._refresh_list()
+            self.iface.messageBar().pushMessage(
+                "aQuaDrip", "记录已删除", level=0, duration=3)
