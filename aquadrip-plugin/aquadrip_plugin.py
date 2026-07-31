@@ -188,7 +188,8 @@ class AQuaDripPlugin:
             return
 
         source = layer.source() if hasattr(layer, "source") else ""
-        if "aqd_pipes" not in source:
+        layer_name = layer.name() or ""
+        if "aqd_pipes" not in source and layer_name != "aqd_pipes":
             self.iface.messageBar().pushWarning(
                 "aQuaDrip", "当前活动图层不是 aqd_pipes")
             return

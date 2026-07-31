@@ -16,7 +16,6 @@ from qgis.core import (
 )
 from qgis.PyQt.QtCore import QVariant
 from qgis.PyQt.QtWidgets import QFileDialog, QMessageBox
-from qgis.PyQt.QtGui import QColor
 
 # 必须是这些图层中的核心三层才算 aQuaDrip 项目
 SIGNATURE_LAYERS = ["aqd_fields", "aqd_pipes", "aqd_nodes"]
@@ -78,33 +77,62 @@ def load_layers(iface) -> bool:
         return False
 
     project = QgsProject.instance()
+
+    # 从 GPKG 元数据读取原始 CRS（避免依赖当前项目 CRS）
+    gpkg_crs = _read_gpkg_crs(path)
+
     loaded = 0
-    for key in SIGNATURE_LAYERS:
+    for key in SIGNATURE_LAYERS + ["aqd_obs_points"]:
         uri = f"{path}|layername={key}"
         layer = QgsVectorLayer(uri, key, "ogr")
         if not layer.isValid():
             continue
-        # 确保 CRS 正确：GPKG 内已存储 SRS，
-        # 但某些情况下 QGIS 不会自动激活，此处显式设置
-        if not layer.crs().isValid():
+        # 显式设置 CRS：优先 GPKG 元数据 CRS，回退项目 CRS
+        if gpkg_crs and gpkg_crs.isValid():
+            layer.setCrs(gpkg_crs)
+        elif not layer.crs().isValid():
             project_crs = project.crs()
             if project_crs.isValid():
                 layer.setCrs(project_crs)
         project.addMapLayer(layer)
         loaded += 1
 
-    # 也尝试加载可选的观测点图层
-    uri_obs = f"{path}|layername=aqd_obs_points"
-    obs = QgsVectorLayer(uri_obs, "aqd_obs_points", "ogr")
-    if obs.isValid():
-        project.addMapLayer(obs)
-        loaded += 1
+    # 设置项目 CRS 与 GPKG 一致（避免"无坐标系"显示问题）
+    if gpkg_crs and gpkg_crs.isValid():
+        project.setCrs(gpkg_crs)
+        iface.messageBar().pushMessage(
+            "aQuaDrip",
+            f"项目 CRS 已设为 {gpkg_crs.authid()}（来自 GPKG）",
+            level=0, duration=4)
 
     iface.messageBar().pushMessage(
         "aQuaDrip",
         f"已加载 {loaded} 个图层（{os.path.basename(path)}）",
         level=0, duration=5)
     return True
+
+
+def _read_gpkg_crs(path: str):
+    """从 GPKG 的 gpkg_contents/gpkg_spatial_ref_sys 读取 CRS
+
+    OGR 加载时空图层可能不自动识别 CRS，这里直接从元数据表读取。
+    """
+    try:
+        conn = sqlite3.connect(path)
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT srs_id FROM gpkg_contents "
+            "WHERE srs_id IS NOT NULL LIMIT 1")
+        row = cur.fetchone()
+        conn.close()
+        if row and row[0]:
+            from qgis.core import QgsCoordinateReferenceSystem
+            crs = QgsCoordinateReferenceSystem.fromEpsgId(row[0])
+            if crs.isValid():
+                return crs
+    except (sqlite3.Error, OSError):
+        pass
+    return None
 
 
 def export_inp(iface) -> Optional[str]:
@@ -209,27 +237,27 @@ def _parse_aqd_section(path: str) -> dict:
 
 
 def import_inp(iface) -> bool:
-    """选择 .inp → WNTR 解析 → 生成 aQuaDrip 兼容图层（内存图层）
+    """选择 .inp → WNTR 解析 → 创建标准 aQuaDrip GPKG 项目
 
-    导入的图层使用 aQuaDrip 字段名和类型，可以直接被 aQuaDrip
-    工具（编辑属性、生成交叉节点、运行模拟）识别和编辑。
+    先用 LayerSetupAction 创建标准 GPKG（含完整字段/CRS/元数据），
+    再把 INP 数据写入。导入后是真正的 aQuaDrip 项目，可被所有工具编辑。
 
     Returns:
         True 表示导入成功，False 表示用户取消或解析失败
     """
-    path, _ = QFileDialog.getOpenFileName(
+    inp_path, _ = QFileDialog.getOpenFileName(
         iface.mainWindow(),
         "导入 EPANET INP 文件",
         "",
         "EPANET INP (*.inp);;All Files (*)",
     )
-    if not path:
+    if not inp_path:
         return False
 
     # 1. WNTR 读取
     try:
         import wntr
-        wn = wntr.network.WaterNetworkModel(path)
+        wn = wntr.network.WaterNetworkModel(inp_path)
     except ImportError:
         QMessageBox.critical(
             iface.mainWindow(), "aQuaDrip INP 导入",
@@ -242,7 +270,7 @@ def import_inp(iface) -> bool:
         return False
 
     # 1.5 读取 aQuaDrip 元数据段（pipe_type 恢复）
-    aqd_pipe_types = _parse_aqd_section(path)
+    aqd_pipe_types = _parse_aqd_section(inp_path)
 
     if not wn.node_name_list:
         QMessageBox.warning(
@@ -250,11 +278,32 @@ def import_inp(iface) -> bool:
             "INP 文件中没有节点数据")
         return False
 
-    basename = os.path.splitext(os.path.basename(path))[0]
-    crs = QgsProject.instance().crs()
+    # 2. 选择 GPKG 输出路径
+    basename = os.path.splitext(os.path.basename(inp_path))[0]
+    default_gpkg = os.path.join(
+        os.path.dirname(inp_path), f"{basename}.gpkg")
+    gpkg_path, _ = QFileDialog.getSaveFileName(
+        iface.mainWindow(),
+        "选择 aQuaDrip 项目保存位置",
+        default_gpkg,
+        "GeoPackage (*.gpkg);;All Files (*)",
+    )
+    if not gpkg_path:
+        return False
+
+    # 3. 创建标准 aQuaDrip GPKG 项目（复用 layer_setup 的完整建表逻辑）
+    from .layer_setup import LayerSetupAction
+    setup = LayerSetupAction(iface)
+    if not setup.setup_layers(gpkg_path):
+        QMessageBox.critical(
+            iface.mainWindow(), "aQuaDrip INP 导入",
+            f"创建 GPKG 失败: {gpkg_path}")
+        return False
+
+    # 4. 找到刚创建的图层，写入 INP 数据
     project = QgsProject.instance()
 
-    # ── 0. 统计节点引用次数（跳过毛管末端叶子节点）──
+    # ── 4.1 统计节点引用次数（跳过毛管末端叶子节点）──
     node_refs = {}
     for link_list in [wn.pipe_name_list, wn.pump_name_list, wn.valve_name_list]:
         for name in link_list:
@@ -266,169 +315,123 @@ def import_inp(iface) -> bool:
             node_refs[link.end_node_name] = \
                 node_refs.get(link.end_node_name, 0) + 1
 
-    # ── 节点图层（aQuaDrip 兼容字段）──
-    # 跳过叶子节点（只被 1 条管道引用的末端节点），
-    # 只保留连接节点（≥2 条管道）和水源节点
-    node_layer = QgsVectorLayer(
-        f"Point?crs={crs.authid()}", "aqd_nodes", "memory")
-    node_provider = node_layer.dataProvider()
-    node_provider.addAttributes([
-        QgsField("node_type", QVariant.String),
-        QgsField("source_type", QVariant.String),
-        QgsField("head", QVariant.Double),
-        QgsField("available_flow", QVariant.Double),
-        QgsField("fertilizer_volume", QVariant.Double),
-        QgsField("fertilizer_concentration", QVariant.Double),
-        QgsField("elevation", QVariant.Double),
-        QgsField("pressure", QVariant.Double),
-    ])
-    node_layer.updateFields()
-
+    # ── 4.2 写入节点 ──
+    node_layer = _find_project_layer(project, "aqd_nodes")
     n_added = 0
-    for name in wn.node_name_list:
-        node = wn.get_node(name)
-        if node is None:
-            continue
-        ntype = type(node).__name__
-
-        # 跳过叶子节点（只被 1 条管道引用，通常是毛管/管段末端）
-        refs = node_refs.get(name, 0)
-        if ntype != "Reservoir" and refs <= 1:
-            continue
-
-        coords = getattr(node, 'coordinates', (0, 0))
-        if coords is None or len(coords) < 2:
-            continue
-
-        feat = QgsFeature(node_layer.fields())
-        feat.setGeometry(QgsGeometry.fromPointXY(
-            QgsPointXY(float(coords[0]), float(coords[1]))))
-
-        if ntype == "Reservoir":
-            feat.setAttribute("node_type", "source")
-            feat.setAttribute("head", float(node.base_head))
-            feat.setAttribute("source_type", "reservoir")
-        elif ntype == "Junction":
-            feat.setAttribute("node_type", "junction")
-            feat.setAttribute("elevation", float(node.elevation))
-        elif ntype == "Tank":
-            feat.setAttribute("node_type", "junction")
-            feat.setAttribute("elevation", float(node.elevation))
-        else:
-            feat.setAttribute("node_type", "junction")
-
-        node_provider.addFeature(feat)
-        n_added += 1
-    node_layer.updateExtents()
-    project.addMapLayer(node_layer)
-
-    # ── 管道图层（aQuaDrip 兼容字段）──
-    pipe_layer = QgsVectorLayer(
-        f"LineString?crs={crs.authid()}", "aqd_pipes", "memory")
-    pipe_provider = pipe_layer.dataProvider()
-    pipe_provider.addAttributes([
-        QgsField("pipe_type", QVariant.String),
-        QgsField("device", QVariant.String),
-        QgsField("valve_type", QVariant.String),
-        QgsField("status", QVariant.String),
-        QgsField("diameter", QVariant.Double),
-        QgsField("material", QVariant.String),
-        QgsField("length", QVariant.Double),
-        QgsField("roughness", QVariant.Double),
-        QgsField("pump_head", QVariant.Double),
-        QgsField("pump_flow", QVariant.Double),
-        QgsField("pump_power", QVariant.Double),
-        QgsField("minor_loss", QVariant.Double),
-        QgsField("lateral_spacing", QVariant.Double),
-        QgsField("emitter_spacing", QVariant.Double),
-        QgsField("emitter_k", QVariant.Double),
-        QgsField("emitter_x", QVariant.Double),
-        QgsField("zone_id", QVariant.Int),
-        QgsField("from_node", QVariant.String),
-        QgsField("to_node", QVariant.String),
-        QgsField("flow", QVariant.Double),
-        QgsField("velocity", QVariant.Double),
-    ])
-    pipe_layer.updateFields()
-
-    p_added = 0
-    for link_list, device in [
-        (wn.pipe_name_list, "none"),
-        (wn.pump_name_list, "pump"),
-        (wn.valve_name_list, "valve"),
-    ]:
-        for name in link_list:
-            link = wn.get_link(name)
-            if link is None:
+    if node_layer:
+        node_layer.startEditing()
+        for name in wn.node_name_list:
+            node = wn.get_node(name)
+            if node is None:
                 continue
-            from_node = wn.get_node(link.start_node_name)
-            to_node = wn.get_node(link.end_node_name)
-            if from_node is None or to_node is None:
-                continue
-            fc = getattr(from_node, 'coordinates', (0, 0))
-            tc = getattr(to_node, 'coordinates', (0, 0))
-            if fc is None or tc is None or len(fc) < 2 or len(tc) < 2:
+            ntype = type(node).__name__
+
+            # 跳过叶子节点（只被 1 条管道引用的末端）
+            refs = node_refs.get(name, 0)
+            if ntype != "Reservoir" and refs <= 1:
                 continue
 
-            feat = QgsFeature(pipe_layer.fields())
-            feat.setGeometry(QgsGeometry.fromPolylineXY([
-                QgsPointXY(float(fc[0]), float(fc[1])),
-                QgsPointXY(float(tc[0]), float(tc[1])),
-            ]))
-            feat.setAttribute("device", device)
-            feat.setAttribute("from_node", link.start_node_name)
-            feat.setAttribute("to_node", link.end_node_name)
-            feat.setAttribute("diameter", float(link.diameter) * 1000)  # m→mm
-            feat.setAttribute("status", "open")
-            feat.setAttribute("material", "PE")
+            coords = getattr(node, 'coordinates', (0, 0))
+            if coords is None or len(coords) < 2:
+                continue
 
-            if hasattr(link, 'length'):
-                feat.setAttribute("length", float(link.length))
-            if hasattr(link, 'roughness'):
-                feat.setAttribute("roughness", float(link.roughness))
-            if device == "valve" and hasattr(link, 'valve_type'):
-                feat.setAttribute("valve_type", str(link.valve_type))
-            if device == "pump":
-                feat.setAttribute("pump_head", 0.0)
-                feat.setAttribute("pump_flow", 0.0)
-                feat.setAttribute("pump_power", 0.0)
+            feat = QgsFeature(node_layer.fields())
+            feat.setGeometry(QgsGeometry.fromPointXY(
+                QgsPointXY(float(coords[0]), float(coords[1]))))
 
-            # pipe_type：优先从 [AQD_PIPES] 元数据恢复，
-            # 无元数据时按管径启发式推断
-            if name in aqd_pipe_types:
-                feat.setAttribute("pipe_type", aqd_pipe_types[name])
+            if ntype == "Reservoir":
+                feat.setAttribute("node_type", "source")
+                feat.setAttribute("head", float(node.base_head))
+                feat.setAttribute("source_type", "reservoir")
+            elif ntype == "Junction":
+                feat.setAttribute("node_type", "junction")
+                feat.setAttribute("elevation", float(node.elevation))
+            elif ntype == "Tank":
+                feat.setAttribute("node_type", "junction")
+                feat.setAttribute("elevation", float(node.elevation))
             else:
-                d_mm = float(link.diameter) * 1000
-                if device == "pump" or device == "valve":
-                    feat.setAttribute("pipe_type", "mainline")
-                elif d_mm >= 50:
-                    feat.setAttribute("pipe_type", "mainline")
-                elif d_mm >= 32:
-                    feat.setAttribute("pipe_type", "submain")
+                feat.setAttribute("node_type", "junction")
+
+            node_layer.addFeature(feat)
+            n_added += 1
+        node_layer.commitChanges()
+
+    # ── 4.3 写入管道 ──
+    pipe_layer = _find_project_layer(project, "aqd_pipes")
+    p_added = 0
+    if pipe_layer:
+        pipe_layer.startEditing()
+        for link_list, device in [
+            (wn.pipe_name_list, "none"),
+            (wn.pump_name_list, "pump"),
+            (wn.valve_name_list, "valve"),
+        ]:
+            for name in link_list:
+                link = wn.get_link(name)
+                if link is None:
+                    continue
+                from_node = wn.get_node(link.start_node_name)
+                to_node = wn.get_node(link.end_node_name)
+                if from_node is None or to_node is None:
+                    continue
+                fc = getattr(from_node, 'coordinates', (0, 0))
+                tc = getattr(to_node, 'coordinates', (0, 0))
+                if fc is None or tc is None or len(fc) < 2 or len(tc) < 2:
+                    continue
+
+                feat = QgsFeature(pipe_layer.fields())
+                feat.setGeometry(QgsGeometry.fromPolylineXY([
+                    QgsPointXY(float(fc[0]), float(fc[1])),
+                    QgsPointXY(float(tc[0]), float(tc[1])),
+                ]))
+                feat.setAttribute("device", device)
+                feat.setAttribute("from_node", link.start_node_name)
+                feat.setAttribute("to_node", link.end_node_name)
+                feat.setAttribute("diameter", float(link.diameter) * 1000)
+                feat.setAttribute("status", "open")
+                feat.setAttribute("material", "PE")
+                # aqd_pipes 无 length 字段（长度由几何自动计算）
+                if hasattr(link, 'roughness'):
+                    feat.setAttribute("roughness", float(link.roughness))
+                if device == "valve" and hasattr(link, 'valve_type'):
+                    feat.setAttribute("valve_type", str(link.valve_type))
+                if device == "pump":
+                    feat.setAttribute("pump_head", 0.0)
+                    feat.setAttribute("pump_flow", 0.0)
+                    feat.setAttribute("pump_power", 0.0)
+
+                # pipe_type：优先从 [AQD_PIPES] 元数据恢复
+                if name in aqd_pipe_types:
+                    feat.setAttribute("pipe_type", aqd_pipe_types[name])
                 else:
-                    feat.setAttribute("pipe_type", "lateral")
+                    d_mm = float(link.diameter) * 1000
+                    if device in ("pump", "valve"):
+                        feat.setAttribute("pipe_type", "mainline")
+                    elif d_mm >= 50:
+                        feat.setAttribute("pipe_type", "mainline")
+                    elif d_mm >= 32:
+                        feat.setAttribute("pipe_type", "submain")
+                    else:
+                        feat.setAttribute("pipe_type", "lateral")
 
-            pipe_provider.addFeature(feat)
-            p_added += 1
-
-    pipe_layer.updateExtents()
-    project.addMapLayer(pipe_layer)
-
-    # ── 简单样式 ──
-    _style_inp_layers(node_layer, pipe_layer)
+                pipe_layer.addFeature(feat)
+                p_added += 1
+        pipe_layer.commitChanges()
 
     iface.messageBar().pushMessage(
         "aQuaDrip",
         f"已导入 {basename}.inp（{n_added} 节点, {p_added} 管道）"
-        f" — 图层为内存图层，可直接编辑",
-        level=0, duration=6)
+        f" → {os.path.basename(gpkg_path)}",
+        level=0, duration=8)
     return True
 
 
-def _style_inp_layers(node_layer: QgsVectorLayer, pipe_layer: QgsVectorLayer):
-    """简单样式：节点按类型分色，管道按管径线宽"""
-    # 节点：按 node_type 分色
-    node_layer.renderer().symbol().setSize(2.5)
-    # 管道：按管径分线宽（范围映射）
-    pipe_layer.renderer().symbol().setWidth(1.0)
-    pipe_layer.renderer().symbol().setColor(QColor(0, 120, 200))
+def _find_project_layer(project: QgsProject, key: str):
+    """从已加载项目图层中查找（按 name 或 source 匹配）"""
+    for layer in project.mapLayers().values():
+        if not isinstance(layer, QgsVectorLayer):
+            continue
+        s = layer.source() if hasattr(layer, "source") else ""
+        if key in s or layer.name() == key:
+            return layer
+    return None
