@@ -42,7 +42,9 @@ class SimHistory:
             emitter_flow: Dict[str, float],
             node_coords: Dict[str, list],
             message: str = "",
-            timestamp: Optional[str] = None) -> dict:
+            timestamp: Optional[str] = None,
+            link_endpoints: Optional[Dict[str, list]] = None,
+            link_geometry: Optional[Dict[str, list]] = None) -> dict:
         """新增一条记录
 
         Args:
@@ -55,6 +57,11 @@ class SimHistory:
             node_coords: {node_id: [x, y]}
             message: 模拟引擎消息
             timestamp: 自定义时间戳，缺省用当前时间
+            link_endpoints: {link_id: [from_node, to_node]}，
+                用于可视化时重建分段管道几何（拓扑切段产生的
+                L{fid}_p{n} 不在 aqd_pipes 中）
+            link_geometry: {link_id: [[x,y], ...]}，每个 link 的折线
+                顶点（含转弯），可视化时按此画线以保留管道真实形状
 
         Returns:
             记录摘要
@@ -80,14 +87,21 @@ class SimHistory:
             "emitter_count": len(emitter_flow),
             "node_pressure": {k: round(float(v), 4)
                               for k, v in node_pressure.items()},
-            "link_flow": {k: round(float(v), 6)
-                          for k, v in link_flow.items()},
-            "link_velocity": {k: round(float(v), 4)
-                              for k, v in link_velocity.items()},
+            # link_flow / link_velocity 单位为 m³/s 与 m/s，滴灌毛管段流量
+            # 低至 1e-7 m³/s（单滴头 1.6 L/h），固定小数位 round 会吃掉
+            # 有效数字（round(v,6) 使 4.4e-7→0.0），导致可视化全为 0。
+            # 改为直接存原值，JSON float 序列化无损，渲染器自行算 min/max。
+            "link_flow": {k: float(v) for k, v in link_flow.items()},
+            "link_velocity": {k: float(v) for k, v in link_velocity.items()},
             "emitter_flow": {k: round(float(v), 4)
                              for k, v in emitter_flow.items()},
             "node_coords": {k: [round(c[0], 4), round(c[1], 4)]
                             for k, c in node_coords.items()},
+            "link_endpoints": {k: list(v)
+                               for k, v in (link_endpoints or {}).items()},
+            "link_geometry": {k: [[round(p[0], 4), round(p[1], 4)]
+                                  for p in pts]
+                              for k, pts in (link_geometry or {}).items()},
         }
         records.append(record)
 

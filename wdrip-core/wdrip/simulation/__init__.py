@@ -70,14 +70,23 @@ class DripSimulation:
     
     def _add_wntr_node(self, wn, nid: str, node):
         """添加 WNTR 节点"""
+        from wdrip.network import SourceNode
         import wntr
-        
-        if hasattr(node, "source_type") and hasattr(node, "head") and node.head > 0:
+
+        if isinstance(node, SourceNode):
             # SourceNode → wntr.Reservoir
-            wn.add_reservoir(nid, base_head=node.head,
+            # 用类型而非 head>0 判定：head≤0 时水源仍必须有水头边界条件，
+            # 否则会落入 Junction 分支导致全网无压力源、压力全为 0。
+            head = node.head
+            if head <= 0:
+                head = 10.0
+                logger.warning(
+                    f"水源 {nid} 的 head={node.head}≤0，已回退为默认 {head}m，"
+                    f"请在属性表修正水头值")
+            wn.add_reservoir(nid, base_head=head,
                              coordinates=(node.x, node.y))
-            logger.debug(f"  Reservoir: {nid} head={node.head}")
-        
+            logger.debug(f"  Reservoir: {nid} head={head}")
+
         elif hasattr(node, "emitter_k"):
             # EmitterNode → wntr.Junction + emitter
             wn.add_junction(nid, base_demand=node.demand,

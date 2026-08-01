@@ -119,6 +119,8 @@ class Visualizer:
         link_flow = record.get("link_flow", {})
         link_velocity = record.get("link_velocity", {})
         node_coords = record.get("node_coords", {})
+        link_endpoints = record.get("link_endpoints", {})
+        link_geometry = record.get("link_geometry", {})
 
         layer = QgsVectorLayer(
             f"LineString?crs={crs_id}", "results_pipes", "memory")
@@ -130,34 +132,48 @@ class Visualizer:
         ])
         layer.updateFields()
 
+        # 几何来源优先级（保留管道真实形状，含转弯折线）：
+        #   1. link_geometry：sync 时记录的折线顶点（最完整，含转弯）
+        #   2. aqd_pipes 图层：原始未切断管道（按 L{fid} 匹配）
+        #   3. link_endpoints + node_coords：仅两端点直线（兜底）
+        pipe_source = self._find_layer("aqd_pipes")
+        link_geom_map = {}  # {link_id: geometry}
+        if pipe_source:
+            for feat in pipe_source.getFeatures():
+                lid = f"L{feat.id()}"
+                link_geom_map[lid] = feat.geometry()
+
         feats = []
         for lid, flow in link_flow.items():
-            # 从 link ID 无法直接获取端点，需从 sync 的 DripNetwork
-            # 但历史记录只有 node_coords，管道几何需从 aqd_pipes 复制
-            # 这里先留空，由 _create_pipe_layer_from_qgis 补充几何
-            pass
-
-        # 管道几何从 aqd_pipes 图层复制（按 link_id 匹配）
-        pipe_source = self._find_layer("aqd_pipes")
-        if not pipe_source:
-            return None
-
-        link_geom_map = {}  # {link_id: geometry}
-        for feat in pipe_source.getFeatures():
-            # aqd_pipes 用 fid 标识（无 id 字段），sync 用 L{fid} 作为 link_id
-            lid = f"L{feat.id()}"
-            link_geom_map[lid] = feat.geometry()
-
-        # planarize 产生的分段 ID（如 L1_p2）不在 aqd_pipes 中
-        # 但它们的端点节点在 node_coords 中，可以重建几何
-        for lid, flow in link_flow.items():
-            geom = link_geom_map.get(lid)
-            if geom and not geom.isEmpty():
-                feat = QgsFeature(layer.fields())
-                feat.setGeometry(geom)
-            else:
-                # 分段管道：找不到原始几何，从 from_node/to_node 重建
-                # 但历史记录不存 from/to，跳过
+            feat = QgsFeature(layer.fields())
+            geom_built = False
+            # 1. 优先用折线顶点（含转弯），覆盖被切断的分段
+            pts = link_geometry.get(lid)
+            if pts and len(pts) >= 2:
+                feat.setGeometry(QgsGeometry.fromPolylineXY([
+                    QgsPointXY(float(p[0]), float(p[1])) for p in pts]))
+                geom_built = True
+            # 2. 原始图层几何（未切断的 L{fid}）
+            if not geom_built:
+                geom = link_geom_map.get(lid)
+                if geom and not geom.isEmpty():
+                    feat.setGeometry(geom)
+                    geom_built = True
+            # 3. 兜底：从端点节点画直线
+            if not geom_built:
+                endpoints = link_endpoints.get(lid)
+                if not endpoints or len(endpoints) < 2:
+                    continue
+                from_c = node_coords.get(endpoints[0])
+                to_c = node_coords.get(endpoints[1])
+                if not from_c or not to_c or len(from_c) < 2 or len(to_c) < 2:
+                    continue
+                feat.setGeometry(QgsGeometry.fromPolylineXY([
+                    QgsPointXY(float(from_c[0]), float(from_c[1])),
+                    QgsPointXY(float(to_c[0]), float(to_c[1])),
+                ]))
+                geom_built = True
+            if not geom_built:
                 continue
             feat.setAttribute("pipe_id", lid)
             feat.setAttribute("flow", abs(float(flow)))

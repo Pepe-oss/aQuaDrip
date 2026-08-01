@@ -232,11 +232,26 @@ class TopologyGraph:
         return []
 
     def _check_loops(self) -> List[str]:
-        """检测环路（滴灌管网应为树状）"""
-        # 使用 DFS：边数 >= 节点数 说明有环
-        if len(self.edges) >= len(self.nodes):
-            return [f"检测到环路：边数({len(self.edges)}) >= 节点数({len(self.nodes)})"]
-        return []
+        """检测环路（滴灌管网通常为树状）
+
+        按连通分量判断：若某分量内边数 >= 节点数则该分量含环。
+        全局边数 >= 节点数只对单连通管网成立，多分量管网（如分区
+        灌溉、环状干管）会被误报，因此必须分分量统计。
+        """
+        errors = []
+        for comp_nodes in self._connected_components():
+            # 统计属于该分量的边（两端节点都在分量内）
+            comp_set = set(comp_nodes)
+            edge_count = sum(
+                1 for e in self.edges.values()
+                if e.from_node in comp_set and e.to_node in comp_set
+            )
+            node_count = len(comp_nodes)
+            if edge_count >= node_count:
+                errors.append(
+                    f"检测到环路：分量({comp_nodes[:3]}{'...' if len(comp_nodes) > 3 else ''})"
+                    f" 边数({edge_count}) >= 节点数({node_count})")
+        return errors
 
     def _check_dead_ends(self) -> List[str]:
         """检测死管（度数=1 的非末端节点）"""
@@ -245,6 +260,18 @@ class TopologyGraph:
             if node.degree == 1 and node.level == TopologyLevel.MAINLINE:
                 errors.append(f"干管节点 {nid} 为死端（度数=1），请检查")
         return errors
+
+    def _connected_components(self) -> List[List[str]]:
+        """返回所有连通分量（节点 ID 列表的列表）"""
+        visited: Set[str] = set()
+        components: List[List[str]] = []
+        for nid in self.nodes:
+            if nid in visited:
+                continue
+            comp = self._bfs(nid)
+            visited |= comp
+            components.append(list(comp))
+        return components
 
     def _bfs(self, start: str) -> Set[str]:
         """广度优先搜索"""

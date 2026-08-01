@@ -63,6 +63,7 @@ class TopologyBuilder:
         self._node_index = QgsSpatialIndex()
         self._node_coords = {}  # {node_id: (x, y)}
         self._coord_to_node = {}  # {(x, y): node_id}
+        self._fid_to_nid = {}  # {qgs_fid: node_id} 空间索引反查用
 
         for feat in node_features:
             geom = feat.geometry()
@@ -94,6 +95,7 @@ class TopologyBuilder:
             idx_feat = QgsFeature(feat.id())
             idx_feat.setGeometry(QgsGeometry.fromPointXY(pt))
             self._node_index.addFeature(idx_feat)
+            self._fid_to_nid[feat.id()] = nid
 
     # ── 阶段 B: 管道收集 ──
 
@@ -134,14 +136,14 @@ class TopologyBuilder:
             line = rec["line"]
             my_type = rec["pipe_type"]
 
-            # 找所有不同 pipe_type 管道的交叉点
+            # 找所有其他管道的交叉点（含同类型：并列支管/环状干管需连接）
             crossing_points = []
             for other in records:
                 if other["fid"] == rec["fid"]:
                     continue
                 other_type = other["pipe_type"]
-                if other_type == my_type or not other_type:
-                    continue  # 只在不同类型间检测
+                if not other_type:
+                    continue  # 跳过类型缺失的管道
 
                 inter = rec["geom"].intersection(other["geom"])
                 pts = self._extract_points(inter)
@@ -310,28 +312,20 @@ class TopologyBuilder:
         if key in self._coord_to_node:
             return self._coord_to_node[key]
 
-        # 空间索引最近搜索
-        pt_geom = QgsGeometry.fromPointXY(pt)
-        nearest_ids = self._node_index.nearestNeighbor(pt, 1)
-        for nid_qgs in nearest_ids:
-            # nearestNeighbor 返回的是 QGIS feature id，需要反查
-            # 由于我们用 node_id 作为标识，需要遍历
-            pass
+        # 空间索引最近搜索：nearestNeighbor 返回 QGIS feature id，
+        # 通过 _fid_to_nid 反查 node_id，校验距离后返回。
+        tol = self.tol * 10  # 端点 snap 容差稍大
+        for qgs_fid in self._node_index.nearestNeighbor(pt, 1):
+            nid = self._fid_to_nid.get(qgs_fid)
+            if nid is None:
+                continue
+            nx, ny = self._node_coords[nid]
+            if ((nx - pt.x()) ** 2 + (ny - pt.y()) ** 2) ** 0.5 < tol:
+                return nid
 
-        # 容差匹配：遍历节点坐标
-        best = None
-        best_dist = self.tol * 10  # 端点 snap 容差稍大
-        for node_id, (nx, ny) in self._node_coords.items():
-            d = ((nx - pt.x()) ** 2 + (ny - pt.y()) ** 2) ** 0.5
-            if d < best_dist:
-                best_dist = d
-                best = node_id
-        if best:
-            return best
-
-        # 创建新节点
+        # 创建新节点（用自增计数器，避免 len(net.nodes) 在节点增删后 ID 重用冲突）
+        new_id = f"auto_N{self._node_counter}"
         self._node_counter += 1
-        new_id = f"auto_N{len(self.net.nodes)}"
         node = Junction(new_id, pt.x(), pt.y())
         self.net.add_node(node)
         self._node_coords[new_id] = (pt.x(), pt.y())

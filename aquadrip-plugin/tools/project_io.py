@@ -303,19 +303,11 @@ def import_inp(iface) -> bool:
     # 4. 找到刚创建的图层，写入 INP 数据
     project = QgsProject.instance()
 
-    # ── 4.1 统计节点引用次数（跳过毛管末端叶子节点）──
-    node_refs = {}
-    for link_list in [wn.pipe_name_list, wn.pump_name_list, wn.valve_name_list]:
-        for name in link_list:
-            link = wn.get_link(name)
-            if link is None:
-                continue
-            node_refs[link.start_node_name] = \
-                node_refs.get(link.start_node_name, 0) + 1
-            node_refs[link.end_node_name] = \
-                node_refs.get(link.end_node_name, 0) + 1
-
-    # ── 4.2 写入节点 ──
+    # ── 4.1 写入节点 ──
+    # 所有节点（含毛管末端叶子节点）都写入 aqd_nodes，保证管道的
+    # from_node/to_node 引用完整。之前跳过 refs<=1 的叶子节点会导致
+    # 其管道端点坐标已写入但节点缺失，下次 sync 变成 auto_N，
+    # 重新导入的 INP 不再是干净的 apd 图层。
     node_layer = _find_project_layer(project, "aqd_nodes")
     n_added = 0
     if node_layer:
@@ -325,11 +317,6 @@ def import_inp(iface) -> bool:
             if node is None:
                 continue
             ntype = type(node).__name__
-
-            # 跳过叶子节点（只被 1 条管道引用的末端）
-            refs = node_refs.get(name, 0)
-            if ntype != "Reservoir" and refs <= 1:
-                continue
 
             coords = getattr(node, 'coordinates', (0, 0))
             if coords is None or len(coords) < 2:

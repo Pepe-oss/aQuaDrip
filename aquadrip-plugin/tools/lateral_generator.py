@@ -267,16 +267,6 @@ class LateralGenerator:
             result.append(QgsPointXY(rx, ry))
         return result
 
-    @staticmethod
-    def _rotate_geometry(geom: QgsGeometry, angle_rad: float) -> Optional[QgsGeometry]:
-        """绕几何中心旋转"""
-        centroid = geom.centroid().asPoint()
-        g = QgsGeometry(geom)
-        g.translate(-centroid.x(), -centroid.y())
-        g.rotate(math.degrees(angle_rad), QgsPointXY(0, 0))
-        g.translate(centroid.x(), centroid.y())
-        return g
-
     def _write_to_pipes(self, lines: List[QgsLineString],
                         emitter_spacing: float,
                         emitter_k: float,
@@ -363,46 +353,6 @@ class LateralGenerator:
             return parts[0][0] if parts else []
         parts = geom.asPolygon()
         return parts[0] if parts else []
-
-    @staticmethod
-    def _rotate_geom(geom: QgsGeometry, angle_rad: float) -> QgsGeometry:
-        """绕原点旋转几何"""
-        centroid = geom.centroid().asPoint()
-        geom_copy = QgsGeometry(geom)
-        geom_copy.translate(-centroid.x(), -centroid.y())
-        geom_copy.rotate(math.degrees(angle_rad), QgsPointXY(0, 0))
-        geom_copy.translate(centroid.x(), centroid.y())
-        return geom_copy
-
-    @staticmethod
-    def _rotate_line(line: QgsLineString, angle_rad: float) -> QgsLineString:
-        """旋转线"""
-        import math
-        cos_a = math.cos(angle_rad)
-        sin_a = math.sin(angle_rad)
-        pts = [line.startPoint(), line.endPoint()]
-        rotated = []
-        for pt in pts:
-            rx = pt.x() * cos_a - pt.y() * sin_a
-            ry = pt.x() * sin_a + pt.y() * cos_a
-            rotated.append(QgsPointXY(rx, ry))
-        return QgsLineString(rotated)
-
-    @staticmethod
-    def _clip_line(line: QgsLineString, clip_geom: QgsGeometry) -> Optional[QgsLineString]:
-        """将线裁剪到多边形内"""
-        line_geom = QgsGeometry(line)
-        clipped = line_geom.intersection(clip_geom)
-        if clipped.isEmpty() or clipped.isNull():
-            return None
-        if clipped.type() != QgsWkbTypes.LineGeometry:
-            return None
-        if clipped.isMultipart():
-            parts = clipped.asMultiPolyline()
-            longest = max(parts, key=lambda p: QgsGeometry(p).length()) if parts else None
-            return QgsLineString(longest) if longest else None
-        pts = clipped.asPolyline()
-        return QgsLineString(pts) if len(pts) >= 2 else None
 
     def _get_pipes_layer(self) -> Optional[QgsVectorLayer]:
         for layer in self.project.mapLayers().values():

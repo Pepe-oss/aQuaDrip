@@ -8,11 +8,11 @@
   - 端点落在线上（T 型）：管道 A 端点距管道 B 中心线 < 容差
   - 真交叉（X 型）：两条管道几何相交
 
-连接节点只在**不同 pipe_type** 的管道之间生成：
+连接节点在**所有类型**的管道之间生成（含同类型）：
   - mainline ↔ submain ✅
   - mainline ↔ lateral ✅
   - submain ↔ lateral ✅
-  - 同类型管道 ❌（方向变化端点不需要额外节点）
+  - submain ↔ submain ✅（并列支管、环状干管需连接）
 """
 
 from typing import List, Optional
@@ -31,7 +31,7 @@ class CrossingNodeGenerator:
         self.project = QgsProject.instance()
 
     def generate(self, selected_feature: QgsFeature) -> int:
-        """为选中的管道生成与所有不同类型管道的连接节点
+        """为选中的管道生成与所有其他管道（含同类型）的连接节点
 
         Args:
             selected_feature: aqd_pipes 中选中的管道要素（任意 pipe_type）
@@ -61,11 +61,11 @@ class CrossingNodeGenerator:
         crossing_points: List[QgsPointXY] = []
 
         for feat in pipes.getFeatures():
-            # 跳过自身和同类型管道
+            # 跳过自身（含同类型：并列支管/环状干管需连接）
             if feat.id() == sel_id:
                 continue
             other_type = str(feat.attribute("pipe_type") or "")
-            if other_type == sel_type or not other_type:
+            if not other_type:
                 continue
 
             other_geom = feat.geometry()

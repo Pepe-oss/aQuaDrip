@@ -455,6 +455,14 @@ class AQuaDripPlugin:
                             if len(arr) > 0}
             node_coords = {nid: [node.x, node.y]
                            for nid, node in net.nodes.items()}
+            # 管道端点节点引用：可视化时按 from_node/to_node 从
+            # node_coords 重建分段管道几何（拓扑切断产生的 L{fid}_p{n}
+            # 不在 aqd_pipes 原始图层中，否则会被跳过不显示）
+            link_endpoints = {lid: [link.from_node, link.to_node]
+                              for lid, link in net.links.items()}
+            # 管道折线顶点（含转弯）：可视化时按 lid 取折线画线，
+            # 避免被交叉切断的分段只画端点直线而丢失转弯形状
+            link_geometry = getattr(net, "link_geometry", None) or {}
 
             history.add(
                 cu=cu, du=du,
@@ -464,6 +472,8 @@ class AQuaDripPlugin:
                 emitter_flow=emitter_flow,
                 node_coords=node_coords,
                 message=result.message,
+                link_endpoints=link_endpoints,
+                link_geometry=link_geometry,
             )
         except Exception as e:
             # 历史保存失败不影响模拟结果
