@@ -5,7 +5,7 @@ aQuaDrip 插件主类
 
 import os
 import sys
-from qgis.core import QgsApplication
+from qgis.core import QgsApplication, QgsRasterLayer, QgsLayerTreeLayer
 from qgis.gui import QgisInterface
 from qgis.PyQt.QtWidgets import QAction, QMessageBox
 from qgis.PyQt.QtCore import Qt
@@ -127,43 +127,118 @@ class AQuaDripPlugin:
             self.provider = None
 
     def on_setup_layers(self):
-        """一键创建标准图层"""
+        """新建 aQuaDrip 项目：弹窗选择路径/可选影像/DEM → 创建 GPKG + QGZ"""
+        from .ui.new_project_dialog import NewProjectDialog
+
+        dlg = NewProjectDialog(self.iface)
+        if dlg.exec() != dlg.Accepted:
+            return
+
+        gpkg_path = dlg.gpkg_path()
+        qgz_path = dlg.qgz_path()
+        ortho_path = dlg.orthophoto_path()
+        dem_path = dlg.dem_path()
+
+        # 1. 创建 GPKG 图层
         self.iface.messageBar().pushMessage(
             "aQuaDrip", "正在创建图层...", level=0, duration=3)
-        
+
         try:
             from .tools.layer_setup import LayerSetupAction
-            
+
             setup = LayerSetupAction(self.iface)
-            success = setup.setup_layers()
-            
-            if success:
-                msg = (f"图层已创建\n文件: {setup.gpkg_path}")
-                if self.dockwidget:
-                    self.dockwidget.log_message(msg)
-                QMessageBox.information(
-                    self.iface.mainWindow(),
-                    "aQuaDrip",
-                    f"图层已创建完成\n\n"
-                    f"📁 文件位置: {setup.gpkg_path}\n\n"
-                    f"所有数据实时保存在此 GPKG 文件中，\n"
-                    f"下次使用请点击「打开项目」直接加载。\n\n"
-                    f"• 农田地块 (aqd_fields)\n"
-                    f"• 管道 (aqd_pipes) — 干管/支管/毛管/设备\n"
-                    f"• 节点 (aqd_nodes) — 水源/施肥罐\n"
-                    f"• 观测点 (aqd_obs_points)"
-                )
-            else:
+            success = setup.setup_layers(gpkg_path)
+
+            if not success:
                 QMessageBox.warning(
                     self.iface.mainWindow(),
                     "aQuaDrip",
-                    "图层创建失败，请查看 Python 日志"
-                )
+                    "图层创建失败，请查看 Python 日志")
+                return
+
+            if self.dockwidget:
+                self.dockwidget.log_message(f"图层已创建: {gpkg_path}")
+
         except Exception as e:
             import traceback
             traceback.print_exc()
             self.iface.messageBar().pushWarning(
                 "aQuaDrip", f"创建失败: {e}")
+            return
+
+        # 2. 导入正射影像（可选）
+        ortho_layer = self._add_raster_to_group(
+            ortho_path, "正射影像") if ortho_path else None
+
+        # 3. 导入 DEM（可选）
+        dem_layer = self._add_raster_to_group(
+            dem_path, "DEM 高程") if dem_path else None
+
+        # 4. 保存 QGZ 项目文件
+        try:
+            from qgis.core import QgsProject
+            QgsProject.instance().write(qgz_path)
+            if self.dockwidget:
+                self.dockwidget.log_message(f"项目已保存: {qgz_path}")
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self.iface.messageBar().pushWarning(
+                "aQuaDrip", f"保存 QGZ 失败: {e}")
+            # 不阻断：GPKG 已创建，用户可手动保存
+
+        # 5. 成功提示
+        parts = [f"📁 GPKG: {gpkg_path}", f"📁 QGZ:  {qgz_path}"]
+        loaded = ["农田地块 (aqd_fields)", "管道 (aqd_pipes)",
+                  "节点 (aqd_nodes)", "观测点 (aqd_obs_points)"]
+        if ortho_layer:
+            loaded.append("正射影像")
+        if dem_layer:
+            loaded.append("DEM 高程")
+
+        QMessageBox.information(
+            self.iface.mainWindow(),
+            "aQuaDrip",
+            f"项目创建完成\n\n"
+            f"{os.linesep.join(parts)}\n\n"
+            f"已加载图层:\n"
+            + "\n".join(f"  • {s}" for s in loaded) + "\n\n"
+            f"下次可直接用 QGIS 打开 .qgz 文件，\n"
+            f"或通过「打开项目」加载 .gpkg。")
+
+    def _add_raster_to_group(self, path: str, layer_name: str,
+                             group_name: str = "aQuaDrip"):
+        """添加栅格图层到指定分组底部
+
+        Args:
+            path: 栅格文件路径
+            layer_name: 图层显示名称
+            group_name: 目标分组名
+
+        Returns:
+            QgsRasterLayer 或 None
+        """
+        if not path or not os.path.exists(path):
+            return None
+
+        layer = QgsRasterLayer(path, layer_name)
+        if not layer.isValid():
+            self.iface.messageBar().pushWarning(
+                "aQuaDrip", f"无法加载栅格图层: {layer_name}")
+            return None
+
+        from qgis.core import QgsProject
+        QgsProject.instance().addMapLayer(layer, False)
+
+        root = QgsProject.instance().layerTreeRoot()
+        group = root.findGroup(group_name)
+        if group:
+            group.addChildNode(QgsLayerTreeLayer(layer))
+        else:
+            # 分组不存在时，直接添加到根层级
+            root.addChildNode(QgsLayerTreeLayer(layer))
+
+        return layer
 
     def on_trim_lateral(self):
         """激活管道切割工具"""

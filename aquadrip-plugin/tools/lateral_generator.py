@@ -10,6 +10,7 @@ from typing import List, Tuple, Optional
 from qgis.core import (
     QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry,
     QgsPointXY, QgsLineString, QgsWkbTypes,
+    QgsCoordinateReferenceSystem, QgsCoordinateTransform,
 )
 from qgis.PyQt.QtCore import QVariant
 
@@ -23,6 +24,55 @@ class LateralGenerator:
         # 凹形地块时，一条扫描线与地块交成多段，仅保留最长段，
         # 此处累计被丢弃的段数用于提示用户
         self._dropped_parts = 0
+        # 当前生成所在的图层 CRS（用于单位判定）
+        self._src_crs: Optional[QgsCoordinateReferenceSystem] = None
+        # 几何是否为地理坐标系（度）——决定是否需要重投影
+        self._is_geographic: bool = False
+
+    # ── CRS / 单位适配 ──
+
+    def _resolve_crs(self, feat):
+        """推断几何所在 CRS。
+
+        优先用项目 CRS（与「新建项目」流程一致：图层 CRS = 项目 CRS）。
+        若项目 CRS 无效，回退到 aqd_fields 图层 CRS，最终回退 EPSG:4326。
+        """
+        if self.project.crs().isValid():
+            return self.project.crs()
+        # 回退：从 aqd_fields 图层读 CRS
+        for lyr in self.project.mapLayers().values():
+            if isinstance(lyr, QgsVectorLayer) and "aqd_fields" in (lyr.source() or ""):
+                if lyr.crs().isValid():
+                    return lyr.crs()
+                break
+        return QgsCoordinateReferenceSystem("EPSG:4326")
+
+    @staticmethod
+    def _utm_zone_crs(lat: float, lon: float) -> QgsCoordinateReferenceSystem:
+        """根据经纬度返回对应的 UTM zone EPSG（北/南半球自动判断）。"""
+        zone = int(math.floor((lon + 180) / 6) + 1)
+        epsg = 32600 + zone if lat >= 0 else 32700 + zone
+        return QgsCoordinateReferenceSystem(f"EPSG:{epsg}")
+
+    def _reproject_for_layout(self, geom: QgsGeometry) -> QgsGeometry:
+        """若几何为地理坐标系（度），重投影到 UTM（米）以便米单位布局计算。
+
+        Returns:
+            用于布局计算的几何（米制）。无需变换时返回原几何。
+            回投变换器同时保存到 self._back_xform，供 _lines_back_to_src 使用。
+        """
+        if not self._is_geographic:
+            return geom
+
+        centroid = geom.centroid().asPoint()
+        utm = self._utm_zone_crs(centroid.y(), centroid.x())
+        fwd = QgsCoordinateTransform(self._src_crs, utm, self.project)
+        # back_xform 保存到 self，供 _lines_back_to_src 使用
+        self._back_xform = QgsCoordinateTransform(utm, self._src_crs, self.project)
+        # QgsGeometry.transform(ct) 原地修改并返回 bool，先拷贝避免污染原对象
+        layout_geom = QgsGeometry(geom)
+        layout_geom.transform(fwd)
+        return layout_geom
 
     def generate(self, feat) -> int:
         """根据一条农田要素的农艺参数生成毛管
@@ -41,6 +91,11 @@ class LateralGenerator:
         geom = feat.geometry()
         if not geom or geom.isEmpty():
             raise ValueError("农田几何为空")
+
+        # 解析 CRS，判定单位：地理坐标系（度）需重投影到 UTM（米）做布局
+        self._src_crs = self._resolve_crs(feat)
+        self._is_geographic = self._src_crs.isGeographic()
+        self._back_xform = None
 
         planting_pattern = str(feat.attribute("planting_pattern") or "ridge")
         row_spacing = float(feat.attribute("row_spacing") or 0.6)
@@ -68,16 +123,29 @@ class LateralGenerator:
         if errors:
             raise ValueError("农艺参数非法：\n" + "\n".join(errors))
 
-        # 3. 计算方向角度
-        angle = self._calc_direction_angle(geom, direction_type, custom_angle)
+        # 3. CRS 适配：地理坐标系（度）→ UTM（米）做布局，算完转回原 CRS
+        layout_geom = self._reproject_for_layout(geom)
+        if self._is_geographic:
+            self.iface.messageBar().pushMessage(
+                "aQuaDrip",
+                f"图层为地理坐标系（{self._src_crs.authid()}），已临时投影到 "
+                f"UTM（米制）进行布局计算，结果转回原 CRS",
+                level=0, duration=5)
 
-        # 4. 计算毛管位置
+        # 4. 计算方向角度（在投影几何上）
+        angle = self._calc_direction_angle(layout_geom, direction_type, custom_angle)
+
+        # 5. 计算毛管位置（米单位空间）
         if planting_pattern == "ridge_count" and ridge_count > 0:
-            lines = self._ridge_count_layout(geom, ridge_count, tapes_per_ridge,
+            lines = self._ridge_count_layout(layout_geom, ridge_count, tapes_per_ridge,
                                               tape_spacing, angle)
         else:
-            lines = self._ridge_layout(geom, row_spacing, tapes_per_ridge,
+            lines = self._ridge_layout(layout_geom, row_spacing, tapes_per_ridge,
                                         tape_spacing, angle)
+
+        # 6. 若做了重投影，把 LineString 转回原 CRS
+        if self._is_geographic and self._back_xform is not None and lines:
+            lines = self._lines_back_to_src(lines)
 
         # 诊断：输出实际生成的毛管数量
         self.iface.messageBar().pushMessage(
@@ -91,7 +159,7 @@ class LateralGenerator:
             raise ValueError(
                 "未生成任何毛管：地块可能太小，或间距参数过大")
 
-        # 5. 写入 aqd_pipes（先清除该地块的旧毛管，避免重复生成叠加）
+        # 7. 写入 aqd_pipes（先清除该地块的旧毛管，避免重复生成叠加）
         count = self._write_to_pipes(lines, emitter_spacing, emitter_k, emitter_x,
                                       field_geom=geom)
         if self._dropped_parts > 0:
@@ -101,6 +169,19 @@ class LateralGenerator:
                 f"（每行仅保留最长段）",
                 level=1, duration=6)
         return count
+
+    # ── CRS 回投 ──
+
+    def _lines_back_to_src(self, lines: List[QgsLineString]) -> List[QgsLineString]:
+        """把布局生成的 LineString（UTM 米制）转回要素原 CRS。"""
+        if self._back_xform is None:
+            return lines
+        result = []
+        for ln in lines:
+            pts = [QgsPointXY(p.x(), p.y()) for p in ln.vertices()]
+            transformed = [self._back_xform.transform(p) for p in pts]
+            result.append(QgsLineString(transformed))
+        return result
 
     def _calc_direction_angle(self, geom: QgsGeometry,
                                direction_type: str,
@@ -325,8 +406,11 @@ class LateralGenerator:
 
         用质心判定避免误删跨地块手画毛管。
         contains() 严格判定——边界上的质心不算"内部"，
-        而毛管横跨地块时质心恰好在边界附近。用距离容差补偿。
+        而毛管横跨地块时质心恰好在边界附近。用距离容差补偿
+        （投影坐标 1m，地理坐标 1e-5°≈1m）。
         """
+        # 自适应容差：随图层 CRS 单位
+        tol = 1e-5 if (layer.crs().isValid() and layer.crs().isGeographic()) else 0.01
         to_delete = []
         for feat in layer.getFeatures():
             if str(feat.attribute("pipe_type") or "") != "lateral":
@@ -335,9 +419,9 @@ class LateralGenerator:
             if not g or g.isEmpty():
                 continue
             centroid = g.centroid()
-            # 质心在地块内，或距边界 < 0.01（边界上的毛管也算）
+            # 质心在地块内，或距边界 < tol（边界上的毛管也算）
             if field_geom.contains(centroid) or \
-               field_geom.distance(centroid) < 0.01:
+               field_geom.distance(centroid) < tol:
                 to_delete.append(feat.id())
         if to_delete:
             layer.deleteFeatures(to_delete)
