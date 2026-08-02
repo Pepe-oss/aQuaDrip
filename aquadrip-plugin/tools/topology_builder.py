@@ -29,25 +29,35 @@ class TopologyBuilder:
         self._node_counter = 0
 
     def build(self, node_features: List[QgsFeature],
-              pipe_features: List[QgsFeature]) -> List[dict]:
+              pipe_features: List[QgsFeature],
+              pump_features: List[QgsFeature] = None,
+              valve_features: List[QgsFeature] = None) -> List[dict]:
         """构建完整拓扑
 
         Args:
             node_features: aqd_nodes 图层的要素列表
             pipe_features: aqd_pipes 图层的要素列表
+            pump_features: aqd_pumps 图层的要素列表（可选）
+            valve_features: aqd_valves 图层的要素列表（可选）
 
         Returns:
             segments 列表 [{fid, lid, pipe_type, device, pts,
-                           from_node, to_node, is_lateral}]
+                           from_node, to_node}]
         """
         # 阶段 A: 节点 → net.nodes + 空间索引
         self._build_nodes(node_features)
 
-        # 阶段 B: 管道预处理 → 收集管道记录
-        pipe_records = self._collect_pipes(pipe_features)
+        # 阶段 B: 管道预处理 → 收集所有 link 记录
+        pipe_records = self._collect_links(
+            pipe_features, device="none", default_pipe_type=None)
+        pump_records = self._collect_links(
+            pump_features or [], device="pump", default_pipe_type="mainline")
+        valve_records = self._collect_links(
+            valve_features or [], device="valve", default_pipe_type="mainline")
+        all_records = pipe_records + pump_records + valve_records
 
         # 阶段 C: 管道-管道交叉检测 + 切断
-        segments = self._detect_and_split(pipe_records)
+        segments = self._detect_and_split(all_records)
 
         # 阶段 D: 端点 snap + 建立拓扑引用
         segments = self._assign_endpoints(segments)
@@ -97,12 +107,20 @@ class TopologyBuilder:
             self._node_index.addFeature(idx_feat)
             self._fid_to_nid[feat.id()] = nid
 
-    # ── 阶段 B: 管道收集 ──
+    # ── 阶段 B: link 收集 ──
 
-    def _collect_pipes(self, pipe_features: List[QgsFeature]) -> List[dict]:
-        """收集管道记录"""
+    def _collect_links(self, features: List[QgsFeature],
+                        device: str = "none",
+                        default_pipe_type: Optional[str] = None) -> List[dict]:
+        """收集 link 记录（管道 / 水泵 / 阀门通用）
+
+        Args:
+            features: 图层要素列表
+            device: 设备类型（"none"/"pump"/"valve"）
+            default_pipe_type: pipe_type 回退值。None 表示从 feature 读取
+        """
         records = []
-        for feat in pipe_features:
+        for feat in features:
             geom = feat.geometry()
             if not geom or geom.isEmpty():
                 continue
@@ -111,13 +129,14 @@ class TopologyBuilder:
                 continue
             fid = feat.id()
             lid = self._safe_attr_str(feat, "id", f"L{fid}")
+            pt = self._safe_attr_str(feat, "pipe_type", default_pipe_type or "mainline")
             records.append({
                 "fid": fid,
                 "lid": lid,
                 "geom": geom,
                 "line": line,
-                "pipe_type": self._safe_attr_str(feat, "pipe_type", "mainline"),
-                "device": self._safe_attr_str(feat, "device", "none"),
+                "pipe_type": pt,
+                "device": device,
                 "feat": feat,
             })
         return records

@@ -28,13 +28,18 @@ FIELD_LABELS = {
     "ridge_count": "垄数", "row_direction": "自定义角度 (°)",
     "emitter_spacing": "滴头间距 (m)",
     # aqd_pipes
-    "pipe_type": "管道类型", "device": "设备", "valve_type": "阀门类型",
-    "status": "状态", "diameter": "管径 (mm)", "material": "材质",
-    "roughness": "糙率 C", "pump_head": "泵扬程 (m)", "pump_flow": "泵流量 (m³/h)",
-    "pump_power": "泵功率 (kW)", "minor_loss": "局部损失系数",
-    "lateral_spacing": "毛管间距 (m)", "zone_id": "分区号",
+    "pipe_type": "管道类型", "status": "状态", "diameter": "管径 (mm)",
+    "material": "材质", "roughness": "糙率 C", "minor_loss": "局部损失系数",
+    "zone_id": "分区号",
+    # aqd_pumps
+    "pump_type": "水泵类型", "pump_head": "额定扬程 (m)",
+    "pump_flow": "额定流量 (m³/h)", "pump_power": "额定功率 (kW)",
+    # aqd_valves
+    "valve_type": "阀门类型", "setting": "设定值",
+    # 所有层共用字段
     "from_node": "起点节点", "to_node": "终点节点",
     "flow": "流量 (模拟)", "velocity": "流速 (模拟)",
+    "lateral_spacing": "毛管间距 (m)", "zone_id": "分区号",
     # aqd_nodes
     "node_type": "节点类型", "source_type": "水源类型", "head": "水头 (m)",
     "available_flow": "可用流量 (m³/s)", "fertilizer_volume": "施肥罐容积 (L)",
@@ -48,17 +53,22 @@ MODE_FIELDS = {
                    "row_spacing", "tapes_per_ridge", "tape_spacing",
                    "ridge_count", "row_direction", "emitter_spacing",
                    "emitter_model", "emitter_k", "emitter_x"],
-    "aqd_pipes": ["pipe_type", "device", "valve_type", "status", "diameter",
-                  "material", "roughness", "pump_head", "pump_flow",
-                  "pump_power", "minor_loss", "emitter_spacing",
+    "aqd_pipes": ["pipe_type", "status", "diameter", "material",
+                  "roughness", "minor_loss", "emitter_spacing",
                   "emitter_k", "emitter_x", "zone_id"],
+    "aqd_pumps": ["pump_type", "status", "diameter", "pump_head",
+                  "pump_flow", "pump_power", "minor_loss"],
+    "aqd_valves": ["valve_type", "status", "diameter", "setting",
+                   "minor_loss"],
     "aqd_nodes": ["node_type", "source_type", "head", "available_flow",
                   "fertilizer_volume", "fertilizer_concentration", "elevation"],
 }
 
 MODE_TITLES = {
     "aqd_fields": "农田参数",
-    "aqd_pipes": "管道/设备属性",
+    "aqd_pipes": "管道属性",
+    "aqd_pumps": "水泵属性",
+    "aqd_valves": "阀门属性",
     "aqd_nodes": "节点属性",
 }
 
@@ -283,14 +293,15 @@ class PropertyDialog(QDialog):
                 model.currentIndexChanged.connect(self._on_emitter_model_changed)
                 self._on_emitter_model_changed(model.currentIndex())
         elif self.mode == "aqd_pipes":
-            device = self._widgets.get("device")
-            if device:
-                device.currentIndexChanged.connect(self._on_device_changed)
-                self._on_device_changed(device.currentIndex())
             ptype = self._widgets.get("pipe_type")
             if ptype:
                 ptype.currentIndexChanged.connect(self._on_pipe_type_changed)
                 self._on_pipe_type_changed(ptype.currentIndex())
+        elif self.mode == "aqd_valves":
+            vtype = self._widgets.get("valve_type")
+            if vtype:
+                vtype.currentIndexChanged.connect(self._on_valve_type_changed)
+                self._on_valve_type_changed(vtype.currentIndex())
         elif self.mode == "aqd_nodes":
             ntype = self._widgets.get("node_type")
             if ntype:
@@ -327,15 +338,11 @@ class PropertyDialog(QDialog):
         is_rc = (w.itemData(idx) == "ridge_count")
         self._set_row_visible("ridge_count", is_rc)
 
-    # aqd_pipes 联动
-    def _on_device_changed(self, idx):
-        w = self._widgets.get("device")
-        if not w:
-            return
-        data = w.itemData(idx)
-        for f in ("pump_head", "pump_flow", "pump_power"):
-            self._set_row_visible(f, data == "pump")
-        self._set_row_visible("valve_type", data == "valve")
+    # aqd_valves 联动
+    @staticmethod
+    def _on_valve_type_changed(idx):
+        """阀门类型变更时不需要显示/隐藏字段，所有字段始终可见"""
+        pass
 
     # aqd_nodes 联动
     def _on_ntype_changed(self, idx):
@@ -443,7 +450,7 @@ class PropertyDialog(QDialog):
     def _mode_of_layer(layer: QgsVectorLayer) -> Optional[str]:
         name = layer.name() or ""
         src = layer.source() or ""
-        for key in ("aqd_fields", "aqd_pipes", "aqd_nodes"):
+        for key in ("aqd_fields", "aqd_pipes", "aqd_pumps", "aqd_valves", "aqd_nodes"):
             if name == key or key in src:
                 return key
         return None

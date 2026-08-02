@@ -17,13 +17,15 @@ from qgis.core import (
 from qgis.PyQt.QtCore import QVariant
 from qgis.PyQt.QtWidgets import QFileDialog, QMessageBox
 
-# 必须是这些图层中的核心三层才算 aQuaDrip 项目
-SIGNATURE_LAYERS = ["aqd_fields", "aqd_pipes", "aqd_nodes"]
+# 必须是这些图层中的核心五层才算 aQuaDrip 项目
+SIGNATURE_LAYERS = ["aqd_fields", "aqd_pipes", "aqd_pumps", "aqd_valves", "aqd_nodes"]
 
 # 核心字段检查（每个签名图层至少包含以下字段之一）
 SIGNATURE_FIELDS = {
     "aqd_fields": ["planting_pattern", "emitter_spacing"],
     "aqd_pipes": ["pipe_type", "diameter"],
+    "aqd_pumps": ["pump_head", "pump_flow"],
+    "aqd_valves": ["valve_type", "diameter"],
     "aqd_nodes": ["node_type", "elevation"],
 }
 
@@ -343,67 +345,120 @@ def import_inp(iface) -> bool:
             n_added += 1
         node_layer.commitChanges()
 
-    # ── 4.3 写入管道 ──
+    # ── 4.2 写入管道 ──
     pipe_layer = _find_project_layer(project, "aqd_pipes")
     p_added = 0
     if pipe_layer:
         pipe_layer.startEditing()
-        for link_list, device in [
-            (wn.pipe_name_list, "none"),
-            (wn.pump_name_list, "pump"),
-            (wn.valve_name_list, "valve"),
-        ]:
-            for name in link_list:
-                link = wn.get_link(name)
-                if link is None:
-                    continue
-                from_node = wn.get_node(link.start_node_name)
-                to_node = wn.get_node(link.end_node_name)
-                if from_node is None or to_node is None:
-                    continue
-                fc = getattr(from_node, 'coordinates', (0, 0))
-                tc = getattr(to_node, 'coordinates', (0, 0))
-                if fc is None or tc is None or len(fc) < 2 or len(tc) < 2:
-                    continue
+        for name in wn.pipe_name_list:
+            link = wn.get_link(name)
+            if link is None:
+                continue
+            from_node = wn.get_node(link.start_node_name)
+            to_node = wn.get_node(link.end_node_name)
+            if from_node is None or to_node is None:
+                continue
+            fc = getattr(from_node, 'coordinates', (0, 0))
+            tc = getattr(to_node, 'coordinates', (0, 0))
+            if fc is None or tc is None or len(fc) < 2 or len(tc) < 2:
+                continue
 
-                feat = QgsFeature(pipe_layer.fields())
-                feat.setGeometry(QgsGeometry.fromPolylineXY([
-                    QgsPointXY(float(fc[0]), float(fc[1])),
-                    QgsPointXY(float(tc[0]), float(tc[1])),
-                ]))
-                feat.setAttribute("device", device)
-                feat.setAttribute("from_node", link.start_node_name)
-                feat.setAttribute("to_node", link.end_node_name)
-                feat.setAttribute("diameter", float(link.diameter) * 1000)
-                feat.setAttribute("status", "open")
-                feat.setAttribute("material", "PE")
-                # aqd_pipes 无 length 字段（长度由几何自动计算）
-                if hasattr(link, 'roughness'):
-                    feat.setAttribute("roughness", float(link.roughness))
-                if device == "valve" and hasattr(link, 'valve_type'):
-                    feat.setAttribute("valve_type", str(link.valve_type))
-                if device == "pump":
-                    feat.setAttribute("pump_head", 0.0)
-                    feat.setAttribute("pump_flow", 0.0)
-                    feat.setAttribute("pump_power", 0.0)
+            feat = QgsFeature(pipe_layer.fields())
+            feat.setGeometry(QgsGeometry.fromPolylineXY([
+                QgsPointXY(float(fc[0]), float(fc[1])),
+                QgsPointXY(float(tc[0]), float(tc[1])),
+            ]))
+            feat.setAttribute("from_node", link.start_node_name)
+            feat.setAttribute("to_node", link.end_node_name)
+            feat.setAttribute("diameter", float(link.diameter) * 1000)
+            feat.setAttribute("status", "open")
+            feat.setAttribute("material", "PE")
+            if hasattr(link, 'roughness'):
+                feat.setAttribute("roughness", float(link.roughness))
 
-                # pipe_type：优先从 [AQD_PIPES] 元数据恢复
-                if name in aqd_pipe_types:
-                    feat.setAttribute("pipe_type", aqd_pipe_types[name])
+            # pipe_type：优先从 [AQD_PIPES] 元数据恢复
+            if name in aqd_pipe_types:
+                feat.setAttribute("pipe_type", aqd_pipe_types[name])
+            else:
+                d_mm = float(link.diameter) * 1000
+                if d_mm >= 50:
+                    feat.setAttribute("pipe_type", "mainline")
+                elif d_mm >= 32:
+                    feat.setAttribute("pipe_type", "submain")
                 else:
-                    d_mm = float(link.diameter) * 1000
-                    if device in ("pump", "valve"):
-                        feat.setAttribute("pipe_type", "mainline")
-                    elif d_mm >= 50:
-                        feat.setAttribute("pipe_type", "mainline")
-                    elif d_mm >= 32:
-                        feat.setAttribute("pipe_type", "submain")
-                    else:
-                        feat.setAttribute("pipe_type", "lateral")
+                    feat.setAttribute("pipe_type", "lateral")
 
-                pipe_layer.addFeature(feat)
-                p_added += 1
+            pipe_layer.addFeature(feat)
+            p_added += 1
         pipe_layer.commitChanges()
+
+    # ── 4.3 写入水泵 ──
+    pump_layer = _find_project_layer(project, "aqd_pumps")
+    if pump_layer:
+        pump_layer.startEditing()
+        for name in wn.pump_name_list:
+            link = wn.get_link(name)
+            if link is None:
+                continue
+            from_node = wn.get_node(link.start_node_name)
+            to_node = wn.get_node(link.end_node_name)
+            if from_node is None or to_node is None:
+                continue
+            fc = getattr(from_node, 'coordinates', (0, 0))
+            tc = getattr(to_node, 'coordinates', (0, 0))
+            if fc is None or tc is None or len(fc) < 2 or len(tc) < 2:
+                continue
+
+            feat = QgsFeature(pump_layer.fields())
+            feat.setGeometry(QgsGeometry.fromPolylineXY([
+                QgsPointXY(float(fc[0]), float(fc[1])),
+                QgsPointXY(float(tc[0]), float(tc[1])),
+            ]))
+            feat.setAttribute("from_node", link.start_node_name)
+            feat.setAttribute("to_node", link.end_node_name)
+            feat.setAttribute("diameter", float(link.diameter) * 1000)
+            feat.setAttribute("status", "open")
+            feat.setAttribute("pump_head", 0.0)
+            feat.setAttribute("pump_flow", 0.0)
+            feat.setAttribute("pump_power", 0.0)
+            p_added += 1
+            pump_layer.addFeature(feat)
+        pump_layer.commitChanges()
+
+    # ── 4.4 写入阀门 ──
+    valve_layer = _find_project_layer(project, "aqd_valves")
+    if valve_layer:
+        valve_layer.startEditing()
+        for name in wn.valve_name_list:
+            link = wn.get_link(name)
+            if link is None:
+                continue
+            from_node = wn.get_node(link.start_node_name)
+            to_node = wn.get_node(link.end_node_name)
+            if from_node is None or to_node is None:
+                continue
+            fc = getattr(from_node, 'coordinates', (0, 0))
+            tc = getattr(to_node, 'coordinates', (0, 0))
+            if fc is None or tc is None or len(fc) < 2 or len(tc) < 2:
+                continue
+
+            feat = QgsFeature(valve_layer.fields())
+            feat.setGeometry(QgsGeometry.fromPolylineXY([
+                QgsPointXY(float(fc[0]), float(fc[1])),
+                QgsPointXY(float(tc[0]), float(tc[1])),
+            ]))
+            feat.setAttribute("from_node", link.start_node_name)
+            feat.setAttribute("to_node", link.end_node_name)
+            feat.setAttribute("diameter", float(link.diameter) * 1000)
+            feat.setAttribute("status", "open")
+            if hasattr(link, 'valve_type'):
+                feat.setAttribute("valve_type", str(link.valve_type))
+            else:
+                feat.setAttribute("valve_type", "GATE")
+            feat.setAttribute("setting", 0.0)
+            p_added += 1
+            valve_layer.addFeature(feat)
+        valve_layer.commitChanges()
 
     iface.messageBar().pushMessage(
         "aQuaDrip",

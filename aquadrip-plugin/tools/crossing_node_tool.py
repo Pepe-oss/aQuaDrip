@@ -48,40 +48,44 @@ class CrossingNodeGenerator:
 
         pipes = self._find_pipes_layer()
         nodes = self._find_nodes_layer()
-        if pipes is None:
-            raise RuntimeError("未找到 aqd_pipes 图层，请先初始化图层")
         if nodes is None:
             raise RuntimeError("未找到 aqd_nodes 图层，请先初始化图层")
 
-        sel_type = str(selected_feature.attribute("pipe_type") or "")
+        all_link_layers = self._all_link_layers()
+        if not all_link_layers:
+            raise RuntimeError("未找到 aqd_pipes/aqd_pumps/aqd_valves 图层，请先初始化图层")
+
+        # 阀门/水泵图层没有 pipe_type 字段，用图层名推断
+        sel_layer = self._find_layer_for_feature(selected_feature)
+        if sel_layer is not None:
+            src = sel_layer.source() or ""
+            if "aqd_pumps" in src:
+                sel_type = "pump"
+            elif "aqd_valves" in src:
+                sel_type = "valve"
         sel_id = selected_feature.id()
 
-        # 1. 遍历所有不同 pipe_type 的管道，求交叉点
+        # 1. 遍历所有 link 图层中的所有要素，求交叉点
         connect_tol = self._connect_tolerance(nodes)
         crossing_points: List[QgsPointXY] = []
 
-        for feat in pipes.getFeatures():
-            # 跳过自身（含同类型：并列支管/环状干管需连接）
-            if feat.id() == sel_id:
-                continue
-            other_type = str(feat.attribute("pipe_type") or "")
-            if not other_type:
-                continue
+        for link_layer in all_link_layers:
+            for feat in link_layer.getFeatures():
+                # 跳过自身（同图层+同 fid）
+                if feat.id() == sel_id:
+                    continue
 
-            other_geom = feat.geometry()
-            if not other_geom or other_geom.isEmpty():
-                continue
+                other_geom = feat.geometry()
+                if not other_geom or other_geom.isEmpty():
+                    continue
 
-            # 几何相交点（X 型 + 端点接触）
-            inter = sel_geom.intersection(other_geom)
-            crossing_points.extend(self._extract_points(inter))
+                inter = sel_geom.intersection(other_geom)
+                crossing_points.extend(self._extract_points(inter))
 
-            # 端点容差补偿（T 型）：选中管道的端点落在另一条管道上，
-            # 或另一条管道的端点落在选中管道上
-            crossing_points.extend(
-                self._endpoint_snap_points(sel_geom, other_geom, connect_tol))
-            crossing_points.extend(
-                self._endpoint_snap_points(other_geom, sel_geom, connect_tol))
+                crossing_points.extend(
+                    self._endpoint_snap_points(sel_geom, other_geom, connect_tol))
+                crossing_points.extend(
+                    self._endpoint_snap_points(other_geom, sel_geom, connect_tol))
 
         if not crossing_points:
             self.iface.messageBar().pushMessage(
@@ -251,8 +255,35 @@ class CrossingNodeGenerator:
     def _find_pipes_layer(self) -> Optional[QgsVectorLayer]:
         return self._find_layer("aqd_pipes")
 
+    def _find_pumps_layer(self) -> Optional[QgsVectorLayer]:
+        return self._find_layer("aqd_pumps")
+
+    def _find_valves_layer(self) -> Optional[QgsVectorLayer]:
+        return self._find_layer("aqd_valves")
+
+    def _all_link_layers(self) -> List[QgsVectorLayer]:
+        """返回项目中所有 link 图层（管道/水泵/阀门）。"""
+        layers = []
+        for key in ("aqd_pipes", "aqd_pumps", "aqd_valves"):
+            ly = self._find_layer(key)
+            if ly is not None:
+                layers.append(ly)
+        return layers
+
     def _find_nodes_layer(self) -> Optional[QgsVectorLayer]:
         return self._find_layer("aqd_nodes")
+
+    def _find_layer_for_feature(self, feat: QgsFeature) -> Optional[QgsVectorLayer]:
+        """根据要素 fid 反查所属 link 图层。"""
+        target_fid = feat.id()
+        for key in ("aqd_pipes", "aqd_pumps", "aqd_valves"):
+            ly = self._find_layer(key)
+            if ly is None:
+                continue
+            for f in ly.getFeatures():
+                if f.id() == target_fid:
+                    return ly
+        return None
 
     def _find_layer(self, keyword: str) -> Optional[QgsVectorLayer]:
         for layer in self.project.mapLayers().values():

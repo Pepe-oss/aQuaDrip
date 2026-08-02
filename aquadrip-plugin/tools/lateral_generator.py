@@ -372,7 +372,6 @@ class LateralGenerator:
                 feat = QgsFeature(layer.fields())
                 feat.setGeometry(QgsGeometry(line))
                 feat.setAttribute("pipe_type", "lateral")
-                feat.setAttribute("device", "none")
                 feat.setAttribute("status", "open")
                 feat.setAttribute("material", "PE")
                 feat.setAttribute("roughness", 130)

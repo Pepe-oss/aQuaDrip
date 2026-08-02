@@ -89,7 +89,8 @@ class InpWriter:
         self._add(";ID               Node1           Node2           Length     Diameter    Roughness   MinorLoss   Status")
         for lid, link in self.network.links.items():
             if hasattr(link, "pipe_type"):
-                d_mm = link.diameter * 1000 if link.diameter < 1 else link.diameter
+                # diameter 已为 mm（links 模型约定）
+                d_mm = link.diameter if link.diameter > 1 else link.diameter * 1000
                 self._add(
                     f"  {lid:<16} {link.from_node:<15} {link.to_node:<15} "
                     f"{link.length:<10.3f} {d_mm:<10.2f} {link.roughness:<10.1f} "
@@ -123,7 +124,8 @@ class InpWriter:
             if hasattr(link, "valve_type"):
                 has_valve = True
                 vtype = str(link.valve_type.name).upper()
-                d_mm = link.diameter * 1000 if link.diameter < 1 else link.diameter
+                # diameter 已为 mm
+                d_mm = link.diameter if link.diameter > 1 else link.diameter * 1000
                 self._add(
                     f"  {lid:<16} {link.from_node:<15} {link.to_node:<15} "
                     f"{d_mm:<10.2f} {vtype:<8} {link.setting:<12.2f} {link.minor_loss:<.2f}"

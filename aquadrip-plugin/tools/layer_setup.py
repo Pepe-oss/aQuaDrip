@@ -85,15 +85,10 @@ FIELD_DEFS = {
         "geom": "LineString",
         "fields": [
             _text_field("pipe_type", 20),
-            _text_field("device", 20),
-            _text_field("valve_type", 20),
             _text_field("status", 10),
             _double_field("diameter"),
             _text_field("material", 20),
             _double_field("roughness"),
-            _double_field("pump_head"),
-            _double_field("pump_flow"),
-            _double_field("pump_power"),
             _double_field("minor_loss"),
             _double_field("lateral_spacing"),
             _double_field("emitter_spacing"),
@@ -107,20 +102,73 @@ FIELD_DEFS = {
         ],
         "value_maps": {
             "pipe_type": {"干管": "mainline", "支管": "submain", "毛管": "lateral"},
-            "device": {"无": "none", "水泵": "pump", "阀门": "valve"},
-            "valve_type": {"无": "", "减压阀 PRV": "prv", "流量控制阀 FCV": "fcv", "持压阀 PSV": "psv", "手动闸阀": "gate", "电磁阀": "solenoid"},
             "status": {"开启": "open", "关闭": "closed"},
             "material": {"PE": "PE", "PVC": "PVC", "不锈钢": "stainless", "镀锌钢": "galvanized"},
         },
         "defaults": {
             "pipe_type": "'mainline'",
-            "device": "'none'",
             "status": "'open'",
             "diameter": "63",
             "roughness": "130",
             "material": "'PE'",
             "emitter_k": "0.506",
             "emitter_x": "0.5",
+        },
+    },
+    "aqd_pumps": {
+        "name": "水泵",
+        "geom": "LineString",
+        "fields": [
+            _text_field("pump_type", 20),
+            _text_field("status", 10),
+            _double_field("pump_head"),
+            _double_field("pump_flow"),
+            _double_field("pump_power"),
+            _double_field("diameter"),
+            _double_field("minor_loss"),
+            _text_field("from_node", 50),
+            _text_field("to_node", 50),
+            _double_field("flow"),
+            _double_field("velocity"),
+        ],
+        "svg_line": "pump.svg",
+        "value_maps": {
+            "pump_type": {"离心泵": "centrifugal", "潜水泵": "submersible"},
+            "status": {"开启": "open", "关闭": "closed"},
+        },
+        "defaults": {
+            "pump_type": "'centrifugal'",
+            "status": "'open'",
+            "diameter": "63",
+            "pump_head": "20",
+        },
+    },
+    "aqd_valves": {
+        "name": "阀门",
+        "geom": "LineString",
+        "fields": [
+            _text_field("valve_type", 20),
+            _text_field("status", 10),
+            _double_field("diameter"),
+            _double_field("setting"),
+            _double_field("minor_loss"),
+            _text_field("from_node", 50),
+            _text_field("to_node", 50),
+            _double_field("flow"),
+            _double_field("velocity"),
+        ],
+        "svg_line": "valve.svg",
+        "value_maps": {
+            "valve_type": {"减压阀 PRV": "PRV", "持压阀 PSV": "PSV",
+                          "压力断路阀 PBV": "PBV", "流量控制阀 FCV": "FCV",
+                          "节流阀 TCV": "TCV", "通用阀 GPV": "GPV"},
+            "status": {"开启": "open", "关闭": "closed"},
+        },
+        "defaults": {
+            "valve_type": "'GATE'",
+            "status": "'open'",
+            "diameter": "63",
+            "setting": "0",
         },
     },
     "aqd_nodes": {
@@ -178,13 +226,19 @@ FIELD_ALIASES = {
     "emitter_spacing": "滴头间距(m)", "emitter_model": "滴头型号",
     "emitter_k": "滴头流量系数 k", "emitter_x": "滴头流态指数 x",
     # aqd_pipes
-    "pipe_type": "管道类型", "device": "设备", "valve_type": "阀门类型",
-    "status": "状态", "diameter": "管径(mm)", "material": "材质",
-    "roughness": "糙率C", "pump_head": "泵扬程(m)", "pump_flow": "泵流量",
-    "pump_power": "泵功率(kW)", "minor_loss": "局部损失系数",
+    "pipe_type": "管道类型", "material": "材质",
+    "roughness": "糙率C", "minor_loss": "局部损失系数",
     "lateral_spacing": "毛管间距(m)", "zone_id": "分区号",
     "from_node": "起点节点", "to_node": "终点节点",
     "flow": "流量(模拟)", "velocity": "流速(模拟)",
+    "diameter": "管径(mm)", "status": "状态",
+    "emitter_spacing": "滴头间距(m)", "emitter_k": "滴头流量系数 k",
+    "emitter_x": "滴头流态指数 x",
+    # aqd_pumps
+    "pump_type": "水泵类型", "pump_head": "额定扬程(m)",
+    "pump_flow": "额定流量(m³/h)", "pump_power": "额定功率(kW)",
+    # aqd_valves
+    "valve_type": "阀门类型", "setting": "设定值",
     # aqd_nodes
     "node_type": "节点类型", "source_type": "水源类型", "head": "水头(m)",
     "available_flow": "可用流量(m³/s)", "fertilizer_volume": "施肥罐容积(L)",
@@ -260,7 +314,7 @@ class LayerSetupAction:
                     continue
 
                 self._setup_editor_widgets(layer, defn)
-                self._add_to_project(layer, srs_id)
+                self._add_to_project(layer, srs_id, svg_line=defn.get("svg_line"))
                 created_layers.append(key)
                 self._log(f"  ✅ {defn['name']} ({key})")
 
@@ -411,8 +465,14 @@ class LayerSetupAction:
             if idx >= 0:
                 layer.setFieldAlias(idx, alias)
 
-    def _add_to_project(self, layer, srs_id=4326):
-        """添加到 aQuaDrip 分组，不重复"""
+    def _add_to_project(self, layer, srs_id=4326, svg_line=None):
+        """添加到 aQuaDrip 分组，不重复。
+
+        Args:
+            layer: QgsVectorLayer
+            srs_id: EPSG 代码
+            svg_line: 保留参数（后续用于 SVG 线符号，当前暂不应用）
+        """
         # 0. 显式设置 CRS（确保 GPKG 元数据读取正常）
         crs = QgsCoordinateReferenceSystem.fromEpsgId(srs_id)
         if crs.isValid():

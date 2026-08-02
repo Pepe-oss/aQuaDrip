@@ -17,6 +17,7 @@ from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from qgis.core import (
     QgsProject, QgsVectorLayer, QgsGeometry, QgsPointXY, QgsFeature,
+    QgsCoordinateReferenceSystem, QgsCoordinateTransform,
 )
 
 if TYPE_CHECKING:
@@ -48,6 +49,20 @@ class SyncManager:
 
     # ── 从 QGIS 读取 → 构建 DripNetwork ──
 
+    def _all_link_layers(self) -> List[QgsVectorLayer]:
+        """返回项目中的 aqd_pipes / aqd_pumps / aqd_valves（排除 None）。"""
+        layers = []
+        for key in ("aqd_pipes", "aqd_pumps", "aqd_valves"):
+            ly = self._get_layer(key)
+            if ly is not None:
+                layers.append(ly)
+        return layers
+
+    def _features_from(self, layer: Optional[QgsVectorLayer]) -> List[QgsFeature]:
+        if layer is None:
+            return []
+        return list(layer.getFeatures())
+
     def sync_qgis_to_network(self, expand: bool = True,
                              split_vertices: bool = False) -> 'DripNetwork':
         """从 QGIS 图层读取数据，构建 DripNetwork
@@ -68,6 +83,8 @@ class SyncManager:
         net = DripNetwork(name="aQuaDrip 项目")
 
         pipe_layer = self._get_layer("aqd_pipes")
+        pump_layer = self._get_layer("aqd_pumps")
+        valve_layer = self._get_layer("aqd_valves")
         if self._is_geographic():
             self.log("⚠️ 图层为经纬度坐标，长度/面积按度计算，建议投影到米制坐标系")
 
@@ -87,53 +104,65 @@ class SyncManager:
                 geometry=fgeom,
             )
 
-        # 2. 读取节点和管道要素
+        # 2. 读取节点和所有 link 要素（管道 / 水泵 / 阀门）
         node_layer = self._get_layer("aqd_nodes")
-        node_features = list(node_layer.getFeatures()) if node_layer else []
+        node_features = self._features_from(node_layer)
 
-        pipe_features = []
-        if pipe_layer:
-            pipe_features = list(pipe_layer.getFeatures())
+        pipe_features = self._features_from(pipe_layer)
+        pump_features = self._features_from(pump_layer)
+        valve_features = self._features_from(valve_layer)
 
         # 3. 统一拓扑构建（几何相交驱动，不经坐标匹配）
         from .topology_builder import TopologyBuilder
 
         if split_vertices:
-            # INP 导出：折线每个顶点都需 junction
-            pipe_fields = pipe_layer.fields() if pipe_layer else None
-            recs = []
-            for feat in pipe_features:
-                geom = feat.geometry()
-                if not geom or geom.isEmpty(): continue
-                line = geom.asPolyline()
-                if len(line) < 2: continue
-                recs.append({
-                    "line": line,
-                    "lid": str(self._attr(feat, "id") or f"L{feat.id()}"),
-                    "geom": geom,
-                    "feat": feat,
-                })
-            vertex_segs = self._split_at_vertices(recs)
-            # 转为 TopologyBuilder 需要的格式
-            # 关键：fake_feat 必须继承原 feat 的 fields/attributes/fid，
-            # 否则 TopologyBuilder 读 diameter/roughness/device 等字段
-            # 会得到 None→0，导出的 INP 管径/糙率全为默认值
-            builder_features = []
-            for seg in vertex_segs:
-                src_feat = seg["record"].get("feat")
-                if src_feat is not None and pipe_fields is not None:
-                    fake_feat = QgsFeature(pipe_fields)
-                    fake_feat.setAttributes(src_feat.attributes())
-                    fake_feat.setId(src_feat.id())
-                else:
-                    fake_feat = QgsFeature()
-                fake_feat.setGeometry(QgsGeometry.fromPolylineXY(seg["pts"]))
-                builder_features.append(fake_feat)
+            # INP 导出：折线每个顶点都需 junction。
+            # 处理三个图层各自的折线切段。
+
+            def _build_fake_features(layer, features):
+                """把 features 在每个折线顶点切断，生成 fake feature 列表"""
+                if not layer or not features:
+                    return []
+                flds = layer.fields()
+                recs = []
+                for feat in features:
+                    geom = feat.geometry()
+                    if not geom or geom.isEmpty():
+                        continue
+                    line = geom.asPolyline()
+                    if len(line) < 2:
+                        continue
+                    recs.append({
+                        "line": line,
+                        "lid": str(self._attr(feat, "id") or f"L{feat.id()}"),
+                        "geom": geom,
+                        "feat": feat,
+                    })
+                vertex_segs = self._split_at_vertices(recs)
+                result = []
+                for seg in vertex_segs:
+                    src_feat = seg["record"].get("feat")
+                    if src_feat is not None and flds is not None:
+                        fake_feat = QgsFeature(flds)
+                        fake_feat.setAttributes(src_feat.attributes())
+                        fake_feat.setId(src_feat.id())
+                    else:
+                        fake_feat = QgsFeature()
+                    fake_feat.setGeometry(QgsGeometry.fromPolylineXY(seg["pts"]))
+                    result.append(fake_feat)
+                return result
+
             builder = TopologyBuilder(net, self._is_geographic())
-            segments = builder.build(node_features, builder_features)
+            segments = builder.build(
+                node_features,
+                _build_fake_features(pipe_layer, pipe_features),
+                _build_fake_features(pump_layer, pump_features),
+                _build_fake_features(valve_layer, valve_features),
+            )
         else:
             builder = TopologyBuilder(net, self._is_geographic())
-            segments = builder.build(node_features, pipe_features)
+            segments = builder.build(
+                node_features, pipe_features, pump_features, valve_features)
 
         # 诊断
         lat_count = len([s for s in segments if s["pipe_type"] == "lateral"])
@@ -141,26 +170,39 @@ class SyncManager:
                  f" 节点 {len(net.nodes)}")
 
         # 4. 从 segments 建 link + 收集毛管
-        laterals: List[dict] = []  # [{lid, spacing, k, x}]
-        # link 几何（含转弯折线顶点）：可视化时按 lid 取折线，
-        # 否则被交叉切断的分段(L{fid}_p{n})只能从端点画直线，丢失转弯形状。
-        # 运行时挂到 net 上（不污染核心 Pipe 模型），由 _save_sim_history 持久化。
+        laterals: List[dict] = []
         link_geometry: Dict[str, list] = {}
-        if pipe_layer:
-            need_edit = not pipe_layer.isEditable()
+
+        # 按 device 分组，准备分别回写到对应图层
+        # layer_map: device → layer
+        layer_map = {
+            "none": pipe_layer,
+            "pump": pump_layer,
+            "valve": valve_layer,
+        }
+
+        # 收集每个 device 组的 segments，统一编辑+提交
+        group_segs: dict = {}  # device → [segments]
+        for seg in segments:
+            group_segs.setdefault(seg["device"], []).append(seg)
+
+        for device, segs in group_segs.items():
+            layer = layer_map.get(device)
+            if layer is None:
+                continue
+            need_edit = not layer.isEditable()
             if need_edit:
-                pipe_layer.startEditing()
+                layer.startEditing()
             try:
-                fid_to_segs = {}  # {fid: [segments]}
-                for seg in segments:
+                fid_to_segs = {}
+                for seg in segs:
                     fid_to_segs.setdefault(seg["fid"], []).append(seg)
 
-                for seg in segments:
+                for seg in segs:
                     pts = seg["pts"]
                     seg_length = QgsGeometry.fromPolylineXY(pts).length()
                     if seg_length <= 0:
                         continue
-                    rec_fid = seg["fid"]
                     lid = seg["lid"] if seg["part"] == 0 else \
                         f"{seg['lid']}_p{seg['part'] + 1}"
                     from_node = seg["from_node"]
@@ -168,7 +210,6 @@ class SyncManager:
                     if not from_node or not to_node:
                         continue
 
-                    # 记录该分段的折线顶点（含转弯），供可视化重建几何
                     link_geometry[lid] = [
                         (float(p.x()), float(p.y())) for p in pts
                     ]
@@ -177,7 +218,6 @@ class SyncManager:
                     diameter = float(self._attr(feat, "diameter") or 0)
                     roughness = float(self._attr(feat, "roughness") or 130)
                     pipe_type = seg["pipe_type"]
-                    device = seg["device"]
 
                     if device == "pump":
                         link = Pump(lid, from_node, to_node,
@@ -185,11 +225,12 @@ class SyncManager:
                                     rated_flow=float(self._attr(feat, "pump_flow") or 0),
                                     rated_power=float(self._attr(feat, "pump_power") or 0))
                     elif device == "valve":
-                        vtype_str = str(self._attr(feat, "valve_type") or "gate").upper()
+                        vtype_str = str(self._attr(feat, "valve_type") or "GATE").upper()
                         vtype = getattr(ValveType, vtype_str, ValveType.GATE)
+                        setting = float(self._attr(feat, "setting") or 0)
                         link = Valve(lid, from_node, to_node,
                                      valve_type=vtype,
-                                     setting=10.0,
+                                     setting=setting,
                                      diameter=diameter)
                     else:
                         link = Pipe(lid, from_node, to_node,
@@ -212,31 +253,47 @@ class SyncManager:
                             "x": float(ex) if ex is not None else None,
                         })
 
-                # 拓扑回写
-                for fid, segs in fid_to_segs.items():
-                    if not segs:
+                # 拓扑回写（写回各自图层）
+                for fid, fsegs in fid_to_segs.items():
+                    if not fsegs:
                         continue
-                    feat = segs[0]["feat"]
-                    feat.setAttribute("from_node", segs[0]["from_node"] or "")
-                    feat.setAttribute("to_node", segs[-1]["to_node"] or "")
-                    pipe_layer.updateFeature(feat)
+                    f = fsegs[0]["feat"]
+                    f.setAttribute("from_node", fsegs[0]["from_node"] or "")
+                    f.setAttribute("to_node", fsegs[-1]["to_node"] or "")
+                    layer.updateFeature(f)
             finally:
                 if need_edit:
-                    pipe_layer.commitChanges()
+                    layer.commitChanges()
 
-        # 4. 毛管展开为 EmitterNode 滴头链（模拟出水的前提）
-        #    INP 导出时跳过展开，保留原始管网结构
-        if expand:
-            for lat in laterals:
+        # 5. 毛管展开为 EmitterNode 滴头链
+        #    关键：emitter_spacing 是米单位，必须投影到米制 CRS（UTM）后再展开，
+        #    否则在经纬度下 math.hypot 算出的"长度"是度，滴头数永远 = 1。
+        if expand and laterals:
+            src_crs = self._detect_crs()
+            is_geo = src_crs is not None and src_crs.isGeographic()
+            if is_geo:
+                # 临时投影到 UTM → 展开 → 投影回原 CRS
+                self._reproject_net(net, src_crs, to_utm=True)
                 try:
-                    expand_lateral(net, lat["lid"], lat["spacing"],
-                                   emitter_k=lat.get("k"),
-                                   emitter_x=lat.get("x"))
-                except Exception as e:
-                    self.log(f"⚠️ 毛管 {lat['lid']} 展开失败: {e}")
+                    for lat in laterals:
+                        try:
+                            expand_lateral(net, lat["lid"], lat["spacing"],
+                                           emitter_k=lat.get("k"),
+                                           emitter_x=lat.get("x"))
+                        except Exception as e:
+                            self.log(f"⚠️ 毛管 {lat['lid']} 展开失败: {e}")
+                finally:
+                    self._reproject_net(net, src_crs, to_utm=False)
+            else:
+                for lat in laterals:
+                    try:
+                        expand_lateral(net, lat["lid"], lat["spacing"],
+                                       emitter_k=lat.get("k"),
+                                       emitter_x=lat.get("x"))
+                    except Exception as e:
+                        self.log(f"⚠️ 毛管 {lat['lid']} 展开失败: {e}")
 
-        # expand 后补充缺失 link 的几何（毛管展开新增的滴头间短段是直线，
-        # 用 from/to 节点坐标补全即可），保证每个 link 都有可视化几何
+        # expand 后补全 link 几何
         for lid, link in net.links.items():
             if lid in link_geometry:
                 continue
@@ -245,28 +302,74 @@ class SyncManager:
             if a is not None and b is not None:
                 link_geometry[lid] = [(a.x, a.y), (b.x, b.y)]
 
-        # 运行时挂到 net（不污染核心 Pipe 模型）
         net.link_geometry = link_geometry
-
         return net
+
+    # ── CRS 投影辅助 ──
+
+    def _detect_crs(self) -> Optional[QgsCoordinateReferenceSystem]:
+        """检测项目 CRS（用于判定地理/投影坐标系）。"""
+        for key in ("aqd_nodes", "aqd_pipes", "aqd_fields"):
+            ly = self._get_layer(key)
+            if ly is not None and ly.crs().isValid():
+                return ly.crs()
+        if self.project.crs().isValid():
+            return self.project.crs()
+        return None
+
+    def _reproject_net(self, net, src_crs: QgsCoordinateReferenceSystem,
+                       to_utm: bool):
+        """原地投影 DripNetwork 的所有节点坐标。
+
+        to_utm=True  : src_crs → UTM（用于米单位展开）
+        to_utm=False : UTM → src_crs（展开后还原）
+        """
+        if not net.nodes:
+            return
+        # 以第一个节点坐标算 UTM zone
+        sample = next(iter(net.nodes.values()))
+        if to_utm:
+            utm = self._utm_zone(sample.x, sample.y)
+            self._utm_crs = utm
+            xform = QgsCoordinateTransform(src_crs, utm, self.project)
+        else:
+            utm = getattr(self, "_utm_crs", None)
+            if utm is None:
+                return
+            xform = QgsCoordinateTransform(utm, src_crs, self.project)
+
+        for node in net.nodes.values():
+            pt = QgsPointXY(node.x, node.y)
+            tp = xform.transform(pt)
+            node.x = tp.x()
+            node.y = tp.y()
+
+    @staticmethod
+    def _utm_zone(lon: float, lat: float) -> QgsCoordinateReferenceSystem:
+        """根据经纬度返回对应 UTM zone 的 CRS。"""
+        zone = int(math.floor((lon + 180) / 6) + 1)
+        epsg = 32600 + zone if lat >= 0 else 32700 + zone
+        return QgsCoordinateReferenceSystem(f"EPSG:{epsg}")
 
     # ── 将模拟结果写回 QGIS ──
 
     def sync_from_network(self, network: 'DripNetwork',
                           result: 'SimulationResult' = None):
-        """将模拟结果写回 QGIS 图层（flow/velocity/pressure）"""
-        pipe_layer = self._get_layer("aqd_pipes")
+        """将模拟结果写回 QGIS 图层（flow/velocity/pressure）
+
+        管道/水泵/阀门的 flow/velocity 分别写回对应图层。
+        """
         node_layer = self._get_layer("aqd_nodes")
         if not result:
             return
 
-        # 写入管道结果（流量、流速）
-        if pipe_layer:
-            need_edit = not pipe_layer.isEditable()
+        # 写入所有 link 图层结果（流量、流速）
+        for layer in self._all_link_layers():
+            need_edit = not layer.isEditable()
             if need_edit:
-                pipe_layer.startEditing()
+                layer.startEditing()
             try:
-                for feat in pipe_layer.getFeatures():
+                for feat in layer.getFeatures():
                     lid = str(self._attr(feat, "id") or f"L{feat.id()}")
                     changed = False
                     if lid in result.link_flow:
@@ -280,15 +383,14 @@ class SyncManager:
                             feat.setAttribute("velocity", float(arr[-1]))
                             changed = True
                     if changed:
-                        pipe_layer.updateFeature(feat)
+                        layer.updateFeature(feat)
             finally:
                 if need_edit:
-                    pipe_layer.commitChanges()
-            pipe_layer.triggerRepaint()
+                    layer.commitChanges()
+            layer.triggerRepaint()
 
         # 写入节点结果（压力）
         if node_layer:
-            # 迁移兜底：旧 GPKG 无 pressure 字段时自动补
             self._ensure_field(node_layer, "pressure")
             need_edit = not node_layer.isEditable()
             if need_edit:

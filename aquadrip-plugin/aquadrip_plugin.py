@@ -266,9 +266,11 @@ class AQuaDripPlugin:
 
         source = layer.source() if hasattr(layer, "source") else ""
         layer_name = layer.name() or ""
-        if "aqd_pipes" not in source and layer_name != "aqd_pipes":
+        is_link_layer = any(k in source or layer_name == k
+                           for k in ("aqd_pipes", "aqd_pumps", "aqd_valves"))
+        if not is_link_layer:
             self.iface.messageBar().pushWarning(
-                "aQuaDrip", "当前活动图层不是 aqd_pipes")
+                "aQuaDrip", "当前活动图层不是 aqd_pipes / aqd_pumps / aqd_valves")
             return
 
         selected = layer.selectedFeatures()
@@ -373,8 +375,9 @@ class AQuaDripPlugin:
         """获取当前唯一选中要素
 
         Args:
-            required_layer_key: 指定图层名（如 "aqd_fields"），
-                None 表示接受任意 aQuaDrip 图层（地块/管道/节点）
+            required_layer_key: 指定图层名（如 "aqd_fields"/"aqd_pipes"/
+                "aqd_pumps"/"aqd_valves"/"aqd_nodes"），
+                None 表示接受任意 aQuaDrip 图层
 
         Returns:
             (feat, layer) 或 (None, None)（已弹提示）
@@ -498,13 +501,13 @@ class AQuaDripPlugin:
             from .tools.sim_history import SimHistory
             from qgis.core import QgsProject, QgsVectorLayer
 
-            # 从项目找 GPKG 路径
+            # 从项目找 GPKG 路径（优先用 aqd_fields，更稳定）
             gpkg_path = None
             for layer in QgsProject.instance().mapLayers().values():
                 if not isinstance(layer, QgsVectorLayer):
                     continue
                 s = layer.source() if hasattr(layer, "source") else ""
-                if "aqd_pipes" in s or layer.name() == "aqd_pipes":
+                if "aqd_fields" in s or layer.name() == "aqd_fields":
                     gpkg_path = s.split("|")[0]
                     if gpkg_path.endswith(".gpkg"):
                         break

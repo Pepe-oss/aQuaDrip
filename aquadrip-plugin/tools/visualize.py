@@ -134,14 +134,15 @@ class Visualizer:
 
         # 几何来源优先级（保留管道真实形状，含转弯折线）：
         #   1. link_geometry：sync 时记录的折线顶点（最完整，含转弯）
-        #   2. aqd_pipes 图层：原始未切断管道（按 L{fid} 匹配）
+        #   2. 原始 link 图层（aqd_pipes/aqd_pumps/aqd_valves）：按 L{fid} 匹配
         #   3. link_endpoints + node_coords：仅两端点直线（兜底）
-        pipe_source = self._find_layer("aqd_pipes")
         link_geom_map = {}  # {link_id: geometry}
-        if pipe_source:
-            for feat in pipe_source.getFeatures():
-                lid = f"L{feat.id()}"
-                link_geom_map[lid] = feat.geometry()
+        for key in ("aqd_pipes", "aqd_pumps", "aqd_valves"):
+            ly = self._find_layer(key)
+            if ly:
+                for feat in ly.getFeatures():
+                    lid = f"L{feat.id()}"
+                    link_geom_map[lid] = feat.geometry()
 
         feats = []
         for lid, flow in link_flow.items():
@@ -239,6 +240,14 @@ class Visualizer:
             ]
 
         intv = (max_val - min_val) / len(colors)
+        # 自适应标签精度：范围窄时显示更多小数
+        span = max_val - min_val
+        if span < 0.01:
+            digits = 4
+        elif span < 1:
+            digits = 3
+        else:
+            digits = 2
         range_list = []
         for i, color in enumerate(colors):
             lo = min_val + intv * i
@@ -249,7 +258,7 @@ class Visualizer:
                 symbol.setSize(3)
             else:  # 线
                 symbol.setWidth(1.5)
-            label = f"{lo:.2f} - {hi:.2f}"
+            label = f"{lo:.{digits}f} - {hi:.{digits}f}"
             range_list.append(QgsRendererRange(lo, hi, symbol, label))
 
         renderer = QgsGraduatedSymbolRenderer(field_name, range_list)

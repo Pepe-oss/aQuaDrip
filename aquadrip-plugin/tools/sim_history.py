@@ -87,19 +87,21 @@ class SimHistory:
             "emitter_count": len(emitter_flow),
             "node_pressure": {k: round(float(v), 4)
                               for k, v in node_pressure.items()},
-            # link_flow / link_velocity 单位为 m³/s 与 m/s，滴灌毛管段流量
-            # 低至 1e-7 m³/s（单滴头 1.6 L/h），固定小数位 round 会吃掉
-            # 有效数字（round(v,6) 使 4.4e-7→0.0），导致可视化全为 0。
-            # 改为直接存原值，JSON float 序列化无损，渲染器自行算 min/max。
-            "link_flow": {k: float(v) for k, v in link_flow.items()},
+            # link_flow / link_velocity 存储为 L/h 和 m/s 便于可视化直接显示。
+            # 原始 WNTR 单位为 m³/s（毛管段流量低至 1e-7），标签显示全是 0；
+            # 转换为 L/h 后量级合理（单毛管段 1~50 L/h）。
+            "link_flow": {k: float(v) * 3600 * 1000  # m³/s → L/h
+                          for k, v in link_flow.items()},
             "link_velocity": {k: float(v) for k, v in link_velocity.items()},
             "emitter_flow": {k: round(float(v), 4)
                              for k, v in emitter_flow.items()},
-            "node_coords": {k: [round(c[0], 4), round(c[1], 4)]
+            "node_coords": {k: [round(c[0], 7), round(c[1], 7)]
                             for k, c in node_coords.items()},
             "link_endpoints": {k: list(v)
                                for k, v in (link_endpoints or {}).items()},
-            "link_geometry": {k: [[round(p[0], 4), round(p[1], 4)]
+            # 坐标保留 7 位小数：经纬度下 0.0001°≈11m，4 位小数会让
+            # 相邻滴头（间距 0.3m）叠合到同一点。7 位 ≈ 1cm 精度。
+            "link_geometry": {k: [[round(p[0], 7), round(p[1], 7)]
                                   for p in pts]
                               for k, pts in (link_geometry or {}).items()},
         }

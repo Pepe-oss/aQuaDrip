@@ -114,22 +114,69 @@ class DripSimulation:
         import wntr
         
         if hasattr(link, "pump_type"):
-            # Pump (Link!)
+            # Pump (Link!) — 用 POWER 模式（功率），无需曲线
+            # Q-H 曲线模式（HEAD）需要先创建 Curve，复杂且数据可能缺失；
+            # POWER 模式只需功率值，WNTR 内部自动求解。
+            # 功率 P(kW) ≈ ρgQH/η = 9.81 × Q(m³/s) × H(m) / η
+            # 若用户未提供 rated_power，从 rated_flow/rated_head 估算
+            q_cms = (link.rated_flow or 0) / 3600.0  # m³/h → m³/s
+            h_m = link.rated_head or 0
+            if getattr(link, "rated_power", 0) and link.rated_power > 0:
+                power_kw = link.rated_power
+            elif q_cms > 0 and h_m > 0:
+                eff = (getattr(link, "efficiency", 0) or 60) / 100.0
+                power_kw = 9.81 * q_cms * h_m / max(eff, 0.1)
+            else:
+                power_kw = 0.5  # 兜底 0.5 kW
             wn.add_pump(lid, link.from_node, link.to_node,
-                       pump_type="HEAD",
-                       pump_parameters=[(link.rated_flow or 0, link.rated_head or 0)])
-            logger.debug(f"  Pump: {lid} {link.from_node}→{link.to_node}")
+                       pump_type="POWER",
+                       pump_parameter=power_kw)
+            logger.debug(f"  Pump: {lid} {link.from_node}→{link.to_node} P={power_kw:.2f}kW")
         
         elif hasattr(link, "valve_type"):
             # Valve (Link!)
             vtype = str(link.valve_type.name).upper()
-            # links 约定 diameter 为 mm，WNTR 需要 m
-            diameter_m = link.diameter / 1000.0 if link.diameter > 0 else None
-            wn.add_valve(lid, link.from_node, link.to_node,
-                        valve_type=vtype,
-                        diameter=diameter_m,
-                        setting=link.setting)
-            logger.debug(f"  Valve: {lid} type={vtype} setting={link.setting}")
+            # WNTR 仅支持这些阀门类型
+            WNTR_VALVE_TYPES = {"PRV", "PSV", "PBV", "FCV", "TCV", "GPV"}
+            # WNTRSimulator（纯 Python）额外不支持 GPV
+            WNTRSIM_UNSUPPORTED = {"GPV"}
+            is_epanet = self._engine.name in ("epanet",)
+            engine_unsupported = set() if is_epanet else WNTRSIM_UNSUPPORTED
+
+            # PRV/PSV/FCV 不能直连 Reservoir/Tank，否则 WNTR 报错
+            DIRECT_FORBIDDEN = {"PRV", "PSV", "FCV"}
+            needs_downgrade = (vtype not in WNTR_VALVE_TYPES
+                              or vtype in engine_unsupported)
+            if vtype in DIRECT_FORBIDDEN and not needs_downgrade:
+                from_node_obj = self._wn.get_node(link.from_node) if self._wn else None
+                to_node_obj = self._wn.get_node(link.to_node) if self._wn else None
+                # 节点此时可能尚未加入 wn，改用 network 反查类型
+                src_node = self.network.get_node(link.from_node)
+                dst_node = self.network.get_node(link.to_node)
+                from wdrip.network import SourceNode
+                if (isinstance(src_node, SourceNode)
+                        or isinstance(dst_node, SourceNode)):
+                    logger.warning(
+                        f"阀门 {lid} 类型 '{vtype}' 直连水源，已降级为普通管道")
+                    needs_downgrade = True
+
+            if needs_downgrade:
+                logger.warning(
+                    f"阀门 {lid} 类型 '{vtype}' 不被当前引擎支持，已降级为普通管道")
+                diameter_m = link.diameter / 1000.0 if link.diameter > 0 else 0.02
+                wn.add_pipe(lid, link.from_node, link.to_node,
+                           length=1,  # 阀门视为短管道
+                           diameter=diameter_m,
+                           roughness=130,
+                           minor_loss=link.minor_loss)
+            else:
+                diameter_m = link.diameter / 1000.0 if link.diameter > 0 else None
+                wn.add_valve(lid, link.from_node, link.to_node,
+                            valve_type=vtype,
+                            diameter=diameter_m,
+                            initial_setting=link.setting,
+                            initial_status="ACTIVE")
+                logger.debug(f"  Valve: {lid} type={vtype} setting={link.setting}")
         
         else:
             # Pipe
