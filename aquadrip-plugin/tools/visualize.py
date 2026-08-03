@@ -16,6 +16,9 @@ from qgis.core import (
 from qgis.PyQt.QtCore import QVariant
 from qgis.PyQt.QtGui import QColor
 
+# 压力单位转换：WNTR 输出 mH₂O → 显示用 MPa
+M_H2O_TO_MPa = 0.00980665
+
 
 class Visualizer:
     """从历史记录生成可视化临时图层"""
@@ -57,7 +60,7 @@ class Visualizer:
 
     def _create_node_layer(self, record: dict, crs_id: str,
                             mode: str) -> Optional[QgsVectorLayer]:
-        """节点图层：压力/滴头流量着色"""
+        """节点图层：压力 (MPa) / 滴头流量 (L/h) 着色"""
         node_pressure = record.get("node_pressure", {})
         emitter_flow = record.get("emitter_flow", {})
         node_coords = record.get("node_coords", {})
@@ -67,7 +70,7 @@ class Visualizer:
         dp = layer.dataProvider()
         dp.addAttributes([
             QgsField("node_id", QVariant.String),
-            QgsField("pressure", QVariant.Double),
+            QgsField("pressure_mpa", QVariant.Double),
             QgsField("emitter_flow", QVariant.Double),
         ])
         layer.updateFields()
@@ -82,7 +85,7 @@ class Visualizer:
             feat.setGeometry(QgsGeometry.fromPointXY(
                 QgsPointXY(float(coords[0]), float(coords[1]))))
             feat.setAttribute("node_id", nid)
-            feat.setAttribute("pressure", float(pressure))
+            feat.setAttribute("pressure_mpa", float(pressure) * M_H2O_TO_MPa)
             # 如果该节点也是滴头，取滴头流量
             if nid in emitter_flow:
                 feat.setAttribute("emitter_flow", float(emitter_flow[nid]))
@@ -108,7 +111,7 @@ class Visualizer:
         layer.updateExtents()
 
         # 着色
-        field_name = "emitter_flow" if mode == "emitter" else "pressure"
+        field_name = "emitter_flow" if mode == "emitter" else "pressure_mpa"
         self._apply_graduated_renderer(layer, field_name, "blue_red")
 
         return layer

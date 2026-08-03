@@ -168,7 +168,7 @@ FIELD_DEFS = {
             "valve_type": "'GATE'",
             "status": "'open'",
             "diameter": "63",
-            "setting": "0",
+            "setting": "10",   # 非零默认：PRV/PSV/PBV 设 10m，0 会导致阻断
         },
     },
     "aqd_nodes": {

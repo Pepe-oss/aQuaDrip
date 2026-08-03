@@ -16,7 +16,7 @@ import math
 from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from qgis.core import (
-    QgsProject, QgsVectorLayer, QgsGeometry, QgsPointXY, QgsFeature,
+    QgsProject, QgsVectorLayer, QgsRasterLayer, QgsGeometry, QgsPointXY, QgsFeature,
     QgsCoordinateReferenceSystem, QgsCoordinateTransform,
 )
 
@@ -303,9 +303,62 @@ class SyncManager:
                 link_geometry[lid] = [(a.x, a.y), (b.x, b.y)]
 
         net.link_geometry = link_geometry
+
+        # 6. 为所有节点（含 auto_N / E_* 滴头）提取 DEM 高程
+        #    高程提取工具只写 aqd_nodes 图层，expand 创建的新节点
+        #    elevation 为 0 → 模拟时 pressure = total_head − 0 = 总水头值，
+        #    显示为"一千多"的假高压。此处直接采样 DEM 补全所有节点高程。
+        if expand:
+            self._apply_dem_to_network(net)
+
         return net
 
     # ── CRS 投影辅助 ──
+
+    def _apply_dem_to_network(self, net):
+        """为 DripNetwork 中所有节点采样 DEM 高程。
+
+        expand_lateral 创建的 auto_N / E_* 节点 elevation 为 0，
+        导致模拟压力 = total_head − 0 = 虚高的几千。此方法从项目
+        中的 DEM 栅格直接采样补全所有节点高程。
+        """
+        # 1. 查找 DEM 图层
+        dem_layer = None
+        for _lid, layer in self.project.mapLayers().items():
+            if not isinstance(layer, QgsRasterLayer):
+                continue
+            if layer.name() == "DEM 高程" or "dem" in layer.name().lower():
+                dem_layer = layer
+                break
+        if dem_layer is None:
+            return  # 无 DEM 图层，静默跳过
+
+        provider = dem_layer.dataProvider()
+        if provider is None:
+            return
+
+        # 2. CRS 变换
+        node_crs = self._detect_crs()
+        dem_crs = dem_layer.crs()
+        xform = None
+        if node_crs is not None and node_crs.isValid() and dem_crs.isValid() \
+                and node_crs != dem_crs:
+            xform = QgsCoordinateTransform(node_crs, dem_crs, self.project)
+
+        # 3. 采样所有节点
+        updated = 0
+        total = len(net.nodes)
+        for node in net.nodes.values():
+            pt = QgsPointXY(node.x, node.y)
+            if xform is not None:
+                pt = xform.transform(pt)
+            value, valid = provider.sample(pt, 1)
+            if valid:
+                node.elevation = float(value)
+                updated += 1
+
+        if updated > 0:
+            self.log(f"🌐 DEM 高程已应用于 {updated}/{total} 个节点")
 
     def _detect_crs(self) -> Optional[QgsCoordinateReferenceSystem]:
         """检测项目 CRS（用于判定地理/投影坐标系）。"""
