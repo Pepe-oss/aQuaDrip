@@ -26,17 +26,34 @@ class DripSimulation:
     Args:
         network: 滴灌管网
         engine: 模拟引擎实例。不指定则调用 auto_detect_engine()
+        precision: 精度预设 "fast"/"standard"/"high"（仅对迭代引擎生效）
     """
+
+    # 精度预设
+    PRESETS = {
+        "fast":     {"max_iter": 5,  "tolerance": 1e-6},
+        "standard": {"max_iter": 8,  "tolerance": 1e-7},
+        "high":     {"max_iter": 15, "tolerance": 1e-8},
+    }
     
-    def __init__(self, network: 'DripNetwork', engine: Optional['SimulationEngine'] = None):
+    def __init__(self, network: 'DripNetwork', engine: Optional['SimulationEngine'] = None,
+                 precision: str = "fast"):
         from .engine import auto_detect_engine, SimulationEngine
         self.network = network
         self._wn = None  # WNTR WaterNetworkModel
         self._wntr_results = None
-        self._engine: SimulationEngine = engine or auto_detect_engine()
-        
+
         if engine is not None:
             self._engine = engine
+        else:
+            self._engine = auto_detect_engine()
+            # 对迭代引擎注入精度参数
+            params = self.PRESETS.get(precision, self.PRESETS["fast"])
+            if hasattr(self._engine, 'max_iter'):
+                self._engine.max_iter = params["max_iter"]
+                self._engine.tolerance = params["tolerance"]
+
+        self._precision = precision
     
     @property
     def engine_name(self) -> str:
@@ -136,21 +153,12 @@ class DripSimulation:
         elif hasattr(link, "valve_type"):
             # Valve (Link!)
             vtype = str(link.valve_type.name).upper()
-            # WNTR 仅支持这些阀门类型
-            WNTR_VALVE_TYPES = {"PRV", "PSV", "PBV", "FCV", "TCV", "GPV"}
-            # WNTRSimulator（纯 Python）额外不支持 GPV
-            WNTRSIM_UNSUPPORTED = {"GPV"}
-            is_epanet = self._engine.name in ("epanet",)
-            engine_unsupported = set() if is_epanet else WNTRSIM_UNSUPPORTED
+            # WNTR 支持的阀门类型（与 ValveType 枚举一致）
+            WNTR_VALVE_TYPES = {"PRV", "PSV", "FCV"}
+            needs_downgrade = vtype not in WNTR_VALVE_TYPES
 
             # PRV/PSV/FCV 不能直连 Reservoir/Tank，否则 WNTR 报错
-            DIRECT_FORBIDDEN = {"PRV", "PSV", "FCV"}
-            needs_downgrade = (vtype not in WNTR_VALVE_TYPES
-                              or vtype in engine_unsupported)
-            if vtype in DIRECT_FORBIDDEN and not needs_downgrade:
-                from_node_obj = self._wn.get_node(link.from_node) if self._wn else None
-                to_node_obj = self._wn.get_node(link.to_node) if self._wn else None
-                # 节点此时可能尚未加入 wn，改用 network 反查类型
+            if not needs_downgrade:
                 src_node = self.network.get_node(link.from_node)
                 dst_node = self.network.get_node(link.to_node)
                 from wdrip.network import SourceNode
@@ -198,12 +206,14 @@ class DripSimulation:
 
     # ---- 运行模拟 ----
 
-    def run(self, duration: int = 0, timestep: int = 3600) -> 'SimulationResult':
+    def run(self, duration: int = 0, timestep: int = 3600,
+            progress_callback=None) -> 'SimulationResult':
         """运行水力模拟
         
         Args:
             duration: 模拟时长（seconds）。0=稳态，>0=延时
             timestep: 报告时间步长（seconds）
+            progress_callback: 可选进度回调 (percent: int, message: str)
             
         Returns:
             模拟结果
@@ -219,23 +229,35 @@ class DripSimulation:
         try:
             # 构建模型
             self._wn = self._build_wntr_model()
-            
+            if progress_callback:
+                progress_callback(5, "构建 WNTR 模型完成")
+
             # 设置模拟时间
             if duration > 0:
                 self._wn.options.time.duration = duration
                 self._wn.options.time.report_timestep = timestep
             else:
                 self._wn.options.time.duration = 0
+
+            # 注入进度回调到引擎
+            if progress_callback and hasattr(self._engine, 'progress_callback'):
+                self._engine.progress_callback = progress_callback
             
             # 使用当前引擎运行
             logger.info(f"使用引擎: {self._engine.display_name}")
             wntr_results = self._engine.run(self._wn)
-            
+
+            if progress_callback:
+                progress_callback(95, "提取模拟结果...")
+
             # 提取结果
             result = self._extract_results(wntr_results, duration)
             result.success = True
-            result.message = f"模拟成功 (引擎: {self._engine.display_name})"
-            
+            result.message = f"模拟成功 (引擎: {self._engine.display_name}, 精度: {self._precision})"
+
+            if progress_callback:
+                progress_callback(100, "完成")
+
             return result
         
         except Exception as e:

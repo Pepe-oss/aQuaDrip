@@ -78,12 +78,15 @@ class IterativeWNTRSimulatorEngine(SimulationEngine):
     display_name = "WNTR迭代求解器"
     description = "通过迭代逼近 emitter 沿程损失，无需 EPANET，但速度较慢"
     
-    def __init__(self, max_iter: int = 10, tolerance: float = 1e-7):
+    def __init__(self, max_iter: int = 10, tolerance: float = 1e-7,
+                 progress_callback=None):
         super().__init__()
         # tolerance 单位 m³/s：1e-7 ≈ 0.36 L/h，与滴头流量量级匹配
-        # （原默认 0.001 m³/s = 3.6 m³/h，远大于滴头流量会假收敛）
+        #（原默认 0.001 m³/s = 3.6 m³/h，远大于滴头流量会假收敛）
         self.max_iter = max_iter
         self.tolerance = tolerance
+        # 可选进度回调: callback(percent: int, message: str)
+        self.progress_callback = progress_callback
     
     def run(self, wn_model) -> SimulationResult:
         import wntr
@@ -136,6 +139,9 @@ class IterativeWNTRSimulatorEngine(SimulationEngine):
                     wn_node.demand_timeseries_list[0].base_value = q_cms
             
             logger.debug(f"  迭代{iteration+1}: max_change={max_change:.6f}")
+            if self.progress_callback:
+                pct = int((iteration + 1) / self.max_iter * 100)
+                self.progress_callback(pct, f"迭代 {iteration+1}/{self.max_iter}")
             if max_change < self.tolerance:
                 logger.debug(f"  收敛于迭代{iteration+1}")
                 break

@@ -50,9 +50,9 @@ class TestLinks(unittest.TestCase):
 
     def test_valve_direction(self):
         prv = Valve("V001", "J001", "J002", valve_type=ValveType.PRV)
-        gate = Valve("V002", "J001", "J002", valve_type=ValveType.GATE)
+        gate = Valve("V002", "J001", "J002", valve_type=ValveType.PRV)
         self.assertTrue(prv.has_direction)
-        self.assertFalse(gate.has_direction)
+        self.assertTrue(gate.has_direction)
 
 
 class TestEmitterSpec(unittest.TestCase):

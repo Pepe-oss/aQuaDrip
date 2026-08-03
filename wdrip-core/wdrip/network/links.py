@@ -12,14 +12,10 @@ from typing import Optional, List, Tuple
 
 
 class ValveType(Enum):
-    """阀门类型"""
-    GATE = "GATE"           # 手动闸阀
-    PRV = "PRV"             # 减压阀（有方向：高压侧→低压侧）
-    FCV = "FCV"             # 流量控制阀（有方向）
-    PSV = "PSV"             # 持压阀（有方向）
-    SOLENOID = "SOLENOID"   # 电磁阀（有方向）
-    CHECK = "CHECK"         # 止回阀（有方向：from→to 为正向）
-    GPV = "GPV"             # 通用阀（有方向）
+    """阀门类型（仅保留滴灌水力计算中真正有水力效果的三种调节阀）"""
+    PRV = "PRV"             # 减压阀（高压侧→低压侧，设定下游压力）
+    FCV = "FCV"             # 流量控制阀（设定流量上限）
+    PSV = "PSV"             # 持压阀（维持上游压力）
 
 
 class ValveStatus(Enum):
@@ -140,7 +136,7 @@ class Valve(DripLink):
         has_direction: 是否有方向约束
         minor_loss: 局部水头损失系数
     """
-    valve_type: ValveType = ValveType.GATE
+    valve_type: ValveType = ValveType.PRV
     setting: float = 0.0
     status: ValveStatus = ValveStatus.OPEN
     diameter: float = 0.0        # mm
@@ -148,8 +144,5 @@ class Valve(DripLink):
 
     @property
     def has_direction(self) -> bool:
-        """是否有方向约束"""
-        return self.valve_type in (
-            ValveType.PRV, ValveType.FCV, ValveType.PSV,
-            ValveType.SOLENOID, ValveType.CHECK, ValveType.GPV,
-        )
+        """是否有方向约束（PRV/FCV/PSV 均有方向性）"""
+        return self.valve_type in (ValveType.PRV, ValveType.FCV, ValveType.PSV)

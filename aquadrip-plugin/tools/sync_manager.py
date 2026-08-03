@@ -226,7 +226,7 @@ class SyncManager:
                                     rated_power=float(self._attr(feat, "pump_power") or 0))
                     elif device == "valve":
                         vtype_str = str(self._attr(feat, "valve_type") or "GATE").upper()
-                        vtype = getattr(ValveType, vtype_str, ValveType.GATE)
+                        vtype = getattr(ValveType, vtype_str, ValveType.PRV)
                         setting = float(self._attr(feat, "setting") or 0)
                         link = Valve(lid, from_node, to_node,
                                      valve_type=vtype,

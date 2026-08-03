@@ -436,14 +436,15 @@ class AQuaDripPlugin:
         return selected[0], layer
 
     def on_run_simulation(self):
-        """运行水力模拟：同步→构建→展开滴头→WNTR→结果回写→CU/DU 统计"""
+        """运行水力模拟：同步构建管网 → 精度选择 → 后台线程模拟 + 进度条"""
         try:
             from .tools.sync_manager import SyncManager
 
+            # 1. 同步构建 DripNetwork（必须主线程，涉及 QGIS 图层读写）
             sync = SyncManager(self.iface)
             net = sync.sync_qgis_to_network()
 
-            # 预检：必须有水源
+            # 预检
             sources = [n for n in net.nodes.values()
                        if hasattr(n, "source_type")]
             if not sources:
@@ -458,69 +459,123 @@ class AQuaDripPlugin:
                     "管网中没有管道。")
                 return
 
-            # 校验：显示问题但允许继续（死端等在构建期常见）
             errors = net.validate()
             if errors and self.dockwidget:
                 for e in errors[:5]:
                     self.dockwidget.log_message(f"⚠️ 校验: {e}")
 
-            # 运行模拟（小管网秒级，同步执行 + 等待光标）
-            from wdrip.simulation import DripSimulation
-            from qgis.PyQt.QtWidgets import QApplication
-            QApplication.setOverrideCursor(Qt.WaitCursor)
-            try:
-                sim = DripSimulation(net)
-                result = sim.run()
-            finally:
-                QApplication.restoreOverrideCursor()
-
-            if not result.success:
-                QMessageBox.critical(
-                    self.iface.mainWindow(), "aQuaDrip",
-                    f"模拟失败：\n{result.message}")
+            # 2. 弹出精度选择对话框
+            from .ui.simulation_dialog import SimulationDialog
+            dlg = SimulationDialog(self.iface)
+            if dlg.exec() != dlg.Accepted:
                 return
+            precision = dlg.precision_level()
+            save_history = dlg.save_history()
 
-            # 结果回写图层
-            sync.sync_from_network(net, result)
+            # 3. 启动后台 Worker + QThread
+            from .tools.simulation_worker import SimulationWorker
+            from qgis.PyQt.QtCore import QThread
+            from qgis.PyQt.QtWidgets import QProgressBar
 
-            # CU/DU 均匀度统计
-            from wdrip.analysis import UniformityAnalyzer
-            flows = [float(arr[0]) for arr in result.emitter_flow.values()
-                     if len(arr) > 0]
-            cu = UniformityAnalyzer.cu(flows) if flows else 0.0
-            du = UniformityAnalyzer.du(flows) if flows else 0.0
+            self._sim_net = net
+            self._sim_sync = sync
+            self._sim_save_history = save_history
 
-            # 保存到模拟历史（sidecar 文件）
-            self._save_sim_history(net, result, cu, du)
+            worker = SimulationWorker(net, precision)
+            thread = QThread()
+            # 关键：保存到 self 防止 Python GC 回收正在运行的线程
+            self._sim_thread = thread
+            self._sim_worker = worker
+            worker.moveToThread(thread)
 
-            stats = [
-                f"✅ {result.message}",
-                f"节点 {len(net.nodes)} / 管道 {len(net.links)} / 滴头 {len(flows)}",
-            ]
-            if flows:
-                stats.append(
-                    f"滴头流量 {min(flows):.2f}~{max(flows):.2f} L/h")
-                stats.append(f"CU = {cu:.1f}%   DU = {du:.1f}%")
-            stats.append("结果已保存，可点击「可视化」工具查看")
+            # 进度条放在消息栏
+            bar = QProgressBar()
+            bar.setValue(0)
+            bar_msg = self.iface.messageBar().createMessage(
+                "aQuaDrip", "正在模拟...")
+            bar_msg.layout().addWidget(bar)
+            self.iface.messageBar().pushWidget(bar_msg, level=0)
 
-            if self.dockwidget:
-                for line in stats:
-                    self.dockwidget.log_message(line)
-            QMessageBox.information(
-                self.iface.mainWindow(), "aQuaDrip 模拟完成",
-                "\n".join(stats))
+            # 信号连接
+            worker.progress_changed.connect(
+                lambda pct, msg: (bar.setValue(pct), bar.setFormat(msg)))
+            worker.finished.connect(
+                lambda result: self._on_sim_finished(net, sync, result, bar_msg, save_history))
+            worker.error_occurred.connect(
+                lambda err: self._on_sim_error(err, bar_msg))
+            thread.started.connect(worker.run)
+
+            # 清理（在 finished/error 回调中统一处理，不要在回调前 deleteLater）
+            worker.finished.connect(thread.quit)
+            worker.error_occurred.connect(thread.quit)
+            thread.finished.connect(self._cleanup_sim_thread)
+
+            thread.start()
 
         except Exception as e:
             import traceback
-            tb = traceback.format_exc()
             traceback.print_exc()
-            if self.dockwidget:
-                self.dockwidget.log_message(f"❌ 模拟运行失败: {e}")
-                # 输出关键堆栈行，便于定位
-                for line in tb.strip().splitlines()[-6:]:
-                    self.dockwidget.log_message(f"   {line}")
             self.iface.messageBar().pushWarning(
-                "aQuaDrip", f"模拟运行失败: {e}")
+                "aQuaDrip", f"模拟启动失败: {e}")
+
+    def _on_sim_finished(self, net, sync, result, bar_msg, save_history):
+        """模拟完成回调（主线程，安全访问 QGIS 图层）"""
+        self.iface.messageBar().clearWidgets()
+
+        if not result.success:
+            QMessageBox.critical(
+                self.iface.mainWindow(), "aQuaDrip",
+                f"模拟失败：\n{result.message}")
+            return
+
+        # 结果回写图层
+        sync.sync_from_network(net, result)
+
+        # CU/DU 统计
+        from wdrip.analysis import UniformityAnalyzer
+        flows = [float(arr[0]) for arr in result.emitter_flow.values()
+                 if len(arr) > 0]
+        cu = UniformityAnalyzer.cu(flows) if flows else 0.0
+        du = UniformityAnalyzer.du(flows) if flows else 0.0
+
+        # 保存历史
+        if save_history:
+            self._save_sim_history(net, result, cu, du)
+
+        stats = [
+            f"✅ {result.message}",
+            f"节点 {len(net.nodes)} / 管道 {len(net.links)} / 滴头 {len(flows)}",
+        ]
+        if flows:
+            stats.append(
+                f"滴头流量 {min(flows):.2f}~{max(flows):.2f} L/h")
+            stats.append(f"CU = {cu:.1f}%   DU = {du:.1f}%")
+        stats.append("结果已保存，可点击「可视化」工具查看")
+
+        if self.dockwidget:
+            for line in stats:
+                self.dockwidget.log_message(line)
+        QMessageBox.information(
+            self.iface.mainWindow(), "aQuaDrip 模拟完成",
+            "\n".join(stats))
+
+    def _cleanup_sim_thread(self):
+        """清理模拟线程和 Worker（在 thread.finished 时调用）"""
+        if getattr(self, '_sim_worker', None):
+            self._sim_worker.deleteLater()
+            self._sim_worker = None
+        if getattr(self, '_sim_thread', None):
+            self._sim_thread.deleteLater()
+            self._sim_thread = None
+
+    def _on_sim_error(self, err, bar_msg):
+        """模拟错误回调（主线程）"""
+        self.iface.messageBar().clearWidgets()
+        import traceback
+        traceback.print_exc()
+        if self.dockwidget:
+            self.dockwidget.log_message(f"❌ 模拟运行失败: {err}")
+        self.iface.messageBar().pushWarning("aQuaDrip", f"模拟失败: {err}")
 
     def _save_sim_history(self, net, result, cu: float, du: float):
         """将模拟结果保存到 sidecar 历史文件"""

@@ -159,9 +159,14 @@ FIELD_DEFS = {
         ],
         "svg_line": "valve.svg",
         "value_maps": {
-            "valve_type": {"减压阀 PRV": "PRV", "持压阀 PSV": "PSV",
-                          "压力断路阀 PBV": "PBV", "流量控制阀 FCV": "FCV",
-                          "节流阀 TCV": "TCV", "通用阀 GPV": "GPV"},
+            # 滴灌水力计算中真正影响压力/流量分布的三种调节阀：
+            # - PRV 减压阀：地形高差大时保护下游毛管
+            # - FCV 流量控制阀：轮灌分区限流
+            # - PSV 持压阀：维持上游压力
+            # GATE/SOLENOID/CHECK 等无需单独阀门图层
+            # （全开=普通管道，关闭=管道 status=closed）
+            "valve_type": {"减压阀 PRV": "PRV", "流量控制阀 FCV": "FCV",
+                          "持压阀 PSV": "PSV"},
             "status": {"开启": "open", "关闭": "closed"},
         },
         "defaults": {
