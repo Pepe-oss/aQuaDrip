@@ -75,6 +75,8 @@ class AQuaDripPlugin:
              "同步图层→构建管网→WNTR 水力模拟→结果回写"),
             ("visualize.svg", "可视化", self.on_visualize,
              "查看历史模拟记录，生成结果可视化图层"),
+            ("elevation.svg", "高程提取", self.on_extract_elevation,
+             "从 DEM 栅格中提取所有节点的高程信息"),
             ("inp_tools.svg", "INP 处理", None,
              "导出当前管网为 EPANET INP 文件，或从 INP 文件导入为临时图层"),
         ]
@@ -576,6 +578,17 @@ class AQuaDripPlugin:
         self._viz_dlg.finished.connect(
             lambda: setattr(self, "_viz_dlg", None))
         self._viz_dlg.show()
+
+    def on_extract_elevation(self):
+        """从 DEM 栅格提取所有节点的高程信息"""
+        try:
+            from .tools.elevation_extractor import ElevationExtractor
+            ElevationExtractor(self.iface).run()
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self.iface.messageBar().pushWarning(
+                "aQuaDrip", f"高程提取失败: {e}")
 
     def on_open_project(self):
         """打开已有的 aQuaDrip GPKG 项目"""
