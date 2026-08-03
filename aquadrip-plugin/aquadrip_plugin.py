@@ -129,7 +129,11 @@ class AQuaDripPlugin:
             self.provider = None
 
     def on_setup_layers(self):
-        """新建 aQuaDrip 项目：弹窗选择路径/可选影像/DEM → 创建 GPKG + QGZ"""
+        """新建 aQuaDrip 项目：弹窗选择路径/可选影像/DEM → 创建 GPKG + QGZ
+
+        CRS 统一策略：优先用导入栅格（正射/DEM）的 CRS 创建 GPKG，
+        使矢量与栅格坐标系一致，避免后续高程采样等地形分析的 CRS 转换。
+        """
         from .ui.new_project_dialog import NewProjectDialog
 
         dlg = NewProjectDialog(self.iface)
@@ -141,7 +145,21 @@ class AQuaDripPlugin:
         ortho_path = dlg.orthophoto_path()
         dem_path = dlg.dem_path()
 
-        # 1. 创建 GPKG 图层
+        # 0. 探测导入栅格的 CRS，优先 DEM，其次正射
+        target_crs = None
+        for path in (dem_path, ortho_path):
+            if not path:
+                continue
+            try:
+                from qgis.core import QgsRasterLayer
+                rl = QgsRasterLayer(path)
+                if rl.isValid() and rl.crs().isValid():
+                    target_crs = rl.crs()
+                    break
+            except Exception:
+                pass
+
+        # 1. 创建 GPKG 图层（用 target_crs 统一坐标系）
         self.iface.messageBar().pushMessage(
             "aQuaDrip", "正在创建图层...", level=0, duration=3)
 
@@ -149,7 +167,7 @@ class AQuaDripPlugin:
             from .tools.layer_setup import LayerSetupAction
 
             setup = LayerSetupAction(self.iface)
-            success = setup.setup_layers(gpkg_path)
+            success = setup.setup_layers(gpkg_path, target_crs=target_crs)
 
             if not success:
                 QMessageBox.warning(
@@ -158,8 +176,10 @@ class AQuaDripPlugin:
                     "图层创建失败，请查看 Python 日志")
                 return
 
+            used_crs = setup._project_crs
             if self.dockwidget:
-                self.dockwidget.log_message(f"图层已创建: {gpkg_path}")
+                self.dockwidget.log_message(
+                    f"图层已创建: {gpkg_path} (CRS: {used_crs.authid()})")
 
         except Exception as e:
             import traceback
@@ -179,6 +199,9 @@ class AQuaDripPlugin:
         # 4. 保存 QGZ 项目文件
         try:
             from qgis.core import QgsProject
+            # 设置项目 CRS 与图层一致（避免"无坐标系"提示）
+            if target_crs is not None and target_crs.isValid():
+                QgsProject.instance().setCrs(target_crs)
             QgsProject.instance().write(qgz_path)
             if self.dockwidget:
                 self.dockwidget.log_message(f"项目已保存: {qgz_path}")
@@ -191,6 +214,8 @@ class AQuaDripPlugin:
 
         # 5. 成功提示
         parts = [f"📁 GPKG: {gpkg_path}", f"📁 QGZ:  {qgz_path}"]
+        if target_crs is not None:
+            parts.append(f"🌐 CRS:  {target_crs.authid()}")
         loaded = ["农田地块 (aqd_fields)", "管道 (aqd_pipes)",
                   "节点 (aqd_nodes)", "观测点 (aqd_obs_points)"]
         if ortho_layer:

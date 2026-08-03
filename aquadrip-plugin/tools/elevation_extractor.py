@@ -1,14 +1,15 @@
 """ElevationExtractor — 从 DEM 栅格提取节点高程并写回 aqd_nodes 图层
 
-使用 QGIS 原生 QgsRasterDataProvider.sample()，自动处理 DEM 与矢量
-图层的 CRS 差异，无需手动投影。
+使用 QGIS 原生 QgsRasterDataProvider.sample()。
+节点与 DEM 的 CRS 可能不同（常见：节点 EPSG:4326 经纬度，
+DEM UTM 投影），采样前用 QgsCoordinateTransform 做坐标转换。
 """
 
 from typing import Optional
 
 from qgis.core import (
     QgsProject, QgsVectorLayer, QgsRasterLayer,
-    QgsPointXY,
+    QgsPointXY, QgsCoordinateReferenceSystem, QgsCoordinateTransform,
 )
 from qgis.PyQt.QtWidgets import QProgressBar
 
@@ -48,6 +49,14 @@ class ElevationExtractor:
                 "aQuaDrip", "未找到 aqd_nodes 图层")
             return {"updated": 0, "skipped": 0, "total": 0}
 
+        # 3. 构造 CRS 变换：节点 CRS → DEM CRS
+        node_crs = node_layer.crs()
+        dem_crs = dem_layer.crs()
+        xform = None
+        if node_crs.isValid() and dem_crs.isValid() \
+                and node_crs != dem_crs:
+            xform = QgsCoordinateTransform(node_crs, dem_crs, self.project)
+
         features = list(node_layer.getFeatures())
         total = len(features)
         if total == 0:
@@ -55,7 +64,7 @@ class ElevationExtractor:
                 "aQuaDrip", "aqd_nodes 图层中没有节点")
             return {"updated": 0, "skipped": 0, "total": 0}
 
-        # 3. 创建进度条
+        # 4. 创建进度条
         bar = QProgressBar()
         bar.setMaximum(total)
         bar_msg = self.iface.messageBar().createMessage(
@@ -77,8 +86,12 @@ class ElevationExtractor:
                     continue
 
                 pt = geom.asPoint()
-                value, valid = provider.sample(
-                    QgsPointXY(pt.x(), pt.y()), 1)
+                sample_pt = QgsPointXY(pt.x(), pt.y())
+                # 若节点与 DEM CRS 不同，转换坐标
+                if xform is not None:
+                    sample_pt = xform.transform(sample_pt)
+
+                value, valid = provider.sample(sample_pt, 1)
 
                 if valid:
                     elev = float(value)
@@ -101,7 +114,7 @@ class ElevationExtractor:
         finally:
             self.iface.messageBar().clearWidgets()
 
-        # 4. 报告
+        # 5. 报告
         if elevations:
             stats = {
                 "updated": updated, "skipped": skipped, "total": total,

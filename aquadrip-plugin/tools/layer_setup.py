@@ -264,9 +264,17 @@ class LayerSetupAction:
         self.iface = iface
         self.project = QgsProject.instance()
         self.gpkg_path = ""
+        self._project_crs = None  # setup_layers 中赋值
 
-    def setup_layers(self, gpkg_path: str = "") -> bool:
-        """一键创建所有标准图层"""
+    def setup_layers(self, gpkg_path: str = "",
+                     target_crs=None) -> bool:
+        """一键创建所有标准图层
+
+        Args:
+            gpkg_path: GPKG 文件路径
+            target_crs: 目标 CRS。优先级：target_crs > 项目 CRS > EPSG:4326。
+                传入导入栅格的 CRS 可使矢量与栅格坐标系统一。
+        """
         if not gpkg_path:
             gpkg_path = self._default_path()
         self.gpkg_path = gpkg_path
@@ -286,18 +294,27 @@ class LayerSetupAction:
 
         self._log(f"创建 GeoPackage: {gpkg_path}")
 
-        # 确定 SRS ID 和完整定义
-        crs = self.project.crs()
+        # 确定 SRS：target_crs > 项目 CRS > WGS 84
+        if target_crs is not None and target_crs.isValid():
+            crs = target_crs
+        else:
+            crs = self.project.crs()
+            if not crs.isValid():
+                crs = QgsCoordinateReferenceSystem("EPSG:4326")
+
         srs_id = 4326  # WGS 84 默认
-        if crs.isValid():
-            srs_code = crs.authid()  # "EPSG:4326"
+        authid = crs.authid()  # "EPSG:4326"
+        if authid and ":" in authid:
             try:
-                srs_id = int(srs_code.split(":")[1])
+                srs_id = int(authid.split(":")[1])
             except (ValueError, IndexError):
                 srs_id = 4326
-        # 获取项目 CRS 的完整 WKT 定义（写入 GPKG 元数据）
-        self._project_wkt = crs.toWkt() if crs.isValid() else self.WGS84_DEF
+        # 获取 CRS 的完整 WKT 定义（写入 GPKG 元数据）
+        self._project_wkt = crs.toWkt()
         self._project_srs_id = srs_id
+        # 保留 CRS 对象，供 _add_to_project 使用
+        self._project_crs = crs
+        self._log(f"  目标 CRS: {authid} (srs_id={srs_id})")
 
         created_layers = []
 
