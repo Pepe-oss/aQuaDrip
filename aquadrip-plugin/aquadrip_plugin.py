@@ -27,6 +27,7 @@ class AQuaDripPlugin:
         self.actions = []
         self.dockwidget = None
         self.provider = None
+        self._active_threads = []  # 追踪所有活跃后台线程
 
     def initGui(self):
         """初始化 GUI（菜单 + 工具栏）"""
@@ -51,6 +52,10 @@ class AQuaDripPlugin:
         self.dockwidget = AQuaDripDockWidget(self.iface)
         self.iface.addDockWidget(Qt.RightDockWidgetArea, self.dockwidget)
         self.dockwidget.log_message("aQuaDrip 已加载")
+
+        # 校准 tab 按钮连接
+        self.dockwidget._btn_refresh.clicked.connect(self._on_calib_refresh)
+        self.dockwidget._btn_calibrate.clicked.connect(self._on_calib_run)
 
         # 自定义图标路径
         from qgis.PyQt.QtGui import QIcon
@@ -129,6 +134,43 @@ class AQuaDripPlugin:
         if self.provider:
             QgsApplication.processingRegistry().removeProvider(self.provider)
             self.provider = None
+
+        # 断开所有活跃线程的信号连接（让它们自行结束，不阻塞卸载）
+        self._stop_all_threads()
+
+    # ── 线程安全管理 ──
+
+    def _stop_all_threads(self):
+        """插件卸载时断开活跃线程的信号连接"""
+        for t in list(getattr(self, '_active_threads', [])):
+            try:
+                if t.isRunning():
+                    # 断开信号防止回调访问已销毁的 UI
+                    t.finished.disconnect()
+            except Exception:
+                pass
+        self._active_threads.clear()
+
+    def _track_thread(self, thread: 'QThread', worker=None):
+        """将线程加入活跃列表，finished 时自动清理
+
+        Args:
+            thread: QThread 实例
+            worker: 可选的 SimulationWorker，用于 deleteLater 清理
+        """
+        self._active_threads.append(thread)
+
+        def on_finished():
+            try:
+                if thread in self._active_threads:
+                    self._active_threads.remove(thread)
+                thread.deleteLater()
+                if worker is not None:
+                    worker.deleteLater()
+            except Exception:
+                pass
+
+        thread.finished.connect(on_finished)
 
     def on_setup_layers(self):
         """新建 aQuaDrip 项目：弹窗选择路径/可选影像/DEM → 创建 GPKG + QGZ
@@ -485,8 +527,6 @@ class AQuaDripPlugin:
 
             worker = SimulationWorker(net, precision)
             thread = QThread()
-            # 关键：保存到 self 防止 Python GC 回收正在运行的线程
-            self._sim_thread = thread
             self._sim_worker = worker
             worker.moveToThread(thread)
 
@@ -507,10 +547,10 @@ class AQuaDripPlugin:
                 lambda err: self._on_sim_error(err, bar_msg))
             thread.started.connect(worker.run)
 
-            # 清理（在 finished/error 回调中统一处理，不要在回调前 deleteLater）
+            # 清理（finished 时自动 deleteLater，由 _track_thread 管理）
             worker.finished.connect(thread.quit)
             worker.error_occurred.connect(thread.quit)
-            thread.finished.connect(self._cleanup_sim_thread)
+            self._track_thread(thread, worker)
 
             thread.start()
 
@@ -540,9 +580,13 @@ class AQuaDripPlugin:
         cu = UniformityAnalyzer.cu(flows) if flows else 0.0
         du = UniformityAnalyzer.du(flows) if flows else 0.0
 
-        # 保存历史
+        # 保存历史（必须在观测点回填之前，因为需要 node_coords）
         if save_history:
             self._save_sim_history(net, result, cu, du)
+
+        # 回填观测点模拟值到校准 tab（从刚保存的 simhistory 读取坐标）
+        if self.dockwidget:
+            self.dockwidget.refresh_obs_points(result)
 
         stats = [
             f"✅ {result.message}",
@@ -560,15 +604,6 @@ class AQuaDripPlugin:
         QMessageBox.information(
             self.iface.mainWindow(), "aQuaDrip 模拟完成",
             "\n".join(stats))
-
-    def _cleanup_sim_thread(self):
-        """清理模拟线程和 Worker（在 thread.finished 时调用）"""
-        if getattr(self, '_sim_worker', None):
-            self._sim_worker.deleteLater()
-            self._sim_worker = None
-        if getattr(self, '_sim_thread', None):
-            self._sim_thread.deleteLater()
-            self._sim_thread = None
 
     def _on_sim_error(self, err, bar_msg):
         """模拟错误回调（主线程）"""
@@ -682,6 +717,247 @@ class AQuaDripPlugin:
             traceback.print_exc()
             self.iface.messageBar().pushWarning(
                 "aQuaDrip", f"分区划分失败: {e}")
+
+    def _run_silent_simulation(self):
+        """异步静默运行模拟（校准用，不弹对话框）"""
+        from .tools.sync_manager import SyncManager
+        from .tools.simulation_worker import SimulationWorker
+        from qgis.PyQt.QtCore import QThread
+        from qgis.PyQt.QtWidgets import QProgressBar
+
+        # 同步构建网络（必须主线程）
+        sync = SyncManager(self.iface)
+        net = sync.sync_qgis_to_network()
+        sources = [n for n in net.nodes.values() if hasattr(n, "source_type")]
+        if not sources or not net.links:
+            return
+
+        # 后台线程运行 WNTR
+        worker = SimulationWorker(net, precision="fast")
+        thread = QThread()
+        self._sim_worker = worker
+        worker.moveToThread(thread)
+
+        bar = QProgressBar()
+        bar.setValue(0)
+        bar_msg = self.iface.messageBar().createMessage("aQuaDrip", "正在重新模拟...")
+        bar_msg.layout().addWidget(bar)
+        self.iface.messageBar().pushWidget(bar_msg, level=0)
+
+        worker.progress_changed.connect(lambda p, m: bar.setValue(p))
+        worker.finished.connect(lambda r: self._on_silent_sim_done(sync, net, r, bar_msg))
+        worker.error_occurred.connect(lambda e: self._on_silent_sim_error(e, bar_msg))
+        thread.started.connect(worker.run)
+        worker.finished.connect(thread.quit)
+        worker.error_occurred.connect(thread.quit)
+        self._track_thread(thread, worker)
+        thread.start()
+
+    def _on_silent_sim_done(self, sync, net, result, bar_msg):
+        """静默模拟完成回调"""
+        self.iface.messageBar().clearWidgets()
+        if not result.success:
+            if self.dockwidget:
+                self.dockwidget.log_message(f"⚠️ 模拟失败: {result.message}")
+            return
+        sync.sync_from_network(net, result)
+        from wdrip.analysis import UniformityAnalyzer
+        flows = [float(arr[0]) for arr in result.emitter_flow.values() if len(arr) > 0]
+        cu = UniformityAnalyzer.cu(flows) if flows else 0.0
+        du = UniformityAnalyzer.du(flows) if flows else 0.0
+        self._save_sim_history(net, result, cu, du)
+        if self.dockwidget:
+            self.dockwidget.refresh_obs_points(result)
+            self.dockwidget.log_message("✅ 模拟完成，观测值已更新")
+
+    def _on_silent_sim_error(self, err, bar_msg):
+        """静默模拟错误回调"""
+        self.iface.messageBar().clearWidgets()
+        if self.dockwidget:
+            self.dockwidget.log_message(f"❌ 校准模拟失败: {err}")
+
+    def _on_calib_refresh(self):
+        """校准 tab: 刷新模拟值 → 运行一次完整模拟"""
+        self.on_run_simulation()
+
+    def _on_calib_run(self):
+        """校准 tab: 弹出参数对话框 + 迭代校准"""
+        if not self.dockwidget:
+            return
+        measured = self.dockwidget.get_measured_values()
+        if not measured:
+            self.iface.messageBar().pushWarning(
+                "aQuaDrip", "请先在「校准」tab 中输入实测压力值")
+            return
+
+        # 从 simhistory 读取最新模拟值 + 观测点坐标
+        gpkg_path = None
+        from qgis.core import QgsProject, QgsVectorLayer
+        for _lid, layer in QgsProject.instance().mapLayers().items():
+            if not isinstance(layer, QgsVectorLayer):
+                continue
+            s = layer.source() if hasattr(layer, "source") else ""
+            if "aqd_fields" in s or layer.name() == "aqd_fields":
+                gpkg_path = s.split("|")[0]
+                break
+        if not gpkg_path:
+            self.iface.messageBar().pushWarning("aQuaDrip", "未找到项目 GPKG")
+            return
+
+        from .tools.sim_history import SimHistory
+        history = SimHistory(gpkg_path)
+        records = history.load()
+        if not records:
+            self.iface.messageBar().pushWarning("aQuaDrip", "请先运行模拟")
+            return
+        latest = records[0]
+        node_pressure = latest.get("node_pressure", {})
+        node_coords = latest.get("node_coords", {})
+        lg = latest.get("link_geometry", {})
+        lf = latest.get("link_flow", {})
+
+        # 构建 obs_data
+        obs_data = {}
+        obs_layer = self._find_obs_layer()
+        if obs_layer is None:
+            return
+        for feat in obs_layer.getFeatures():
+            name = str(feat.attribute("name") or f"obs_{feat.id()}")
+            p_obs, q_obs = measured.get(name, (None, None))
+            if p_obs is None and q_obs is None:
+                continue
+            geom = feat.geometry()
+            if geom is None or geom.isEmpty():
+                continue
+            pt = geom.asPoint()
+            ox, oy = pt.x(), pt.y()
+            # 找最近节点 → sim pressure
+            best_d, sim_p = float('inf'), None
+            for nid, p in node_pressure.items():
+                c = node_coords.get(nid)
+                if c is None or len(c) < 2: continue
+                d = (ox-c[0])**2 + (oy-c[1])**2
+                if d < best_d:
+                    best_d = d
+                    sim_p = float(p) if isinstance(p, (int, float)) else None
+            # 找最近管段 → sim flow
+            best_d, sim_q = float('inf'), None
+            for lid, pts in lg.items():
+                if not pts or len(pts) < 2: continue
+                for i in range(len(pts)-1):
+                    ax, ay = pts[i][0], pts[i][1]
+                    bx, by = pts[i+1][0], pts[i+1][1]
+                    dx, dy = bx-ax, by-ay
+                    l2 = dx*dx+dy*dy
+                    t = max(0, min(1, ((ox-ax)*dx+(oy-ay)*dy)/l2)) if l2>1e-20 else 0.5
+                    px, py = ax+t*dx, ay+t*dy
+                    d = ((ox-px)**2+(oy-py)**2)**0.5
+                    if d < best_d:
+                        best_d = d
+                        f = lf.get(lid)
+                        sim_q = abs(float(f)) if isinstance(f, (int, float)) else None
+            obs_data[name] = (ox, oy, sim_p, p_obs, sim_q, q_obs)
+
+        # 弹出校准对话框
+        from .ui.calibration_dialog import CalibrationDialog
+        dlg = CalibrationDialog(obs_data, self.iface)
+        self._calib_dlg = dlg
+        dlg.sim_requested.connect(self._on_calib_sim_requested)
+        dlg.finished.connect(lambda: setattr(self, '_calib_dlg', None))
+        dlg.show()
+
+    def _on_calib_sim_requested(self, obs_data):
+        """校准对话框请求异步模拟"""
+        dlg = getattr(self, '_calib_dlg', None)
+        if dlg is None: return
+        from .tools.sync_manager import SyncManager
+        from qgis.PyQt.QtCore import QThread
+        from qgis.PyQt.QtWidgets import QProgressBar
+        from .tools.simulation_worker import SimulationWorker
+
+        sync = SyncManager(self.iface)
+        net = sync.sync_qgis_to_network()
+        sources = [n for n in net.nodes.values() if hasattr(n, "source_type")]
+        if not sources or not net.links:
+            dlg.on_sim_done(obs_data); return
+
+        worker = SimulationWorker(net, precision="fast")
+        thread = QThread()
+        self._calib_worker = worker
+        worker.moveToThread(thread)
+        bar = QProgressBar(); bar.setValue(0)
+        bar_msg = self.iface.messageBar().createMessage("aQuaDrip", "校准模拟中...")
+        bar_msg.layout().addWidget(bar)
+        self.iface.messageBar().pushWidget(bar_msg, level=0)
+        worker.progress_changed.connect(lambda p, m: bar.setValue(p))
+        worker.finished.connect(lambda r: self._calib_sim_done(sync, net, r, bar_msg, obs_data))
+        worker.error_occurred.connect(lambda e: self.iface.messageBar().clearWidgets())
+        thread.started.connect(worker.run)
+        worker.finished.connect(thread.quit)
+        worker.error_occurred.connect(thread.quit)
+        self._track_thread(thread, worker)
+        thread.start()
+
+    def _calib_sim_done(self, sync, net, result, bar_msg, obs_data):
+        self.iface.messageBar().clearWidgets()
+        if result.success:
+            sync.sync_from_network(net, result)
+            flows = [float(arr[0]) for arr in result.emitter_flow.values() if len(arr) > 0]
+            from wdrip.analysis import UniformityAnalyzer
+            cu = UniformityAnalyzer.cu(flows) if flows else 0.0
+            du = UniformityAnalyzer.du(flows) if flows else 0.0
+            self._save_sim_history(net, result, cu, du)
+            if self.dockwidget:
+                self.dockwidget.refresh_obs_points(result)
+        dlg = getattr(self, '_calib_dlg', None)
+        if dlg:
+            dlg.on_sim_done(self._update_obs_from_sim(obs_data))
+
+    def _update_obs_from_sim(self, obs_data):
+        gpkg_path = None
+        from qgis.core import QgsProject, QgsVectorLayer
+        for _lid, layer in QgsProject.instance().mapLayers().items():
+            if not isinstance(layer, QgsVectorLayer): continue
+            s = layer.source() if hasattr(layer, "source") else ""
+            if "aqd_fields" in s or layer.name() == "aqd_fields":
+                gpkg_path = s.split("|")[0]; break
+        if not gpkg_path: return obs_data
+        from .tools.sim_history import SimHistory
+        recs = SimHistory(gpkg_path).load()
+        if not recs: return obs_data
+        r = recs[0]
+        npd, ncd = r.get("node_pressure", {}), r.get("node_coords", {})
+        lfd, lgd = r.get("link_flow", {}), r.get("link_geometry", {})
+        new = {}
+        for lb, (ox, oy, _, po, _, qo) in obs_data.items():
+            bd, sp = float('inf'), None
+            for nid, p in npd.items():
+                c = ncd.get(nid)
+                if c is None or len(c) < 2: continue
+                d = (ox-c[0])**2+(oy-c[1])**2
+                if d < bd: bd = d; sp = float(p) if isinstance(p,(int,float)) else None
+            bd, sq = float('inf'), None
+            for lid, pts in lgd.items():
+                if not pts or len(pts) < 2: continue
+                for i in range(len(pts)-1):
+                    ax,ay=pts[i][0],pts[i][1]; bx,by=pts[i+1][0],pts[i+1][1]
+                    dx,dy=bx-ax,by-ay; l2=dx*dx+dy*dy
+                    t=max(0,min(1,((ox-ax)*dx+(oy-ay)*dy)/l2)) if l2>1e-20 else 0.5
+                    px,py=ax+t*dx,ay+t*dy; d=((ox-px)**2+(oy-py)**2)**0.5
+                    if d<bd: bd=d; f=lfd.get(lid)
+                    sq = abs(float(f)) if isinstance(f,(int,float)) else None
+            new[lb] = (ox, oy, sp, po, sq, qo)
+        return new
+
+    def _find_obs_layer(self):
+        from qgis.core import QgsProject, QgsVectorLayer
+        for _lid, layer in QgsProject.instance().mapLayers().items():
+            if not isinstance(layer, QgsVectorLayer):
+                continue
+            src = layer.source() if hasattr(layer, "source") else ""
+            if "aqd_obs_points" in src or layer.name() == "aqd_obs_points":
+                return layer
+        return None
 
     def on_open_project(self):
         """打开已有的 aQuaDrip GPKG 项目"""
