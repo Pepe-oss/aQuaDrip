@@ -77,6 +77,8 @@ class AQuaDripPlugin:
              "查看历史模拟记录，生成结果可视化图层"),
             ("elevation.svg", "高程提取", self.on_extract_elevation,
              "从 DEM 栅格中提取所有节点的高程信息"),
+            ("zone_divide.svg", "分区划分", self.on_zone_divide,
+             "根据阀门位置自动划分管网分区"),
             ("inp_tools.svg", "INP 处理", None,
              "导出当前管网为 EPANET INP 文件，或从 INP 文件导入为临时图层"),
         ]
@@ -669,6 +671,17 @@ class AQuaDripPlugin:
             traceback.print_exc()
             self.iface.messageBar().pushWarning(
                 "aQuaDrip", f"高程提取失败: {e}")
+
+    def on_zone_divide(self):
+        """根据阀门自动划分管网分区"""
+        try:
+            from .tools.zone_divider import ZoneDivider
+            ZoneDivider(self.iface).divide()
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self.iface.messageBar().pushWarning(
+                "aQuaDrip", f"分区划分失败: {e}")
 
     def on_open_project(self):
         """打开已有的 aQuaDrip GPKG 项目"""

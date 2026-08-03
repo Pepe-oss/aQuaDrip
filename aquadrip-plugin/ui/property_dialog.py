@@ -36,6 +36,7 @@ FIELD_LABELS = {
     "pump_flow": "额定流量 (m³/h)", "pump_power": "额定功率 (kW)",
     # aqd_valves
     "valve_type": "阀门类型", "setting": "设定值",
+    "zone": "分区",
     # 所有层共用字段
     "from_node": "起点节点", "to_node": "终点节点",
     "flow": "流量 (模拟)", "velocity": "流速 (模拟)",
@@ -55,11 +56,11 @@ MODE_FIELDS = {
                    "emitter_model", "emitter_k", "emitter_x"],
     "aqd_pipes": ["pipe_type", "status", "diameter", "material",
                   "roughness", "minor_loss", "emitter_spacing",
-                  "emitter_k", "emitter_x", "zone_id"],
+                  "emitter_k", "emitter_x", "zone_id", "zone"],
     "aqd_pumps": ["pump_type", "status", "diameter", "pump_head",
-                  "pump_flow", "pump_power", "minor_loss"],
+                  "pump_flow", "pump_power", "minor_loss", "zone"],
     "aqd_valves": ["valve_type", "status", "diameter", "setting",
-                   "minor_loss"],
+                   "minor_loss", "zone"],
     "aqd_nodes": ["node_type", "source_type", "head", "available_flow",
                   "fertilizer_volume", "fertilizer_concentration", "elevation"],
 }
