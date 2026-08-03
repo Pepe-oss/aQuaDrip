@@ -49,11 +49,11 @@ class TopologyBuilder:
 
         # 阶段 B: 管道预处理 → 收集所有 link 记录
         pipe_records = self._collect_links(
-            pipe_features, device="none", default_pipe_type=None)
+            pipe_features, device="none", default_pipe_type=None, lid_prefix="L")
         pump_records = self._collect_links(
-            pump_features or [], device="pump", default_pipe_type="mainline")
+            pump_features or [], device="pump", default_pipe_type="mainline", lid_prefix="PU")
         valve_records = self._collect_links(
-            valve_features or [], device="valve", default_pipe_type="mainline")
+            valve_features or [], device="valve", default_pipe_type="mainline", lid_prefix="V")
         all_records = pipe_records + pump_records + valve_records
 
         # 阶段 C: 管道-管道交叉检测 + 切断
@@ -111,13 +111,16 @@ class TopologyBuilder:
 
     def _collect_links(self, features: List[QgsFeature],
                         device: str = "none",
-                        default_pipe_type: Optional[str] = None) -> List[dict]:
+                        default_pipe_type: Optional[str] = None,
+                        lid_prefix: str = "L") -> List[dict]:
         """收集 link 记录（管道 / 水泵 / 阀门通用）
 
         Args:
             features: 图层要素列表
             device: 设备类型（"none"/"pump"/"valve"）
             default_pipe_type: pipe_type 回退值。None 表示从 feature 读取
+            lid_prefix: 默认 link ID 前缀。区分图层避免 FID 冲突
+                         ("L"=管道, "PU"=水泵, "V"=阀门)
         """
         records = []
         for feat in features:
@@ -128,7 +131,8 @@ class TopologyBuilder:
             if len(line) < 2:
                 continue
             fid = feat.id()
-            lid = self._safe_attr_str(feat, "id", f"L{fid}")
+            # 优先读自定义 id 字段，否则用前缀+fid（各图层FID独立，不用前缀会冲突）
+            lid = self._safe_attr_str(feat, "id", f"{lid_prefix}{fid}")
             pt = self._safe_attr_str(feat, "pipe_type", default_pipe_type or "mainline")
             records.append({
                 "fid": fid,

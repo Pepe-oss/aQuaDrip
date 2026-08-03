@@ -137,11 +137,11 @@ class Visualizer:
         #   2. 原始 link 图层（aqd_pipes/aqd_pumps/aqd_valves）：按 L{fid} 匹配
         #   3. link_endpoints + node_coords：仅两端点直线（兜底）
         link_geom_map = {}  # {link_id: geometry}
-        for key in ("aqd_pipes", "aqd_pumps", "aqd_valves"):
+        for key, prefix in [("aqd_pipes", "L"), ("aqd_pumps", "PU"), ("aqd_valves", "V")]:
             ly = self._find_layer(key)
             if ly:
                 for feat in ly.getFeatures():
-                    lid = f"L{feat.id()}"
+                    lid = f"{prefix}{feat.id()}"
                     link_geom_map[lid] = feat.geometry()
 
         feats = []
@@ -194,14 +194,16 @@ class Visualizer:
 
     def _apply_graduated_renderer(self, layer: QgsVectorLayer,
                                    field_name: str, scheme: str):
-        """应用渐变渲染器
+        """应用渐变渲染器（分位数分级，避免极端值导致颜色分布不均）
 
         Args:
             layer: 目标图层
             field_name: 分类字段
             scheme: "blue_red" 或 "green_red"
         """
-        # 计算分类
+        import math as _math
+
+        # 收集所有值
         values = []
         for feat in layer.getFeatures():
             val = feat.attribute(field_name)
@@ -214,52 +216,84 @@ class Visualizer:
         if not values:
             return
 
-        min_val = min(values)
-        max_val = max(values)
-        if max_val - min_val < 1e-10:
-            max_val = min_val + 1  # 避免除零
-
-        # 色带
+        # 色带（7 级）
         if scheme == "blue_red":
-            # 蓝（低）→ 黄 → 红（高）
             colors = [
                 QColor(44, 123, 182),    # 蓝
-                QColor(171, 217, 233),   # 浅蓝
+                QColor(131, 190, 219),
+                QColor(200, 225, 237),
                 QColor(255, 255, 191),   # 黄
-                QColor(253, 174, 97),    # 橙
+                QColor(254, 200, 123),
+                QColor(252, 141, 58),
                 QColor(215, 25, 28),     # 红
             ]
         else:
-            # 绿（低）→ 黄 → 红（高）
             colors = [
                 QColor(26, 150, 65),     # 绿
-                QColor(166, 217, 106),   # 浅绿
+                QColor(128, 191, 73),
+                QColor(204, 227, 121),
                 QColor(255, 255, 191),   # 黄
-                QColor(253, 174, 97),    # 橙
+                QColor(254, 196, 79),
+                QColor(252, 141, 58),
                 QColor(215, 25, 28),     # 红
             ]
 
-        intv = (max_val - min_val) / len(colors)
-        # 自适应标签精度：范围窄时显示更多小数
-        span = max_val - min_val
+        # 分位数断点：排序后等分
+        sorted_vals = sorted(values)
+        n = len(sorted_vals)
+        k = len(colors)
+        breaks = []
+        for i in range(1, k):
+            idx = int(n * i / k)
+            if idx >= n:
+                idx = n - 1
+            breaks.append(sorted_vals[idx])
+        # 确保断点单调递增（去重）
+        unique_breaks = []
+        prev = float('-inf')
+        for b in breaks:
+            if b > prev + 1e-12:
+                unique_breaks.append(b)
+                prev = b
+
+        if not unique_breaks:
+            return
+
+        # 自适应标签精度
+        span = max(values) - min(values)
         if span < 0.01:
             digits = 4
         elif span < 1:
             digits = 3
-        else:
+        elif span < 100:
             digits = 2
+        else:
+            digits = 1
+
         range_list = []
-        for i, color in enumerate(colors):
-            lo = min_val + intv * i
-            hi = max_val if i == len(colors) - 1 else min_val + intv * (i + 1)
+        lo = float('-inf')
+        for i, hi in enumerate(unique_breaks):
+            color = colors[i % len(colors)]
             symbol = QgsSymbol.defaultSymbol(layer.geometryType())
             symbol.setColor(color)
-            if layer.geometryType() == 0:  # 点
+            if layer.geometryType() == 0:
                 symbol.setSize(3)
-            else:  # 线
+            else:
                 symbol.setWidth(1.5)
-            label = f"{lo:.{digits}f} - {hi:.{digits}f}"
+            label = f"{lo:.{digits}f} - {hi:.{digits}f}" if lo != float('-inf') else f"< {hi:.{digits}f}"
             range_list.append(QgsRendererRange(lo, hi, symbol, label))
+            lo = hi
+
+        # 最后一档：> 最后一个断点
+        color = colors[-1]
+        symbol = QgsSymbol.defaultSymbol(layer.geometryType())
+        symbol.setColor(color)
+        if layer.geometryType() == 0:
+            symbol.setSize(3)
+        else:
+            symbol.setWidth(1.5)
+        label = f"> {unique_breaks[-1]:.{digits}f}"
+        range_list.append(QgsRendererRange(unique_breaks[-1], float('inf'), symbol, label))
 
         renderer = QgsGraduatedSymbolRenderer(field_name, range_list)
         layer.setRenderer(renderer)

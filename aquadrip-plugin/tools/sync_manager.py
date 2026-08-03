@@ -134,7 +134,7 @@ class SyncManager:
                         continue
                     recs.append({
                         "line": line,
-                        "lid": str(self._attr(feat, "id") or f"L{feat.id()}"),
+                        "lid": str(self._attr(feat, "id") or f"{self._lid_prefix_for_layer(layer)}{feat.id()}"),
                         "geom": geom,
                         "feat": feat,
                     })
@@ -365,12 +365,13 @@ class SyncManager:
 
         # 写入所有 link 图层结果（流量、流速）
         for layer in self._all_link_layers():
+            lid_prefix = self._lid_prefix_for_layer(layer)
             need_edit = not layer.isEditable()
             if need_edit:
                 layer.startEditing()
             try:
                 for feat in layer.getFeatures():
-                    lid = str(self._attr(feat, "id") or f"L{feat.id()}")
+                    lid = str(self._attr(feat, "id") or f"{lid_prefix}{feat.id()}")
                     changed = False
                     if lid in result.link_flow:
                         arr = result.link_flow[lid]
@@ -441,6 +442,19 @@ class SyncManager:
         return bool(layer and layer.crs().isGeographic())
 
     # ── 图层查找（从项目中找，与其他工具一致）──
+
+    @staticmethod
+    def _lid_prefix_for_layer(layer: QgsVectorLayer) -> str:
+        """根据图层名返回 link ID 前缀。
+
+        L=管道, PU=水泵, V=阀门。与 TopologyBuilder._collect_links 一致。
+        """
+        src = layer.source() if hasattr(layer, "source") else ""
+        if "aqd_pumps" in src or layer.name() == "aqd_pumps":
+            return "PU"
+        if "aqd_valves" in src or layer.name() == "aqd_valves":
+            return "V"
+        return "L"
 
     @staticmethod
     def _ensure_field(layer: QgsVectorLayer, field_name: str):
