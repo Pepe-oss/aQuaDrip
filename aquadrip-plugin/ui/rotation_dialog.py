@@ -1,16 +1,10 @@
-"""RotationDialog — 轮灌配置对话框
-
-- 选择田块
-- 选择模式（定时间 / 定量）
-- 编辑各分区轮灌参数
-- 运行轮灌模拟
-"""
+"""RotationDialog — 轮灌配置对话框（纯定量灌溉）"""
 
 from qgis.PyQt.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
-    QComboBox, QRadioButton, QButtonGroup, QTableWidget, QTableWidgetItem,
-    QPushButton, QLabel, QProgressBar, QDoubleSpinBox, QSpinBox,
-    QHeaderView,
+    QDialog, QVBoxLayout, QHBoxLayout,
+    QComboBox, QTableWidget, QTableWidgetItem,
+    QPushButton, QLabel, QProgressBar,
+    QHeaderView, QTextEdit,
 )
 from qgis.PyQt.QtCore import Qt, pyqtSignal
 
@@ -18,10 +12,7 @@ from qgis.PyQt.QtCore import Qt, pyqtSignal
 class RotationDialog(QDialog):
     """轮灌配置对话框"""
 
-    # 信号：请求异步运行基准模拟（定量模式用）
-    baseline_requested = pyqtSignal()
-    # 信号：请求异步运行轮灌
-    rotation_requested = pyqtSignal(dict)  # config dict
+    rotation_requested = pyqtSignal(dict)
 
     def __init__(self, iface, parent=None):
         super().__init__(parent or iface.mainWindow())
@@ -33,7 +24,7 @@ class RotationDialog(QDialog):
 
         self.setWindowTitle("aQuaDrip 轮灌管理")
         self.setMinimumWidth(520)
-        self.setMinimumHeight(420)
+        self.setMinimumHeight(400)
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         self._build_ui()
 
@@ -50,53 +41,52 @@ class RotationDialog(QDialog):
         field_layout.addStretch()
         layout.addLayout(field_layout)
 
-        # ── 模式选择 ──
-        mode_group = QGroupBox("轮灌模式")
-        mode_layout = QHBoxLayout(mode_group)
-        self._mode_group = QButtonGroup(self)
-        self._radio_time = QRadioButton("定时间")
-        self._radio_volume = QRadioButton("定量")
-        self._mode_group.addButton(self._radio_time, 0)
-        self._mode_group.addButton(self._radio_volume, 1)
-        self._radio_time.setChecked(True)
-        self._radio_time.toggled.connect(self._on_mode_changed)
-        self._radio_volume.toggled.connect(self._on_mode_changed)
-        mode_layout.addWidget(self._radio_time)
-        mode_layout.addWidget(self._radio_volume)
+        # ── 分区表格：分区 | 阀门 | 灌溉量(mm) | 顺序 ──
+        label = QLabel("分区灌溉量配置（双击灌溉量编辑）:")
+        layout.addWidget(label)
 
-        # 定量输入
-        self._spin_volume = QDoubleSpinBox()
-        self._spin_volume.setRange(1, 500)
-        self._spin_volume.setValue(10)
-        self._spin_volume.setSuffix(" mm")
-        self._spin_volume.setVisible(False)
-        mode_layout.addWidget(self._spin_volume)
-        mode_layout.addStretch()
-        layout.addWidget(mode_group)
-
-        # ── 分区表格 ──
-        table_label = QLabel("分区轮灌配置:")
-        layout.addWidget(table_label)
-        self._zone_table = QTableWidget(0, 5)
+        table_layout = QHBoxLayout()
+        self._zone_table = QTableWidget(0, 4)
         self._zone_table.setHorizontalHeaderLabels(
-            ["分区", "阀门", "顺序", "时长(min)", "开始-结束"])
-        self._zone_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        self._zone_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        for col in range(2, 5):
-            self._zone_table.horizontalHeader().setSectionResizeMode(
-                col, QHeaderView.ResizeToContents)
-        # 时长列可编辑
+            ["分区", "阀门", "灌溉量(mm)", "顺序"])
+        self._zone_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeToContents)
+        self._zone_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.Stretch)
+        self._zone_table.horizontalHeader().setSectionResizeMode(
+            2, QHeaderView.ResizeToContents)
+        self._zone_table.horizontalHeader().setSectionResizeMode(
+            3, QHeaderView.ResizeToContents)
         self._zone_table.itemChanged.connect(self._on_item_changed)
-        layout.addWidget(self._zone_table, stretch=1)
+        self._zone_table.setEditTriggers(QTableWidget.DoubleClicked)
+        table_layout.addWidget(self._zone_table)
 
-        # ── 时间轴预览 ──
-        self._timeline_label = QLabel("")
-        self._timeline_label.setStyleSheet(
-            "background: #f0f0f0; padding: 4px; border-radius: 3px; "
-            "font-family: Menlo; font-size: 11px;")
-        layout.addWidget(self._timeline_label)
+        # 上下移动按钮
+        btn_col = QVBoxLayout()
+        self._btn_up = QPushButton("▲")
+        self._btn_up.setFixedWidth(32)
+        self._btn_up.setToolTip("上移")
+        self._btn_up.clicked.connect(self._on_move_up)
+        self._btn_up.setEnabled(False)
+        btn_col.addWidget(self._btn_up)
+        self._btn_down = QPushButton("▼")
+        self._btn_down.setFixedWidth(32)
+        self._btn_down.setToolTip("下移")
+        self._btn_down.clicked.connect(self._on_move_down)
+        self._btn_down.setEnabled(False)
+        btn_col.addWidget(self._btn_down)
+        btn_col.addStretch()
+        table_layout.addLayout(btn_col)
+        layout.addLayout(table_layout, stretch=1)
 
-        # ── 进度条 ──
+        # ── 结果 ──
+        self._result_text = QTextEdit()
+        self._result_text.setReadOnly(True)
+        self._result_text.setMaximumHeight(120)
+        self._result_text.setPlaceholderText("运行结果将显示在此...")
+        layout.addWidget(self._result_text)
+
+        # ── 进度 ──
         self._progress = QProgressBar()
         self._progress.setValue(0)
         layout.addWidget(self._progress)
@@ -127,12 +117,6 @@ class RotationDialog(QDialog):
     # ── 数据加载 ──
 
     def set_field_data(self, features: list, selected_id: int = -1):
-        """加载田块列表（QgsFeature 列表）
-
-        Args:
-            features: QgsFeature 列表
-            selected_id: 预选田块的 feature ID（-1 表示选第一个）
-        """
         self._field_data = features
         self._combo_field.blockSignals(True)
         self._combo_field.clear()
@@ -148,220 +132,158 @@ class RotationDialog(QDialog):
             self._on_field_changed(target_idx)
 
     def _on_field_changed(self, idx: int):
-        """切换田块时加载该田块的分区数据"""
         if idx < 0 or idx >= len(self._field_data):
             return
         feat = self._field_data[idx]
-        # 创建调度器并收集数据
         from ..tools.rotation_scheduler import RotationScheduler
         self._scheduler = RotationScheduler(self.iface)
         data = self._scheduler.collect_field_data(feat)
-
-        # 设置模式
-        mode = data.get("mode", "time")
-        self._radio_time.blockSignals(True)
-        self._radio_volume.blockSignals(True)
-        if mode == "volume":
-            self._radio_volume.setChecked(True)
-        else:
-            self._radio_time.setChecked(True)
-        self._radio_time.blockSignals(False)
-        self._radio_volume.blockSignals(False)
-
         self._zones_data = data.get("zones", [])
-        self._spin_volume.setVisible(mode == "volume")
-        self._populate_zone_table()
-        self._update_timeline()
+        self._populate_table()
 
-    def _on_mode_changed(self, checked: bool):
-        if not checked:
-            return
-        self._spin_volume.setVisible(self._radio_volume.isChecked())
+    # ── 表格 ──
 
-    # ── 分区表格 ──
-
-    def _populate_zone_table(self):
-        """填充分区表格"""
+    def _populate_table(self):
         self._zone_table.blockSignals(True)
         self._zone_table.setRowCount(0)
-        for z in self._zones_data:
+
+        # 按 order 排序
+        sorted_zones = sorted(self._zones_data, key=lambda z: z.get("order", 99))
+        for i, z in enumerate(sorted_zones):
+            # 自动编号顺序
+            z["order"] = i + 1
+
             row = self._zone_table.rowCount()
             self._zone_table.insertRow(row)
 
-            # 分区名
             item = QTableWidgetItem(z["zone"])
             item.setFlags(Qt.ItemIsEnabled)
             self._zone_table.setItem(row, 0, item)
 
-            # 阀门列表
             item = QTableWidgetItem(", ".join(z.get("valves", [])))
             item.setFlags(Qt.ItemIsEnabled)
             self._zone_table.setItem(row, 1, item)
 
-            # 顺序（可编辑 spin）
-            order_str = str(z.get("order", row + 1))
-            item = QTableWidgetItem(order_str)
+            item = QTableWidgetItem(f"{z.get('irrigation_mm', 10.0):.1f}")
             self._zone_table.setItem(row, 2, item)
 
-            # 时长(min)（可编辑）
-            dur = z.get("duration_min", 60)
-            item = QTableWidgetItem(f"{dur:.0f}")
+            item = QTableWidgetItem(str(z["order"]))
+            item.setFlags(Qt.ItemIsEnabled)  # 顺序只读，通过按钮调整
             self._zone_table.setItem(row, 3, item)
 
-            # 开始-结束（自动计算，只读）
-            item = QTableWidgetItem("—")
-            item.setFlags(Qt.ItemIsEnabled)
-            self._zone_table.setItem(row, 4, item)
-
         self._zone_table.blockSignals(False)
-        self._btn_run.setEnabled(len(self._zones_data) > 0)
+        has_zones = len(self._zones_data) > 0
+        self._btn_run.setEnabled(has_zones)
+        self._btn_up.setEnabled(has_zones and len(self._zones_data) > 1)
+        self._btn_down.setEnabled(has_zones and len(self._zones_data) > 1)
 
     def _on_item_changed(self, item: QTableWidgetItem):
-        """表格编辑后更新时间轴"""
         col = item.column()
-        if col in (2, 3):  # 顺序列或时长列改变
-            self._update_durations_from_table()
-            self._update_timeline()
+        row = item.row()
+        if row >= len(self._zones_data):
+            return
+        if col == 2:  # 灌溉量
+            try:
+                self._zones_data[row]["irrigation_mm"] = float(item.text().strip())
+            except ValueError:
+                pass
 
-    def _update_durations_from_table(self):
-        """从表格中读取时长更新 zones_data"""
-        for row in range(self._zone_table.rowCount()):
-            if row >= len(self._zones_data):
-                continue
-            # 读顺序
-            order_item = self._zone_table.item(row, 2)
-            if order_item:
+    def _on_move_up(self):
+        """当前行上移"""
+        row = self._zone_table.currentRow()
+        if row <= 0 or row >= len(self._zones_data):
+            return
+        self._zones_data[row], self._zones_data[row - 1] = \
+            self._zones_data[row - 1], self._zones_data[row]
+        self._zone_table.selectRow(row - 1)
+        self._renumber_and_refresh()
+
+    def _on_move_down(self):
+        """当前行下移"""
+        row = self._zone_table.currentRow()
+        if row < 0 or row >= len(self._zones_data) - 1:
+            return
+        self._zones_data[row], self._zones_data[row + 1] = \
+            self._zones_data[row + 1], self._zones_data[row]
+        self._zone_table.selectRow(row + 1)
+        self._renumber_and_refresh()
+
+    def _renumber_and_refresh(self):
+        """重新编号并刷新表格"""
+        for i, z in enumerate(self._zones_data):
+            z["order"] = i + 1
+        self._populate_table()
+
+    def _sync_from_table(self):
+        """从表格读取灌溉量到 zones_data"""
+        for row in range(min(self._zone_table.rowCount(), len(self._zones_data))):
+            item = self._zone_table.item(row, 2)
+            if item:
                 try:
-                    self._zones_data[row]["order"] = int(order_item.text().strip())
+                    self._zones_data[row]["irrigation_mm"] = float(item.text().strip())
                 except ValueError:
                     pass
-            # 读时长
-            dur_item = self._zone_table.item(row, 3)
-            if dur_item:
+            item = self._zone_table.item(row, 3)
+            if item:
                 try:
-                    self._zones_data[row]["duration_min"] = float(dur_item.text().strip())
+                    self._zones_data[row]["order"] = int(item.text().strip())
                 except ValueError:
                     pass
-
-    def _update_timeline(self):
-        """更新时间轴预览"""
-        self._update_durations_from_table()
-        if not self._zones_data:
-            self._timeline_label.setText("")
-            return
-
-        sorted_zones = sorted(self._zones_data, key=lambda z: z.get("order", 99))
-        total_min = sum(z.get("duration_min", 0) for z in sorted_zones)
-        if total_min <= 0:
-            self._timeline_label.setText("")
-            return
-
-        total_h = total_min / 60.0
-        max_width = 60  # 字符宽度
-        parts = [f"总时长: {total_h:.1f}h  |  "]
-        current_min = 0.0
-        for z in sorted_zones:
-            dur = z.get("duration_min", 0)
-            width = max(3, int(dur / total_min * max_width))
-            bar = "█" * width
-            start_h = current_min / 60.0
-            end_h = (current_min + dur) / 60.0
-            parts.append(f"{bar} {z['zone']}({start_h:.1f}-{end_h:.1f}h) ")
-            current_min += dur
-
-            # 更新表格中的开始-结束列
-            for row in range(self._zone_table.rowCount()):
-                zone_item = self._zone_table.item(row, 0)
-                if zone_item and zone_item.text() == z["zone"]:
-                    ts_item = QTableWidgetItem(f"{start_h:.1f}-{end_h:.1f}h")
-                    ts_item.setFlags(Qt.ItemIsEnabled)
-                    self._zone_table.setItem(row, 4, ts_item)
-
-        self._timeline_label.setText("".join(parts))
 
     # ── 运行 ──
 
     def _on_run(self):
-        """开始轮灌模拟"""
-        if not self._scheduler or not self._zones_data:
+        if not self._zones_data:
             return
-        self._update_durations_from_table()
-
+        # 从表格同步灌溉量
+        self._sync_from_table()
         self._running = True
+        self._result_text.clear()
         self._btn_run.setEnabled(False)
         self._btn_stop.setEnabled(True)
         self._btn_close.setEnabled(False)
+        self._btn_up.setEnabled(False)
+        self._btn_down.setEnabled(False)
         self._progress.setValue(0)
-
-        if self._radio_volume.isChecked():
-            # 定量模式：先跑基准模拟获取流量
-            self._progress.setFormat("基准模拟中...")
-            self.baseline_requested.emit()
-        else:
-            # 定时间模式：直接构建调度
-            self._start_rotation()
+        config = {"zones": self._zones_data,
+                  "field_idx": self._combo_field.currentIndex()}
+        self.rotation_requested.emit(config)
 
     def _on_stop(self):
-        """停止轮灌"""
         self._running = False
+        self._done_state()
+
+    def _done_state(self):
         self._btn_run.setEnabled(True)
         self._btn_stop.setEnabled(False)
         self._btn_close.setEnabled(True)
+        has_zones = len(self._zones_data) > 1
+        self._btn_up.setEnabled(has_zones)
+        self._btn_down.setEnabled(has_zones)
 
-    # ── 由插件端调用的回调 ──
-
-    def get_config(self) -> dict:
-        """获取当前轮灌配置"""
-        self._update_durations_from_table()
-        sorted_zones = sorted(self._zones_data, key=lambda z: z.get("order", 99))
-        return {
-            "mode": "volume" if self._radio_volume.isChecked() else "time",
-            "volume_mm": self._spin_volume.value(),
-            "zones": sorted_zones,
-            "field_idx": self._combo_field.currentIndex(),
-        }
-
-    def on_baseline_done(self, flow_rates: dict):
-        """基准模拟完成回调（定量模式）"""
-        if not self._running:
-            return
-        if not flow_rates:
-            self._progress.setFormat("基准模拟失败：无法获取分区流量")
-            self._on_stop()
-            return
-
-        # 计算各分区时长
-        vol_mm = self._spin_volume.value()
-        for z in self._zones_data:
-            q_lph = flow_rates.get(z["zone"], 100.0)
-            if q_lph <= 0:
-                q_lph = 100.0
-            area_m2 = self._scheduler.get_field_area_m2() if self._scheduler else 666.67
-            volume_m3 = vol_mm / 1000.0 * area_m2
-            dur_h = volume_m3 / (q_lph / 1000.0)
-            dur_min = max(1, dur_h * 60.0)
-            z["duration_min"] = round(dur_min, 1)
-
-        self._populate_zone_table()
-        self._update_timeline()
-        self._start_rotation()
-
-    def _start_rotation(self):
-        """启动轮灌模拟"""
-        config = self.get_config()
-        self.rotation_requested.emit(config)
-
-    def on_rotation_progress(self, pct: int, msg: str):
-        """轮灌进度回调"""
+    def on_progress(self, pct: int, msg: str):
         self._progress.setValue(pct)
         self._progress.setFormat(msg)
 
-    def on_rotation_done(self, results: list):
-        """轮灌完成回调"""
+    def on_done(self, results: list):
         self._running = False
-        self._btn_run.setEnabled(True)
-        self._btn_stop.setEnabled(False)
-        self._btn_close.setEnabled(True)
+        self._done_state()
+        ok = sum(1 for r in results if "error" not in r)
         self._progress.setValue(100)
-        success = sum(1 for r in results if "error" not in r or not r.get("error"))
-        self._progress.setFormat(f"完成 ({success}/{len(results)} 轮次)")
+
+        # 在对话框中展示结果
+        lines = []
+        for r in results:
+            if r.get("error"):
+                lines.append(f"❌ 分区 {r['zone']}: {r['error'][:80]}")
+            else:
+                lines.append(
+                    f"✅ 分区 {r['zone']}  "
+                    f"灌{r['irrigation_mm']:.0f}mm  "
+                    f"CU={r['cu']:.1f}% DU={r['du']:.1f}%  "
+                    f"均压{r['avg_pressure_m']:.2f}m  "
+                    f"最大{r['max_pressure_m']:.2f}m  "
+                    f"需{r['duration_min']:.0f}min"
+                )
+        self._result_text.setPlainText("\n".join(lines))
+        self._progress.setFormat(f"完成 ({ok}/{len(results)} 分区)")

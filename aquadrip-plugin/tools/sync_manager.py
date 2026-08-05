@@ -538,5 +538,15 @@ class SyncManager:
         return None
 
     def log(self, msg: str):
-        """输出日志"""
-        self.iface.messageBar().pushMessage("aQuaDrip", msg, level=0, duration=3)
+        """输出日志（线程安全：非主线程时跳过 pushMessage）"""
+        # macOS 禁止非主线程操作 UI，后台线程调用时只打印
+        from qgis.PyQt.QtCore import QThread, QCoreApplication
+        try:
+            app = QCoreApplication.instance()
+            if app and QThread.currentThread() == app.thread():
+                self.iface.messageBar().pushMessage(
+                    "aQuaDrip", msg, level=0, duration=3)
+        except Exception:
+            pass
+        # 始终输出到 Python 控制台
+        print(f"[aQuaDrip] {msg}")

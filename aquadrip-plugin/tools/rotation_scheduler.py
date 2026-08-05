@@ -1,16 +1,16 @@
-"""RotationScheduler — 轮灌调度引擎
+"""RotationScheduler — 轮灌调度引擎（纯定量灌溉 + 单分区子网模拟）
 
 核心流程:
-  1. 读取 aqd_fields 田块 → 获取轮灌模式 (time/volume)
-  2. 读取 aqd_valves 阀门 → 获取各分区阀门列表 + 顺序 + 时长
-  3. 生成 IrrigationSchedule (ShiftGroup 列表)
-  4. 逐轮次运行稳态模拟 (各轮次阀门状态不同)
-  5. 汇总结果并保存到 sim_history
+  1. 读取 aqd_fields 田块 → 获取各分区阀门列表
+  2. 构建完整 DripNetwork
+  3. 逐分区：构建子网（仅该分区 + 公共管道）→ 模拟 → 记录 CU/DU
+  4. 预留 multi_zone 接口用于多分区协同优化
+
+Phase 2 预留: optimize_multi_zone() 返回最优分区组合
 """
 
-import datetime
 import uuid
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional
 
 from qgis.core import QgsProject, QgsVectorLayer, QgsFeature
 from qgis.PyQt.QtCore import QObject, pyqtSignal
@@ -27,8 +27,6 @@ class RotationScheduler:
         self._field_layer: Optional[QgsVectorLayer] = None
         self._gpkg_path: str = ""
         self._rotation_id: str = ""
-        self._mode: str = "time"  # "time" or "volume"
-        self._shift_groups: List[dict] = []  # [{name, valve_ids, open_start, open_end}, ...]
 
     # ── 数据收集 ──
 
@@ -36,50 +34,280 @@ class RotationScheduler:
         """收集田块及其分区轮灌数据
 
         Returns:
-            {"mode": "time"/"volume", "zones": [{zone, valves, order, duration_min}, ...]}
+            {"zones": [{zone, valves, order, irrigation_mm}, ...]}
         """
         self._field_feat = field_feat
         self._find_layers()
-        if self._field_layer is None or self._valve_layer is None:
-            return {"mode": "time", "zones": []}
+        if self._valve_layer is None:
+            return {"zones": []}
 
-        self._mode = self._safe_str(field_feat, "rotation_mode", "time")
-        if self._mode not in ("time", "volume"):
-            self._mode = "time"
+        # 从管道建 node→zone 映射
+        node_zone: Dict[str, str] = {}
+        if self._pipe_layer:
+            for feat in self._pipe_layer.getFeatures():
+                pz = str(feat.attribute("zone") or "").strip()
+                if not pz or pz == "0":
+                    continue
+                fn = str(feat.attribute("from_node") or "")
+                tn = str(feat.attribute("to_node") or "")
+                if fn:
+                    node_zone[fn] = pz
+                if tn:
+                    node_zone[tn] = pz
 
-        # 收集所有阀门 → 按 zone + order 排序
+        # 收集阀门 → 按有效分区分组
         zones: Dict[str, dict] = {}
         for feat in self._valve_layer.getFeatures():
-            zone = str(feat.attribute("zone") or "").strip()
-            if not zone:
-                continue
-            order = self._safe_int(feat, "rotation_order", 0)
-            if order <= 0:
-                continue
-            duration = self._safe_float(feat, "rotation_duration_min", 60.0)
             vid = f"V{feat.id()}"
+            fn = str(feat.attribute("from_node") or "")
+            tn = str(feat.attribute("to_node") or "")
+            effective_zone = node_zone.get(tn) or node_zone.get(fn) or ""
+            if not effective_zone or effective_zone == "0":
+                continue
 
-            if zone not in zones:
-                zones[zone] = {"zone": zone, "valves": [], "order": order,
-                               "duration_min": duration}
+            order = self._safe_int(feat, "rotation_order", 0)
+            dur = self._safe_float(feat, "rotation_duration_min", 60.0)
+
+            if effective_zone not in zones:
+                zones[effective_zone] = {
+                    "zone": effective_zone, "valves": [vid],
+                    "order": order, "irrigation_mm": 10.0,
+                    "duration_min": dur,
+                }
             else:
-                zones[zone]["valves"].append(vid)
-                # 取最大时长作为分区时长（同一分区多个阀门同时开）
-                if duration > zones[zone]["duration_min"]:
-                    zones[zone]["duration_min"] = duration
+                zones[effective_zone]["valves"].append(vid)
+                if dur > zones[effective_zone]["duration_min"]:
+                    zones[effective_zone]["duration_min"] = dur
+                if order > 0 and (zones[effective_zone]["order"] <= 0 or
+                                  order < zones[effective_zone]["order"]):
+                    zones[effective_zone]["order"] = order
 
-        # 对于还没记录阀门的 zone，补充
-        for zone_name, zdata in zones.items():
-            if not zdata["valves"]:
-                for feat in self._valve_layer.getFeatures():
-                    if str(feat.attribute("zone") or "").strip() == zone_name:
-                        zdata["valves"].append(f"V{feat.id()}")
+        for zname, zdata in zones.items():
+            if zdata["order"] <= 0:
+                try:
+                    parts = zname.split("-")
+                    zdata["order"] = int(parts[-1]) * 10 + len(parts)
+                except ValueError:
+                    zdata["order"] = 99
 
         sorted_zones = sorted(zones.values(), key=lambda z: z["order"])
-        return {"mode": self._mode, "zones": sorted_zones}
+        return {"zones": sorted_zones}
+
+    # ── 轮灌模拟 ──
+
+    def run_rotation(self, zones_data: List[dict],
+                     progress_callback=None) -> List[dict]:
+        """逐分区构建子网并模拟（纯内存操作，线程安全）
+
+        Args:
+            zones_data: [{zone, valves, irrigation_mm, order}, ...]
+            progress_callback: (pct: int, msg: str)
+
+        Returns:
+            [{zone, valves, cu, du, avg_p_m, duration_min, flow_lph}, ...]
+        """
+        from .sync_manager import SyncManager
+
+        sync = SyncManager(self.iface)
+        full_net = sync.sync_qgis_to_network()
+        if not full_net.links:
+            return []
+
+        total = len(zones_data)
+        all_results = []
+        self._rotation_id = uuid.uuid4().hex[:8]
+
+        for idx, z in enumerate(zones_data):
+            zone_name = z["zone"]
+            valve_ids = set(z["valves"])
+            irrigation_mm = z.get("irrigation_mm", 10.0)
+
+            if progress_callback:
+                pct = int(idx / max(total, 1) * 100)
+                progress_callback(pct, f"分区 {zone_name} ({idx+1}/{total})")
+
+            # 构建子网：保留公共管道 + 该分区管道
+            sub = self._build_zone_subnet(full_net, zone_name)
+
+            # 设置阀门状态
+            from wdrip.network.links import ValveStatus
+            for lid, link in sub.links.items():
+                if hasattr(link, "valve_type"):
+                    link.status = ValveStatus.OPEN if lid in valve_ids else ValveStatus.CLOSED
+
+            try:
+                from wdrip.simulation import DripSimulation
+                sim = DripSimulation(sub, precision="fast")
+                result = sim.run()
+
+                if result.success:
+                    from wdrip.analysis import UniformityAnalyzer
+                    flows = [float(arr[0]) for arr in result.emitter_flow.values()
+                             if len(arr) > 0]
+                    cu = UniformityAnalyzer.cu(flows) if flows else 0.0
+                    du = UniformityAnalyzer.du(flows) if flows else 0.0
+
+                    pressures = [float(arr[0]) for arr in result.node_pressure.values()
+                                 if len(arr) > 0]
+                    avg_p = sum(pressures) / len(pressures) if pressures else 0.0
+                    max_p = max(pressures) if pressures else 0.0
+
+                    # 计算分区总流量 (L/h)
+                    total_flow_lph = 0.0
+                    for lid, arr in result.link_flow.items():
+                        if len(arr) > 0:
+                            total_flow_lph += abs(float(arr[0])) * 3600 * 1000
+
+                    # 计算所需灌溉时长
+                    area_m2 = self.get_field_area_m2()
+                    vol_m3 = irrigation_mm / 1000.0 * area_m2
+                    zone_flow_lph = sum(flows) if flows else 100.0
+                    dur_h = vol_m3 / max(zone_flow_lph / 1000.0, 0.001)
+                    dur_min = max(1, round(dur_h * 60, 1))
+
+                    shift_result = {
+                        "zone": zone_name,
+                        "valves": list(valve_ids),
+                        "irrigation_mm": irrigation_mm,
+                        "cu": round(cu, 1),
+                        "du": round(du, 1),
+                        "avg_pressure_m": round(avg_p, 2),
+                        "max_pressure_m": round(max_p, 2),
+                        "emitter_count": len(flows),
+                        "min_flow_lph": round(min(flows), 2) if flows else 0,
+                        "max_flow_lph": round(max(flows), 2) if flows else 0,
+                        "total_flow_lph": round(zone_flow_lph, 1),
+                        "duration_min": dur_min,
+                    }
+                    all_results.append(shift_result)
+
+                    self._save_result(sub, result, cu, du, zone_name, idx)
+                else:
+                    all_results.append({
+                        "zone": zone_name,
+                        "valves": list(valve_ids),
+                        "irrigation_mm": irrigation_mm,
+                        "error": result.message,
+                    })
+            except Exception as e:
+                import traceback
+                all_results.append({
+                    "zone": zone_name,
+                    "valves": list(valve_ids),
+                    "irrigation_mm": irrigation_mm,
+                    "error": f"{e}\n{traceback.format_exc()}",
+                })
+
+        if progress_callback:
+            progress_callback(100, f"完成 ({total} 分区)")
+
+        return all_results
+
+    def _build_zone_subnet(self, net, zone: str):
+        """构建单分区子网：保留公共管道 + 该分区管道
+
+        通过从 GPKG 读取的 link→zone 映射判断每条链路所属分区。
+        """
+        link_zone = self._get_link_zone_map()
+
+        def keep_link(link) -> bool:
+            lz = link_zone.get(link.id, "")
+            # 保留公共区管道 + 目标分区管道
+            if lz in ("", "0", zone):
+                return True
+            # 阀门：保留与控制分区连接者
+            if hasattr(link, "valve_type"):
+                fn = link.from_node
+                tn = link.to_node
+                # 检查阀门端点连接的管道中是否有目标分区
+                for lid, lz2 in link_zone.items():
+                    if lid == link.id:
+                        continue
+                    other = net.links.get(lid)
+                    if other and lz2 == zone:
+                        if other.from_node in (fn, tn) or other.to_node in (fn, tn):
+                            return True
+            return False
+
+        return net.sub_network(keep_link)
+
+    def _get_link_zone_map(self) -> Dict[str, str]:
+        """从 GPKG 管道/阀门图层读取 link_id → zone 映射"""
+        result = {}
+        for layer_key, prefix in [("aqd_pipes", "L"), ("aqd_valves", "V")]:
+            layer = self._find_layer_by_key(layer_key)
+            if layer is None:
+                continue
+            for feat in layer.getFeatures():
+                z = str(feat.attribute("zone") or "").strip()
+                lid = f"{prefix}{feat.id()}"
+                result[lid] = z
+        return result
+
+    def _find_layer_by_key(self, key: str) -> Optional[QgsVectorLayer]:
+        from qgis.core import QgsProject, QgsVectorLayer
+        for _lid, layer in QgsProject.instance().mapLayers().items():
+            if not isinstance(layer, QgsVectorLayer):
+                continue
+            src = layer.source() if hasattr(layer, "source") else ""
+            if key in src or layer.name() == key:
+                return layer
+        return None
+
+    # ── Phase 2 预留接口 ──
+
+    def optimize_multi_zone(self, zones_data: List[dict]) -> List[List[str]]:
+        """多分区协同优化（占位）
+
+        未来实现：根据各分区流量、压力需求，找出可同时灌溉的分区组合，
+        使 CU/DU 保持在水力允许范围内。
+
+        Returns:
+            [[zone1, zone2], [zone3], ...] 每组可同时运行
+        """
+        return [[z["zone"]] for z in zones_data]
+
+    # ── 历史保存 ──
+
+    def _save_result(self, net, result, cu: float, du: float,
+                     zone_name: str, shift_idx: int):
+        try:
+            if not self._gpkg_path:
+                self._find_gpkg_path()
+            if not self._gpkg_path:
+                return
+            from .sim_history import SimHistory
+            history = SimHistory(self._gpkg_path)
+
+            node_pressure = {nid: float(arr[0])
+                             for nid, arr in result.node_pressure.items() if len(arr) > 0}
+            link_flow = {lid: float(arr[0])
+                         for lid, arr in result.link_flow.items() if len(arr) > 0}
+            link_velocity = {lid: float(arr[0])
+                             for lid, arr in result.link_velocity.items() if len(arr) > 0}
+            emitter_flow = {eid: float(arr[0])
+                            for eid, arr in result.emitter_flow.items() if len(arr) > 0}
+            node_coords = {nid: [node.x, node.y] for nid, node in net.nodes.items()}
+            link_endpoints = {lid: [link.from_node, link.to_node]
+                              for lid, link in net.links.items()}
+            link_geometry = getattr(net, "link_geometry", None) or {}
+
+            history.add(
+                cu=cu, du=du,
+                node_pressure=node_pressure, link_flow=link_flow,
+                link_velocity=link_velocity, emitter_flow=emitter_flow,
+                node_coords=node_coords,
+                message=f"轮灌 R{self._rotation_id} 分区{zone_name}",
+                link_endpoints=link_endpoints, link_geometry=link_geometry,
+                rotation_id=self._rotation_id, shift_index=shift_idx,
+            )
+        except Exception:
+            import traceback
+            traceback.print_exc()
+
+    # ── 辅助 ──
 
     def get_field_area_m2(self) -> float:
-        """获取田块面积 (m²)"""
         if self._field_feat is None:
             return 0
         geom = self._field_feat.geometry()
@@ -90,327 +318,13 @@ class RotationScheduler:
         da.setEllipsoid("WGS84")
         return da.measureArea(geom)
 
-    # ── 调度构建 ──
-
-    def build_time_schedule(self, zones_data: List[dict]) -> List[dict]:
-        """根据定时间模式构建轮次组
-
-        Args:
-            zones_data: [{zone, valves, order, duration_min}, ...]
-
-        Returns:
-            [{name, valve_ids, open_start_h, open_end_h, duration_min}, ...]
-        """
-        groups = []
-        current_start = 0.0
-        for z in zones_data:
-            dur_h = z["duration_min"] / 60.0
-            end = current_start + dur_h
-            groups.append({
-                "name": f"Zone_{z['zone']}",
-                "valve_ids": list(z["valves"]),
-                "open_start_h": current_start,
-                "open_end_h": end,
-                "duration_min": z["duration_min"],
-            })
-            current_start = end
-        self._shift_groups = groups
-        return groups
-
-    def build_volume_schedule(self, zones_data: List[dict],
-                              irrigation_mm: float,
-                              flow_rates: Dict[str, float]) -> List[dict]:
-        """根据定量模式构建轮次组
-
-        Args:
-            zones_data: [{zone, valves, order}, ...]
-            irrigation_mm: 每分区灌水量 (mm)
-            flow_rates: {zone: flow_L_per_h} 各分区流量 (L/h)
-
-        Returns:
-            [{name, valve_ids, open_start_h, open_end_h, duration_min}, ...]
-        """
-        groups = []
-        current_start = 0.0
-        for z in zones_data:
-            q_lph = flow_rates.get(z["zone"], 100.0)  # L/h
-            if q_lph <= 0:
-                q_lph = 100.0
-            # 亩 → m²: 1 亩 ≈ 666.67 m²
-            area_m2 = self.get_field_area_m2()
-            # 灌水量 mm → m³: 1mm × 面积(m²) = 面积/1000 m³
-            volume_m3 = irrigation_mm / 1000.0 * area_m2
-            # 所需时长 (h)
-            dur_h = volume_m3 / (q_lph / 1000.0)  # q_lph/1000 = m³/h
-            dur_min = dur_h * 60.0
-            end = current_start + dur_h
-            groups.append({
-                "name": f"Zone_{z['zone']}",
-                "valve_ids": list(z["valves"]),
-                "open_start_h": current_start,
-                "open_end_h": end,
-                "duration_min": dur_min,
-            })
-            current_start = end
-        self._shift_groups = groups
-        return groups
-
-    # ── 基准模拟（定量模式）──
-
-    def run_baseline_simulation(self, callback=None) -> Dict[str, float]:
-        """运行一次全开模拟，获取各分区流量 (L/h)
-
-        Returns:
-            {zone_label: flow_L_per_h}
-        """
-        from .sync_manager import SyncManager
-        from wdrip.simulation import DripSimulation
-
-        sync = SyncManager(self.iface)
-        net = sync.sync_qgis_to_network()
-
-        if callback:
-            callback(10, "基准模拟: 构建模型...")
-
-        sim = DripSimulation(net, precision="fast")
-        result = sim.run()
-
-        if not result.success:
-            if callback:
-                callback(0, f"基准模拟失败: {result.message}")
-            return {}
-
-        if callback:
-            callback(80, "基准模拟: 计算分区流量...")
-
-        # 汇总各分区流量：找到各分区阀门下游管道的流量
-        zone_flows: Dict[str, float] = {}
-        flow_data = result.link_flow
-
-        # 找每个分区的阀门对应的管道流量
-        for feat in self._valve_layer.getFeatures():
-            zone = str(feat.attribute("zone") or "").strip()
-            if not zone:
-                continue
-            vid = f"V{feat.id()}"
-            # 阀门在 WNTR 中映射为 link，取其流量
-            fl = flow_data.get(vid)
-            if fl and len(fl) > 0:
-                q_m3s = abs(float(fl[0]))
-                q_lph = q_m3s * 3600 * 1000  # m³/s → L/h
-                zone_flows[zone] = zone_flows.get(zone, 0) + q_lph
-
-        if callback:
-            callback(100, "基准模拟完成")
-
-        return zone_flows
-
-    # ── 多轮次模拟 ──
-
-    def run_rotation(self, shift_groups: List[dict],
-                     progress_callback=None,
-                     result_callback=None) -> List[dict]:
-        """逐轮次运行模拟
-
-        Args:
-            shift_groups: 轮次组列表
-            progress_callback: (pct: int, msg: str) 进度回调
-            result_callback: (shift_idx, result, cu, du) 结果回调
-
-        Returns:
-            [{shift_idx, zone, valves, duration_min, avg_pressure, cu, du, flows}, ...]
-        """
-        from .sync_manager import SyncManager
-
-        total = len(shift_groups)
-        all_results = []
-        self._rotation_id = uuid.uuid4().hex[:8]
-
-        for idx, group in enumerate(shift_groups):
-            if progress_callback:
-                pct = int((idx / total) * 100)
-                progress_callback(pct, f"轮次 {idx+1}/{total}: {group['name']}")
-
-            # 1. 读取当前阀门状态
-            sync = SyncManager(self.iface)
-            self._find_layers()
-
-            # 2. 设置阀门状态：本轮阀门 OPEN，其余 CLOSED
-            opened = set(group["valve_ids"])
-            original_statuses = self._set_valve_statuses(opened)
-
-            try:
-                # 3. 构建网络
-                net = sync.sync_qgis_to_network()
-
-                # 4. 运行模拟
-                from wdrip.simulation import DripSimulation
-                sim = DripSimulation(net, precision="fast")
-                result = sim.run(
-                    progress_callback=lambda p, m: (
-                        progress_callback(int(p * (idx+1)/total), m)
-                        if progress_callback else None
-                    )
-                )
-
-                if result.success:
-                    sync.sync_from_network(net, result)
-
-                    from wdrip.analysis import UniformityAnalyzer
-                    flows = [float(arr[0]) for arr in result.emitter_flow.values()
-                             if len(arr) > 0]
-                    cu = UniformityAnalyzer.cu(flows) if flows else 0.0
-                    du = UniformityAnalyzer.du(flows) if flows else 0.0
-
-                    avg_p = 0.0
-                    pressures = [float(arr[0]) for arr in result.node_pressure.values()
-                                 if len(arr) > 0]
-                    if pressures:
-                        avg_p = sum(pressures) / len(pressures)
-
-                    shift_result = {
-                        "shift_idx": idx,
-                        "rotation_id": self._rotation_id,
-                        "zone": group["name"],
-                        "valves": group["valve_ids"],
-                        "duration_min": group["duration_min"],
-                        "avg_pressure_m": round(avg_p, 2),
-                        "cu": round(cu, 1),
-                        "du": round(du, 1),
-                        "emitter_count": len(flows),
-                        "min_flow_lph": round(min(flows), 2) if flows else 0,
-                        "max_flow_lph": round(max(flows), 2) if flows else 0,
-                    }
-                    all_results.append(shift_result)
-
-                    # 保存到历史
-                    self._save_shift_history(net, result, cu, du, idx)
-
-                    if result_callback:
-                        result_callback(idx, result, cu, du)
-                else:
-                    shift_result = {
-                        "shift_idx": idx,
-                        "rotation_id": self._rotation_id,
-                        "zone": group["name"],
-                        "valves": group["valve_ids"],
-                        "duration_min": group["duration_min"],
-                        "error": result.message,
-                    }
-                    all_results.append(shift_result)
-
-            finally:
-                # 5. 恢复原始阀门状态
-                self._restore_valve_statuses(original_statuses)
-
-        if progress_callback:
-            progress_callback(100, f"轮灌完成 ({total} 轮次)")
-
-        return all_results
-
-    # ── 阀门状态管理 ──
-
-    def _set_valve_statuses(self, open_ids: set) -> Dict[int, str]:
-        """设置阀门状态，返回原始状态用于恢复"""
+    def get_field_features(self) -> List[QgsFeature]:
         self._find_layers()
-        original = {}
-        if self._valve_layer is None:
-            return original
-        need_edit = not self._valve_layer.isEditable()
-        if need_edit:
-            self._valve_layer.startEditing()
-        try:
-            for feat in self._valve_layer.getFeatures():
-                fid = feat.id()
-                vid = f"V{fid}"
-                old_status = str(feat.attribute("status") or "open")
-                original[fid] = old_status
-                new_status = "open" if vid in open_ids else "closed"
-                if old_status != new_status:
-                    feat.setAttribute("status", new_status)
-                    self._valve_layer.updateFeature(feat)
-            if need_edit:
-                self._valve_layer.commitChanges()
-        except Exception:
-            if need_edit:
-                self._valve_layer.rollBack()
-            raise
-        return original
-
-    def _restore_valve_statuses(self, original: Dict[int, str]):
-        """恢复阀门原始状态"""
-        if not original:
-            return
-        self._find_layers()
-        if self._valve_layer is None:
-            return
-        need_edit = not self._valve_layer.isEditable()
-        if need_edit:
-            self._valve_layer.startEditing()
-        try:
-            for feat in self._valve_layer.getFeatures():
-                fid = feat.id()
-                if fid in original:
-                    feat.setAttribute("status", original[fid])
-                    self._valve_layer.updateFeature(feat)
-            if need_edit:
-                self._valve_layer.commitChanges()
-        except Exception:
-            if need_edit:
-                self._valve_layer.rollBack()
-
-    # ── 历史保存 ──
-
-    def _save_shift_history(self, net, result, cu: float, du: float, shift_idx: int):
-        """保存单轮次模拟结果到历史"""
-        try:
-            if not self._gpkg_path:
-                self._find_gpkg_path()
-            if not self._gpkg_path:
-                return
-
-            from .sim_history import SimHistory
-            history = SimHistory(self._gpkg_path)
-
-            node_pressure = {nid: float(arr[0])
-                             for nid, arr in result.node_pressure.items()
-                             if len(arr) > 0}
-            link_flow = {lid: float(arr[0])
-                         for lid, arr in result.link_flow.items()
-                         if len(arr) > 0}
-            link_velocity = {lid: float(arr[0])
-                             for lid, arr in result.link_velocity.items()
-                             if len(arr) > 0}
-            emitter_flow = {eid: float(arr[0])
-                            for eid, arr in result.emitter_flow.items()
-                            if len(arr) > 0}
-            node_coords = {nid: [node.x, node.y]
-                           for nid, node in net.nodes.items()}
-            link_endpoints = {lid: [link.from_node, link.to_node]
-                              for lid, link in net.links.items()}
-            link_geometry = getattr(net, "link_geometry", None) or {}
-
-            history.add(
-                cu=cu, du=du,
-                node_pressure=node_pressure,
-                link_flow=link_flow,
-                link_velocity=link_velocity,
-                emitter_flow=emitter_flow,
-                node_coords=node_coords,
-                message=f"轮灌 R{self._rotation_id} 轮次{shift_idx+1}",
-                link_endpoints=link_endpoints,
-                link_geometry=link_geometry,
-                rotation_id=self._rotation_id,
-                shift_index=shift_idx,
-            )
-        except Exception:
-            import traceback
-            traceback.print_exc()
-
-    # ── 图层查找 ──
+        if self._field_layer is None:
+            return []
+        return list(self._field_layer.getFeatures())
 
     def _find_layers(self):
-        """查找相关 QGIS 图层"""
         from qgis.core import QgsProject, QgsVectorLayer
         for _lid, layer in QgsProject.instance().mapLayers().items():
             if not isinstance(layer, QgsVectorLayer):
@@ -427,7 +341,6 @@ class RotationScheduler:
                     self._gpkg_path = src.split("|")[0]
 
     def _find_gpkg_path(self):
-        """查找 GPKG 路径"""
         from qgis.core import QgsProject, QgsVectorLayer
         for _lid, layer in QgsProject.instance().mapLayers().items():
             if not isinstance(layer, QgsVectorLayer):
@@ -437,20 +350,12 @@ class RotationScheduler:
                 self._gpkg_path = src.split("|")[0]
                 return
 
-    def get_field_features(self) -> List[QgsFeature]:
-        """获取所有田块要素列表"""
-        self._find_layers()
-        if self._field_layer is None:
-            return []
-        return list(self._field_layer.getFeatures())
-
     @property
     def rotation_id(self) -> str:
         return self._rotation_id
 
     @staticmethod
-    def _safe_str(feat, field: str, default: str = "") -> str:
-        """安全读取字符串字段（字段可能不存在于旧版 GPKG）"""
+    def _safe_str(feat, field, default=""):
         try:
             val = feat.attribute(field)
             return str(val).strip() if val is not None else default
@@ -458,8 +363,7 @@ class RotationScheduler:
             return default
 
     @staticmethod
-    def _safe_float(feat, field: str, default: float = 0.0) -> float:
-        """安全读取浮点字段"""
+    def _safe_float(feat, field, default=0.0):
         try:
             val = feat.attribute(field)
             return float(val) if val is not None else default
@@ -467,8 +371,7 @@ class RotationScheduler:
             return default
 
     @staticmethod
-    def _safe_int(feat, field: str, default: int = 0) -> int:
-        """安全读取整数字段"""
+    def _safe_int(feat, field, default=0):
         try:
             val = feat.attribute(field)
             return int(val) if val is not None else default
@@ -477,22 +380,20 @@ class RotationScheduler:
 
 
 class RotationWorker(QObject):
-    """后台轮灌 Worker（必须在 QThread 中运行）"""
-
+    """后台轮灌 Worker"""
     progress_changed = pyqtSignal(int, str)
-    finished = pyqtSignal(list)       # results list
+    finished = pyqtSignal(list)
     error_occurred = pyqtSignal(str)
 
-    def __init__(self, scheduler: RotationScheduler, shift_groups: list, parent=None):
+    def __init__(self, scheduler: RotationScheduler, zones_data: list, parent=None):
         super().__init__(parent)
         self._scheduler = scheduler
-        self._groups = shift_groups
+        self._zones = zones_data
 
     def run(self):
-        """后台运行轮灌（由 QThread.started 触发）"""
         try:
             results = self._scheduler.run_rotation(
-                self._groups,
+                self._zones,
                 progress_callback=lambda p, m: self.progress_changed.emit(p, m))
             self.finished.emit(results)
         except Exception as e:

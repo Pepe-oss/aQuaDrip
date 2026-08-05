@@ -191,6 +191,43 @@ class DripNetwork:
 
         return errors
 
+    # ---- 子网络构建 ----
+
+    def sub_network(self, keep_link) -> 'DripNetwork':
+        """构建子网络：仅保留符合条件的链路及关联节点
+
+        Args:
+            keep_link: callable(link) → bool，返回 True 的链路保留
+
+        Returns:
+            新的 DripNetwork，只含匹配链路及其端点节点
+        """
+        from copy import copy
+
+        filtered_links = {}
+        for lid, link in self.links.items():
+            if keep_link(link):
+                filtered_links[lid] = link
+
+        keep_nodes = set()
+        for link in filtered_links.values():
+            keep_nodes.add(link.from_node)
+            keep_nodes.add(link.to_node)
+
+        filtered_nodes = {}
+        for nid in keep_nodes:
+            if nid in self.nodes:
+                filtered_nodes[nid] = self.nodes[nid]
+
+        return DripNetwork(
+            name=f"{self.name}_sub",
+            field_info=self.field_info,
+            nodes=filtered_nodes,
+            links=filtered_links,
+            schedule=self.schedule,
+            units=self.units,
+        )
+
     # ---- 转换为 WNTR（占位，Phase 1.6 实现） ----
 
     def to_wntr(self):

@@ -96,13 +96,13 @@ class AQuaDripDockWidget(QDockWidget):
         rot_layout.setContentsMargins(4, 4, 4, 4)
         rot_layout.setSpacing(4)
 
-        # 轮灌结果表（轮次、分区、阀门、时长、平均P、CU%、DU%）
-        self._rot_table = QTableWidget(0, 7)
+        # 轮灌结果表（分区、阀门、灌溉量、均P、最大P、CU%、DU%、时长）
+        self._rot_table = QTableWidget(0, 8)
         self._rot_table.setHorizontalHeaderLabels(
-            ["轮次", "分区", "阀门", "时长(min)", "平均P(m)", "CU%", "DU%"])
+            ["分区", "阀门", "灌溉量", "均P(m)", "最大P(m)", "CU%", "DU%", "时长(min)"])
         self._rot_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self._rot_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        for col in range(2, 7):
+        for col in range(2, 8):
             self._rot_table.horizontalHeader().setSectionResizeMode(
                 col, QHeaderView.ResizeToContents)
         rot_layout.addWidget(self._rot_table)
@@ -523,11 +523,10 @@ class AQuaDripDockWidget(QDockWidget):
     # ── 轮灌 tab ──
 
     def show_rotation_results(self, results: list, rotation_id: str = ""):
-        """在轮灌 tab 中展示多轮次模拟结果
+        """在轮灌 tab 中展示模拟结果
 
         Args:
-            results: [{shift_idx, zone, valves, duration_min, avg_pressure_m, cu, du, ...}, ...]
-            rotation_id: 轮灌批次 ID
+            results: [{zone, valves, irrigation_mm, cu, du, avg_pressure_m, duration_min, ...}, ...]
         """
         self._rotation_results = results
         self._rot_table.setRowCount(0)
@@ -536,25 +535,27 @@ class AQuaDripDockWidget(QDockWidget):
             for r in results:
                 row = self._rot_table.rowCount()
                 self._rot_table.insertRow(row)
-                si = r.get("shift_idx", 0)
                 zone = r.get("zone", "?")
                 valves_str = ", ".join(r.get("valves", []))
-                dur = r.get("duration_min", 0)
+                mm_val = r.get("irrigation_mm", 0)
                 avg_p = r.get("avg_pressure_m", 0)
+                max_p = r.get("max_pressure_m", 0)
                 cu = r.get("cu", 0)
                 du = r.get("du", 0)
+                dur = r.get("duration_min", 0)
                 error = r.get("error")
 
                 if error:
                     for col, val in enumerate(
-                        [f"轮次{si+1}", zone, valves_str, f"{dur:.0f}", error, "—", "—"]):
+                        [zone, valves_str, f"{mm_val:.0f}mm", error, "—", "—", "—", "—"]):
                         item = QTableWidgetItem(val)
                         item.setFlags(Qt.ItemIsEnabled)
                         self._rot_table.setItem(row, col, item)
                 else:
                     for col, val in enumerate(
-                        [f"轮次{si+1}", zone, valves_str,
-                         f"{dur:.0f}", f"{avg_p:.2f}", f"{cu:.1f}", f"{du:.1f}"]):
+                        [zone, valves_str, f"{mm_val:.0f}mm",
+                         f"{avg_p:.2f}", f"{max_p:.2f}",
+                         f"{cu:.1f}", f"{du:.1f}", f"{dur:.0f}"]):
                         item = QTableWidgetItem(val)
                         item.setFlags(Qt.ItemIsEnabled)
                         self._rot_table.setItem(row, col, item)
@@ -563,8 +564,8 @@ class AQuaDripDockWidget(QDockWidget):
 
         success_count = sum(1 for r in results if "error" not in r or not r.get("error"))
         self._rot_stats.setText(
-            f"轮灌 {rotation_id}  共 {len(results)} 轮次  "
-            f"成功 {success_count} 轮")
+            f"轮灌 {rotation_id}  共 {len(results)} 分区  "
+            f"成功 {success_count} 个")
         self._btn_rot_visualize.setEnabled(success_count > 0)
 
     def clear_rotation(self):
