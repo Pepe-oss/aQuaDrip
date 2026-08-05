@@ -460,11 +460,23 @@ def import_inp(iface) -> bool:
             valve_layer.addFeature(feat)
         valve_layer.commitChanges()
 
+    # 检查 aqd_fields 是否为空（INP 不含田块几何）
+    field_layer = _find_layer_by_name("aqd_fields")
+    field_empty = True
+    if field_layer:
+        field_empty = field_layer.featureCount() == 0
+
     iface.messageBar().pushMessage(
         "aQuaDrip",
         f"已导入 {basename}.inp（{n_added} 节点, {p_added} 管道）"
         f" → {os.path.basename(gpkg_path)}",
         level=0, duration=8)
+
+    if field_empty:
+        iface.messageBar().pushMessage(
+            "aQuaDrip",
+            "⚠️ 田块图层 (aqd_fields) 为空 — 请手动绘制田块后再使用毛管生成等功能",
+            level=1, duration=10)
     return True
 
 

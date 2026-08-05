@@ -89,7 +89,7 @@ class AQuaDripPlugin:
             ("rotation.svg", "轮灌管理", self.on_rotation,
              "配置轮灌调度方案并逐轮次运行水力模拟"),
             ("inp_tools.svg", "INP 处理", None,
-             "导出当前管网为 EPANET INP 文件，或从 INP 文件导入为临时图层"),
+             "导出当前管网为 EPANET INP 文件，或从 INP 文件导入为 aQuaDrip 项目"),
         ]
         for filename, name, handler, tip in entries:
             action = QAction(_icon(filename),
@@ -1051,6 +1051,6 @@ class AQuaDripPlugin:
         export_inp(self.iface)
 
     def on_import_inp(self):
-        """从 EPANET INP 文件导入为临时图层"""
+        """从 EPANET INP 文件导入为 aQuaDrip 项目"""
         from .tools.project_io import import_inp
         import_inp(self.iface)

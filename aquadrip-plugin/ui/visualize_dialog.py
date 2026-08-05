@@ -40,6 +40,11 @@ class VisualizeDialog(QDialog):
         hint.setStyleSheet("color: gray; font-size: 11px;")
         layout.addWidget(hint)
 
+        # 记录计数
+        self._count_label = QLabel("")
+        self._count_label.setStyleSheet("color: gray; font-size: 11px;")
+        layout.addWidget(self._count_label)
+
         # 历史列表
         self.list_widget = QListWidget()
         self.list_widget.doubleClicked.connect(self._on_visualize)
@@ -74,6 +79,11 @@ class VisualizeDialog(QDialog):
         self.btn_delete = QPushButton("🗑 删除")
         self.btn_delete.clicked.connect(self._on_delete)
         btn_layout.addWidget(self.btn_delete)
+
+        self.btn_purge = QPushButton("🗑 清空全部")
+        self.btn_purge.setStyleSheet("color: #c0392b;")
+        self.btn_purge.clicked.connect(self._on_purge_all)
+        btn_layout.addWidget(self.btn_purge)
 
         self.btn_close = QPushButton("关闭")
         self.btn_close.clicked.connect(self.reject)
@@ -138,6 +148,8 @@ class VisualizeDialog(QDialog):
         self._shift_label.setVisible(has_rotation)
         self._shift_combo.blockSignals(False)
 
+        self._count_label.setText(f"共 {len(self.records)} 条记录"
+                                  f"（上限 {SimHistory.MAX_RECORDS}）")
         self._update_list_display()
 
     def _on_filter_changed(self):
@@ -181,3 +193,21 @@ class VisualizeDialog(QDialog):
             self._refresh_list()
             self.iface.messageBar().pushMessage(
                 "aQuaDrip", "记录已删除", level=0, duration=3)
+
+    def _on_purge_all(self):
+        """清空全部历史记录"""
+        if not self.history or self.history.count == 0:
+            QMessageBox.information(self, "aQuaDrip", "没有可删除的记录")
+            return
+
+        reply = QMessageBox.warning(
+            self, "aQuaDrip",
+            f"确定清空全部 {self.history.count} 条历史记录？\n此操作不可撤销！",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply != QMessageBox.Yes:
+            return
+
+        deleted = self.history.purge_all()
+        self._refresh_list()
+        self.iface.messageBar().pushMessage(
+            "aQuaDrip", f"已清空 {deleted} 条记录", level=0, duration=3)
