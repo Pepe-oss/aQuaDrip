@@ -82,6 +82,10 @@ class DripSimulation:
         # PDD（压力依赖用水）：emitter 滴头才能按 q=k·P^x 出水；
         # 默认 DDA 模式下 emitter 被忽略，管网不出水、全静压
         wn.options.hydraulic.demand_model = "PDD"
+        # 消除 EPANET "REQUIRED PRESSURE below lower limit" 警告
+        # 滴灌场景中 emitter 流量由 emitter_coefficient 公式 q=k·P^x 计算，
+        # base_demand 均为 0，required_pressure 数值不影响 emitter 结果
+        wn.options.hydraulic.required_pressure = 0.1
         
         return wn
     
@@ -265,6 +269,30 @@ class DripSimulation:
         
         except Exception as e:
             logger.exception("模拟失败")
+            # EPANET 引擎失败时自动回退到迭代引擎
+            if self._engine.name == "epanet":
+                from .engine import IterativeWNTRSimulatorEngine
+                logger.warning(f"EPANET 引擎失败 ({e})，回退到迭代求解器")
+                try:
+                    self._engine = IterativeWNTRSimulatorEngine()
+                    if self._precision in self.PRESETS:
+                        params = self.PRESETS[self._precision]
+                        self._engine.max_iter = params["max_iter"]
+                        self._engine.tolerance = params["tolerance"]
+                    # 注入进度回调，否则迭代引擎不会上报迭代进度
+                    if progress_callback:
+                        self._engine.progress_callback = progress_callback
+                    wntr_results = self._engine.run(self._wn)
+                    result = self._extract_results(wntr_results, duration)
+                    result.success = True
+                    result.message = f"模拟成功 (引擎: {self._engine.display_name}, 精度: {self._precision})"
+                    return result
+                except Exception as e2:
+                    logger.exception("迭代引擎也失败")
+                    return SimulationResult(
+                        success=False,
+                        message=f"模拟失败: {e2}"
+                    )
             return SimulationResult(
                 success=False,
                 message=f"模拟失败: {e}"
@@ -325,8 +353,16 @@ class DripSimulation:
         """从 WNTR 结果提取滴灌专用结果"""
         result = SimulationResult(duration_seconds=duration)
         
-        # 时间步
-        result.time_steps = np.array(wntr_results.time)
+        # 时间步 — EpanetSimulator 结果没有 .time 属性，从 DataFrame index 提取
+        if hasattr(wntr_results, 'time'):
+            result.time_steps = np.array(wntr_results.time)
+        else:
+            try:
+                # 从任意节点或管段数据的 index 获取时间序列
+                sample_df = next(iter(wntr_results.node.values()))
+                result.time_steps = np.array(sample_df.index)
+            except (StopIteration, AttributeError):
+                result.time_steps = np.array([0])
         
         # 节点压力
         for nid, node in self.network.nodes.items():

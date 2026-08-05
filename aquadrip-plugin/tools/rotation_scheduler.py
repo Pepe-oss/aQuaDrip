@@ -204,7 +204,7 @@ class RotationScheduler:
         return all_results
 
     def _build_zone_subnet(self, net, zone: str):
-        """构建单分区子网：保留公共管道 + 该分区管道
+        """构建单分区子网：保留公共管道 + 该分区管道 + 仅该分区阀门
 
         通过从 GPKG 读取的 link→zone 映射判断每条链路所属分区。
         """
@@ -212,22 +212,25 @@ class RotationScheduler:
 
         def keep_link(link) -> bool:
             lz = link_zone.get(link.id, "")
-            # 保留公共区管道 + 目标分区管道
-            if lz in ("", "0", zone):
-                return True
-            # 阀门：保留与控制分区连接者
-            if hasattr(link, "valve_type"):
-                fn = link.from_node
-                tn = link.to_node
-                # 检查阀门端点连接的管道中是否有目标分区
+            is_valve = hasattr(link, "valve_type")
+
+            if is_valve:
+                # 阀门：zone="0"（公共区），但只有连接了目标分区管道的才保留
+                if lz != "0":
+                    return False  # 非公共区阀门直接排除
+                fn, tn = link.from_node, link.to_node
                 for lid, lz2 in link_zone.items():
                     if lid == link.id:
                         continue
-                    other = net.links.get(lid)
-                    if other and lz2 == zone:
-                        if other.from_node in (fn, tn) or other.to_node in (fn, tn):
+                    if lz2 == zone:
+                        other = net.links.get(lid)
+                        if other and (other.from_node in (fn, tn)
+                                      or other.to_node in (fn, tn)):
                             return True
-            return False
+                return False  # 阀门未连接到目标分区 → 排除
+            else:
+                # 管道/水泵：保留公共区 + 目标分区
+                return lz in ("", "0", zone)
 
         return net.sub_network(keep_link)
 

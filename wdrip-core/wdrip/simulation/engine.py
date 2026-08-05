@@ -60,10 +60,27 @@ class EpanetSimulatorEngine(SimulationEngine):
     description = "调用 EPANET C 库，结果精确，需安装 EPANET"
     
     def run(self, wn_model) -> SimulationResult:
-        import wntr
+        import tempfile, os, wntr
         self._wn = wn_model
-        sim = wntr.sim.EpanetSimulator(wn_model)
-        wntr_results = sim.run_sim()
+        # WNTR EpanetSimulator 默认把 temp.inp/.bin/.rpt 写到当前目录，
+        # 在 macOS QGIS 插件沙箱中当前目录可能只读（Errno 30）。
+        # 改为写到系统临时目录。
+        tmpdir = tempfile.mkdtemp(prefix='aquadrip_epanet_')
+        logger.debug(f"EPANET 临时目录: {tmpdir}")
+        try:
+            file_prefix = os.path.join(tmpdir, 'temp')
+            sim = wntr.sim.EpanetSimulator(wn_model)
+            # 显式禁用 hydraulics file 的 load/save，避免在某些环境下
+            # EPANET 内部尝试打开 hydraulics 文件失败（Error 305）
+            wntr_results = sim.run_sim(file_prefix=file_prefix,
+                                       use_hyd=False, save_hyd=False)
+        finally:
+            # 清理临时文件
+            import shutil
+            try:
+                shutil.rmtree(tmpdir)
+            except Exception:
+                pass
         return wntr_results
 
 
@@ -157,15 +174,19 @@ def auto_detect_engine() -> SimulationEngine:
     滴灌场景含 emitter 滴头，WNTRSimulator 会忽略 emitter_coefficient
     （管网静压、不出水），因此 EPANET 库缺失时回退到迭代求解器
     而非 WNTRSimulator。
+
+    检测策略：
+    1. 尝试通过 WNTR 内置的 EPANET toolkit 加载库（WNTR pip 安装时自带
+       各平台的预编译 libepanet2，无需额外安装）
+    2. 如果 WNTR 自带库不可用，回退到迭代求解器
     """
     try:
-        import ctypes, ctypes.util
-        # 只检查库是否存在，不初始化模型
-        lib = ctypes.util.find_library('epanet2')
-        if lib:
-            logger.info(f"检测到 EPANET 库 ({lib})，使用 EpanetSimulator")
+        from wntr.epanet.toolkit import ENepanet
+        en = ENepanet()
+        if en.ENlib is not None:
+            logger.info("检测到 WNTR 内置 EPANET 库，使用 EpanetSimulator")
             return EpanetSimulatorEngine()
     except Exception:
         pass
-    logger.info("EPANET 库未找到，使用 WNTR 迭代求解器（逼近 emitter 出水）")
+    logger.info("WNTR 内置 EPANET 库不可用，使用 WNTR 迭代求解器（逼近 emitter 出水）")
     return IterativeWNTRSimulatorEngine()
