@@ -22,11 +22,15 @@ class ZoneDivider:
         self.project = QgsProject.instance()
 
     def divide(self) -> dict:
-        """主入口：划分分区并写回图层
+        """主入口：矫正方向 → 划分分区 → 写回图层
 
         Returns:
             {"valves": int, "zones": int, "pipes": int}
         """
+        # 0. 自动矫正阀门/水泵方向（确保 from_node 指向远离水源的一侧）
+        from .direction_fixer import DirectionFixer
+        DirectionFixer(self.iface).fix()
+
         # 1. 构建 DripNetwork（不展开毛管）
         from .sync_manager import SyncManager
         sync = SyncManager(self.iface)
@@ -52,8 +56,10 @@ class ZoneDivider:
 
             if has_valve:
                 all_valves.append(link)
-                # 阀门：单向 from→to
+                # 阀门：BFS 双向可达（用户绘制方向可能与水流方向相反），
+                # 但分区时仍以阀门为边界创建子分区
                 graph.setdefault(fn, []).append((link, tn))
+                graph.setdefault(tn, []).append((link, fn))
             elif has_pump:
                 # 水泵：单向 from→to
                 graph.setdefault(fn, []).append((link, tn))
@@ -131,7 +137,7 @@ class ZoneDivider:
             for link, next_node in graph.get(node, []):
                 is_valve = hasattr(link, "valve_type")
 
-                if is_valve and link in all_valves:
+                if is_valve and link in all_valves and link.id not in zone_map:
                     # 阀门自身属于当前父分区
                     zone_map[link.id] = zone_prefix or "0"
                     # 计算子分区编号
@@ -139,9 +145,14 @@ class ZoneDivider:
                     valve_counter[level] = valve_counter.get(level, 0) + 1
                     seq = valve_counter[level]
                     child_prefix = f"{zone_prefix}-{seq}" if zone_prefix else str(seq)
+                    # 确定阀门的「另一侧」节点（可能因反向遍历而不同）
+                    other_side = link.from_node if node == link.to_node else link.to_node
                     # 递归处理阀门下游
-                    self._traverse(link.to_node, graph, all_valves,
+                    self._traverse(other_side, graph, all_valves,
                                   zone_map, valve_counter, child_prefix, visited)
+                elif is_valve:
+                    # 阀门已处理过（从另一方向到达），跳过不重复标记
+                    continue
                 else:
                     # 普通管道或水泵：标记当前分区
                     zone_map[link.id] = zone_prefix or "0"

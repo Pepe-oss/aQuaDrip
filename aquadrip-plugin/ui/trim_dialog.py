@@ -1,8 +1,9 @@
-"""TrimDialog — 管道切割参数浮动对话框"""
+"""TrimDialog — 管道切割参数浮动对话框（支持点选/画线两种模式）"""
 
 from qgis.PyQt.QtWidgets import (
     QDialog, QVBoxLayout, QLabel, QCheckBox,
     QDoubleSpinBox, QPushButton, QHBoxLayout,
+    QRadioButton, QButtonGroup, QGroupBox,
 )
 from qgis.PyQt.QtCore import Qt, pyqtSignal
 
@@ -16,7 +17,7 @@ class TrimDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("管道切割")
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
-        self.setFixedWidth(240)
+        self.setFixedWidth(260)
         self._build_ui()
 
     def _build_ui(self):
@@ -26,6 +27,19 @@ class TrimDialog(QDialog):
         title = QLabel("📐 管道切割参数")
         title.setStyleSheet("font-weight: bold; font-size: 14px;")
         layout.addWidget(title)
+
+        # ── 切割模式 ──
+        mode_group = QGroupBox("切割模式")
+        mode_layout = QVBoxLayout(mode_group)
+        self._mode_group = QButtonGroup(self)
+        self._radio_click = QRadioButton("点选切割（逐根点击）")
+        self._radio_line = QRadioButton("画线切割（批量交叉）")
+        self._mode_group.addButton(self._radio_click, 0)
+        self._mode_group.addButton(self._radio_line, 1)
+        self._radio_click.setChecked(True)
+        mode_layout.addWidget(self._radio_click)
+        mode_layout.addWidget(self._radio_line)
+        layout.addWidget(mode_group)
 
         layout.addWidget(QLabel("管道类型:"))
         self.chk_lateral = QCheckBox("毛管 (lateral)")
@@ -66,4 +80,5 @@ class TrimDialog(QDialog):
         self.apply_clicked.emit({
             "pipe_types": types,
             "cut_length": self.spin_length.value(),
+            "mode": "line" if self._radio_line.isChecked() else "click",
         })

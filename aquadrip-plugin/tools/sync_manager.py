@@ -228,10 +228,15 @@ class SyncManager:
                         vtype_str = str(self._attr(feat, "valve_type") or "GATE").upper()
                         vtype = getattr(ValveType, vtype_str, ValveType.PRV)
                         setting = float(self._attr(feat, "setting") or 0)
+                        # 读取阀门开闭状态（GPKG 中存储 "open"/"closed"）
+                        status_str = str(self._attr(feat, "status") or "open").lower()
+                        from wdrip.network.links import ValveStatus
+                        vstatus = ValveStatus.CLOSED if status_str == "closed" else ValveStatus.OPEN
                         link = Valve(lid, from_node, to_node,
                                      valve_type=vtype,
                                      setting=setting,
-                                     diameter=diameter)
+                                     diameter=diameter,
+                                     status=vstatus)
                     else:
                         link = Pipe(lid, from_node, to_node,
                                     pipe_type=pipe_type,

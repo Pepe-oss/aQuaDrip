@@ -65,6 +65,7 @@ FIELD_DEFS = {
             _text_field("emitter_model", 50),
             _double_field("emitter_k"),
             _double_field("emitter_x"),
+            _text_field("rotation_mode", 10),
         ],
         "value_maps": {
             "planting_pattern": {"垄模式": "ridge", "按垄数": "ridge_count"},
@@ -155,6 +156,8 @@ FIELD_DEFS = {
             _double_field("setting"),
             _double_field("minor_loss"),
             _text_field("zone", 20),
+            _int_field("rotation_order"),
+            _double_field("rotation_duration_min"),
             _text_field("from_node", 50),
             _text_field("to_node", 50),
             _double_field("flow"),
@@ -233,6 +236,7 @@ FIELD_ALIASES = {
     "ridge_count": "垄数", "row_direction": "自定义角度(°)",
     "emitter_spacing": "滴头间距(m)", "emitter_model": "滴头型号",
     "emitter_k": "滴头流量系数 k", "emitter_x": "滴头流态指数 x",
+    "rotation_mode": "轮灌模式",
     # aqd_pipes
     "pipe_type": "管道类型", "material": "材质",
     "roughness": "糙率C", "minor_loss": "局部损失系数",
@@ -247,6 +251,7 @@ FIELD_ALIASES = {
     "pump_flow": "额定流量(m³/h)", "pump_power": "额定功率(kW)",
     # aqd_valves
     "valve_type": "阀门类型", "setting": "设定值",
+    "rotation_order": "轮灌顺序", "rotation_duration_min": "轮灌时长(min)",
     # aqd_nodes
     "node_type": "节点类型", "source_type": "水源类型", "head": "水头(m)",
     "available_flow": "可用流量(m³/s)", "fertilizer_volume": "施肥罐容积(L)",

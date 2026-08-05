@@ -179,11 +179,14 @@ class DripSimulation:
                            minor_loss=link.minor_loss)
             else:
                 diameter_m = link.diameter / 1000.0 if link.diameter > 0 else None
+                # 映射 ValveStatus → WNTR initial_status
+                from wdrip.network.links import ValveStatus
+                wn_status = "CLOSED" if link.status == ValveStatus.CLOSED else "ACTIVE"
                 wn.add_valve(lid, link.from_node, link.to_node,
                             valve_type=vtype,
                             diameter=diameter_m,
                             initial_setting=link.setting,
-                            initial_status="ACTIVE")
+                            initial_status=wn_status)
                 logger.debug(f"  Valve: {lid} type={vtype} setting={link.setting}")
         
         else:

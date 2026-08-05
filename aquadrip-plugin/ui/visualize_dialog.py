@@ -53,6 +53,15 @@ class VisualizeDialog(QDialog):
         self.mode_combo.addItem("滴头流量（蓝→红）", "emitter")
         mode_layout.addWidget(self.mode_combo)
         mode_layout.addStretch()
+
+        # 轮灌轮次过滤器
+        self._shift_label = QLabel("轮次:")
+        self._shift_combo = QComboBox()
+        self._shift_combo.currentIndexChanged.connect(self._on_filter_changed)
+        mode_layout.addWidget(self._shift_label)
+        mode_layout.addWidget(self._shift_combo)
+        self._shift_label.hide()
+        self._shift_combo.hide()
         layout.addLayout(mode_layout)
 
         # 按钮
@@ -111,7 +120,36 @@ class VisualizeDialog(QDialog):
 
         self.empty_label.hide()
         self.list_widget.show()
-        for i, record in enumerate(self.records):
+
+        # 收集所有轮灌组用于过滤器
+        rotation_ids = set()
+        for record in self.records:
+            rid = record.get("rotation_id")
+            if rid:
+                rotation_ids.add(rid)
+
+        self._shift_combo.blockSignals(True)
+        self._shift_combo.clear()
+        self._shift_combo.addItem("全部记录", "")
+        for rid in sorted(rotation_ids):
+            self._shift_combo.addItem(f"轮灌 {rid}", rid)
+        has_rotation = len(rotation_ids) > 0
+        self._shift_combo.setVisible(has_rotation)
+        self._shift_label.setVisible(has_rotation)
+        self._shift_combo.blockSignals(False)
+
+        self._update_list_display()
+
+    def _on_filter_changed(self):
+        self._update_list_display()
+
+    def _update_list_display(self):
+        """根据过滤器更新列表显示"""
+        filter_rid = self._shift_combo.currentData() if hasattr(self, '_shift_combo') else ""
+        self.list_widget.clear()
+        for record in self.records:
+            if filter_rid and record.get("rotation_id") != filter_rid:
+                continue
             summary = SimHistory.summary(record)
             item = QListWidgetItem(summary)
             self.list_widget.addItem(item)

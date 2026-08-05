@@ -44,7 +44,9 @@ class SimHistory:
             message: str = "",
             timestamp: Optional[str] = None,
             link_endpoints: Optional[Dict[str, list]] = None,
-            link_geometry: Optional[Dict[str, list]] = None) -> dict:
+            link_geometry: Optional[Dict[str, list]] = None,
+            rotation_id: Optional[str] = None,
+            shift_index: Optional[int] = None) -> dict:
         """新增一条记录
 
         Args:
@@ -85,6 +87,8 @@ class SimHistory:
             "node_count": len(node_pressure),
             "pipe_count": len(link_flow),
             "emitter_count": len(emitter_flow),
+            "rotation_id": rotation_id,
+            "shift_index": shift_index,
             "node_pressure": {k: round(float(v), 4)
                               for k, v in node_pressure.items()},
             # link_flow / link_velocity 存储为 L/h 和 m/s 便于可视化直接显示。
@@ -154,4 +158,8 @@ class SimHistory:
         cu = record.get("cu", 0)
         du = record.get("du", 0)
         n = record.get("emitter_count", 0)
+        rid = record.get("rotation_id")
+        si = record.get("shift_index")
+        if rid is not None and si is not None:
+            return f"{ts}  [轮灌 {rid} 轮次{si+1}]  CU={cu:.1f}%  DU={du:.1f}%  滴头={n}"
         return f"{ts}  CU={cu:.1f}%  DU={du:.1f}%  滴头={n}"

@@ -56,6 +56,8 @@ class AQuaDripPlugin:
         # 校准 tab 按钮连接
         self.dockwidget._btn_refresh.clicked.connect(self._on_calib_refresh)
         self.dockwidget._btn_calibrate.clicked.connect(self._on_calib_run)
+        # 轮灌 tab 按钮连接
+        self.dockwidget._btn_rot_visualize.clicked.connect(self._on_rot_visualize)
 
         # 自定义图标路径
         from qgis.PyQt.QtGui import QIcon
@@ -84,6 +86,8 @@ class AQuaDripPlugin:
              "从 DEM 栅格中提取所有节点的高程信息"),
             ("zone_divide.svg", "分区划分", self.on_zone_divide,
              "根据阀门位置自动划分管网分区"),
+            ("rotation.svg", "轮灌管理", self.on_rotation,
+             "配置轮灌调度方案并逐轮次运行水力模拟"),
             ("inp_tools.svg", "INP 处理", None,
              "导出当前管网为 EPANET INP 文件，或从 INP 文件导入为临时图层"),
         ]
@@ -324,7 +328,8 @@ class AQuaDripPlugin:
     def _on_trim_apply(self, params):
         """切割参数确认后激活工具"""
         from .tools.trim_tool import TrimTool
-        tool = TrimTool(self.iface, params["pipe_types"], params["cut_length"])
+        tool = TrimTool(self.iface, params["pipe_types"],
+                        params["cut_length"], params.get("mode", "click"))
         self.iface.mapCanvas().setMapTool(tool)
 
     def on_generate_crossing_nodes(self):
@@ -717,6 +722,148 @@ class AQuaDripPlugin:
             traceback.print_exc()
             self.iface.messageBar().pushWarning(
                 "aQuaDrip", f"分区划分失败: {e}")
+
+    # ── 轮灌管理 ──
+
+    def on_rotation(self):
+        """打开轮灌配置对话框
+
+        如果用户已在地图上手动选中田块，自动预选该田块。
+        """
+        from .tools.rotation_scheduler import RotationScheduler
+        from .ui.rotation_dialog import RotationDialog
+
+        scheduler = RotationScheduler(self.iface)
+        fields = scheduler.get_field_features()
+        if not fields:
+            self.iface.messageBar().pushWarning(
+                "aQuaDrip", "未找到农田地块 (aqd_fields) 图层")
+            return
+
+        # 检查是否已在地图上选中田块
+        selected_id = -1
+        field_layer = scheduler._field_layer
+        if field_layer and field_layer.selectedFeatureCount() > 0:
+            selected_id = field_layer.selectedFeatures()[0].id()
+
+        dlg = RotationDialog(self.iface)
+        dlg.set_field_data(fields, selected_id)
+        dlg.baseline_requested.connect(lambda: self._on_rot_baseline(dlg))
+        dlg.rotation_requested.connect(lambda cfg: self._on_rot_run(dlg, cfg))
+        dlg.finished.connect(lambda: setattr(self, '_rot_dlg', None))
+        self._rot_dlg = dlg
+        dlg.show()
+
+    def _on_rot_baseline(self, dlg):
+        """定量模式：异步运行基准模拟获取各分区流量"""
+        from .tools.rotation_scheduler import RotationScheduler
+        from qgis.PyQt.QtCore import QThread, QObject, pyqtSignal
+
+        scheduler = RotationScheduler(self.iface)
+        config = dlg.get_config()
+        field_feat = scheduler.get_field_features()
+        field_idx = config.get("field_idx", 0)
+        if 0 <= field_idx < len(field_feat):
+            scheduler.collect_field_data(field_feat[field_idx])
+
+        class BaselineRunner(QObject):
+            done = pyqtSignal(dict)
+
+            def run(self_):
+                try:
+                    flows = scheduler.run_baseline_simulation(
+                        callback=lambda p, m: dlg.on_rotation_progress(p, m))
+                    self_.done.emit(flows)
+                except Exception:
+                    import traceback
+                    traceback.print_exc()
+                    self_.done.emit({})
+
+        worker = BaselineRunner()
+        thread = QThread()
+        worker.moveToThread(thread)
+        worker.done.connect(lambda flows: dlg.on_baseline_done(flows))
+        worker.done.connect(thread.quit)
+        thread.started.connect(worker.run)
+        self._track_thread(thread, worker)
+        thread.start()
+
+    def _on_rot_run(self, dlg, config):
+        """异步运行轮灌多轮次模拟"""
+        if self.dockwidget:
+            self.dockwidget.clear_rotation()
+
+        from .tools.rotation_scheduler import RotationScheduler, RotationWorker
+        from qgis.PyQt.QtCore import QThread
+
+        scheduler = RotationScheduler(self.iface)
+        field_feat = scheduler.get_field_features()
+        field_idx = config.get("field_idx", 0)
+        if 0 <= field_idx < len(field_feat):
+            scheduler.collect_field_data(field_feat[field_idx])
+
+        zones = config.get("zones", [])
+        groups = scheduler.build_time_schedule(zones)
+
+        if not groups:
+            self.iface.messageBar().pushWarning("aQuaDrip", "未配置有效的轮灌组")
+            dlg._on_stop()
+            return
+
+        # 使用 moveToThread 模式
+        worker = RotationWorker(scheduler, groups)
+        thread = QThread()
+        worker.moveToThread(thread)
+
+        worker.progress_changed.connect(
+            lambda p, m: dlg.on_rotation_progress(p, m))
+        worker.finished.connect(lambda results: (
+            dlg.on_rotation_done(results),
+            self._on_rotation_finished(scheduler)
+        ))
+        worker.error_occurred.connect(
+            lambda e: (dlg.on_rotation_progress(0, f"错误: {e}"), dlg._on_stop()))
+        thread.started.connect(worker.run)
+        worker.finished.connect(thread.quit)
+        worker.error_occurred.connect(thread.quit)
+
+        self._track_thread(thread, worker)
+        thread.start()
+
+    def _on_rotation_finished(self, scheduler):
+        """轮灌完成后在 dockwidget 展示结果"""
+        try:
+            from .tools.sim_history import SimHistory
+            scheduler._find_gpkg_path()
+            gpkg_path = scheduler._gpkg_path
+            if gpkg_path:
+                history = SimHistory(gpkg_path)
+                records = history.load()
+                rid = scheduler.rotation_id
+                results = []
+                for r in records:
+                    if r.get("rotation_id") == rid:
+                        shift_msg = r.get("message", "")
+                        results.append({
+                            "shift_idx": r.get("shift_index", 0),
+                            "zone": shift_msg.replace(f"轮灌 {rid} ", ""),
+                            "valves": [],
+                            "duration_min": 0,
+                            "avg_pressure_m": round(
+                                sum(float(v) for v in r.get("node_pressure", {}).values())
+                                / max(len(r.get("node_pressure", {})), 1), 2),
+                            "cu": r.get("cu", 0),
+                            "du": r.get("du", 0),
+                        })
+                if results and self.dockwidget:
+                    self.dockwidget.show_rotation_results(results, rid)
+        except Exception:
+            import traceback
+            traceback.print_exc()
+
+    def _on_rot_visualize(self):
+        """可视化轮灌结果 → 打开可视化对话框"""
+        self.on_visualize()
 
     def _run_silent_simulation(self):
         """异步静默运行模拟（校准用，不弹对话框）"""

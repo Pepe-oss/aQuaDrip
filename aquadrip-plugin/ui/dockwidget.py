@@ -90,6 +90,38 @@ class AQuaDripDockWidget(QDockWidget):
         # 校准迭代计数器
         self._calib_iteration = 0
 
+        # ── Tab 3: 轮灌 ──
+        self._rotation_tab = QWidget()
+        rot_layout = QVBoxLayout(self._rotation_tab)
+        rot_layout.setContentsMargins(4, 4, 4, 4)
+        rot_layout.setSpacing(4)
+
+        # 轮灌结果表（轮次、分区、阀门、时长、平均P、CU%、DU%）
+        self._rot_table = QTableWidget(0, 7)
+        self._rot_table.setHorizontalHeaderLabels(
+            ["轮次", "分区", "阀门", "时长(min)", "平均P(m)", "CU%", "DU%"])
+        self._rot_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self._rot_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        for col in range(2, 7):
+            self._rot_table.horizontalHeader().setSectionResizeMode(
+                col, QHeaderView.ResizeToContents)
+        rot_layout.addWidget(self._rot_table)
+
+        self._rot_stats = QLabel("点击「轮灌管理」工具栏按钮配置并运行轮灌")
+        self._rot_stats.setStyleSheet("color: gray; font-size: 11px;")
+        rot_layout.addWidget(self._rot_stats)
+
+        rot_btn = QHBoxLayout()
+        rot_btn.addStretch()
+        self._btn_rot_visualize = QPushButton("📊 可视化轮次")
+        self._btn_rot_visualize.setEnabled(False)
+        rot_btn.addWidget(self._btn_rot_visualize)
+        rot_layout.addLayout(rot_btn)
+
+        self._tabs.addTab(self._rotation_tab, "轮灌")
+
+        self._rotation_results = []  # 缓存最新轮灌结果
+
     # ── 日志 ──
 
     def log_message(self, msg: str):
@@ -487,3 +519,57 @@ class AQuaDripDockWidget(QDockWidget):
             if "aqd_obs_points" in src or layer.name() == "aqd_obs_points":
                 return layer
         return None
+
+    # ── 轮灌 tab ──
+
+    def show_rotation_results(self, results: list, rotation_id: str = ""):
+        """在轮灌 tab 中展示多轮次模拟结果
+
+        Args:
+            results: [{shift_idx, zone, valves, duration_min, avg_pressure_m, cu, du, ...}, ...]
+            rotation_id: 轮灌批次 ID
+        """
+        self._rotation_results = results
+        self._rot_table.setRowCount(0)
+        self._rot_table.blockSignals(True)
+        try:
+            for r in results:
+                row = self._rot_table.rowCount()
+                self._rot_table.insertRow(row)
+                si = r.get("shift_idx", 0)
+                zone = r.get("zone", "?")
+                valves_str = ", ".join(r.get("valves", []))
+                dur = r.get("duration_min", 0)
+                avg_p = r.get("avg_pressure_m", 0)
+                cu = r.get("cu", 0)
+                du = r.get("du", 0)
+                error = r.get("error")
+
+                if error:
+                    for col, val in enumerate(
+                        [f"轮次{si+1}", zone, valves_str, f"{dur:.0f}", error, "—", "—"]):
+                        item = QTableWidgetItem(val)
+                        item.setFlags(Qt.ItemIsEnabled)
+                        self._rot_table.setItem(row, col, item)
+                else:
+                    for col, val in enumerate(
+                        [f"轮次{si+1}", zone, valves_str,
+                         f"{dur:.0f}", f"{avg_p:.2f}", f"{cu:.1f}", f"{du:.1f}"]):
+                        item = QTableWidgetItem(val)
+                        item.setFlags(Qt.ItemIsEnabled)
+                        self._rot_table.setItem(row, col, item)
+        finally:
+            self._rot_table.blockSignals(False)
+
+        success_count = sum(1 for r in results if "error" not in r or not r.get("error"))
+        self._rot_stats.setText(
+            f"轮灌 {rotation_id}  共 {len(results)} 轮次  "
+            f"成功 {success_count} 轮")
+        self._btn_rot_visualize.setEnabled(success_count > 0)
+
+    def clear_rotation(self):
+        """清空轮灌结果"""
+        self._rotation_results = []
+        self._rot_table.setRowCount(0)
+        self._rot_stats.setText("点击「轮灌管理」工具栏按钮配置并运行轮灌")
+        self._btn_rot_visualize.setEnabled(False)
