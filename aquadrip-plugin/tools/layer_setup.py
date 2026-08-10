@@ -176,7 +176,7 @@ FIELD_DEFS = {
             "status": {"开启": "open", "关闭": "closed"},
         },
         "defaults": {
-            "valve_type": "'GATE'",
+            "valve_type": "'PRV'",
             "status": "'open'",
             "diameter": "63",
             "setting": "10",   # 非零默认：PRV/PSV/PBV 设 10m，0 会导致阻断

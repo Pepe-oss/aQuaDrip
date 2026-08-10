@@ -139,18 +139,51 @@ class AQuaDripPlugin:
             QgsApplication.processingRegistry().removeProvider(self.provider)
             self.provider = None
 
-        # 断开所有活跃线程的信号连接（让它们自行结束，不阻塞卸载）
+        # 关闭可能仍开着的非模态对话框，避免其信号回调访问已销毁的主对象
+        for attr in ("_prop_dlg", "_edit_dlg", "_trim_dlg", "_viz_dlg",
+                     "_rot_dlg", "_calib_dlg"):
+            dlg = getattr(self, attr, None)
+            if dlg is not None:
+                try:
+                    dlg.close()
+                    dlg.deleteLater()
+                except Exception:
+                    pass
+                setattr(self, attr, None)
+
+        # 断开所有活跃线程/worker 的信号连接（让它们自行结束，不阻塞卸载）
         self._stop_all_threads()
 
     # ── 线程安全管理 ──
 
     def _stop_all_threads(self):
-        """插件卸载时断开活跃线程的信号连接"""
-        for t in list(getattr(self, '_active_threads', [])):
+        """插件卸载时断开活跃线程/worker 的信号连接
+
+        同时断开 worker 的 progress_changed/finished/error_occurred 信号，
+        防止后台 worker 完成后通过 lambda 回调访问已销毁的对话框 → 段错误。
+        """
+        for entry in list(getattr(self, '_active_threads', [])):
+            thread, worker = entry if isinstance(entry, tuple) else (entry, None)
             try:
-                if t.isRunning():
-                    # 断开信号防止回调访问已销毁的 UI
-                    t.finished.disconnect()
+                if worker is not None:
+                    # 断开 worker 所有信号，避免回调触及已销毁的 UI
+                    try:
+                        worker.progress_changed.disconnect()
+                    except (TypeError, RuntimeError):
+                        pass
+                    try:
+                        worker.finished.disconnect()
+                    except (TypeError, RuntimeError):
+                        pass
+                    try:
+                        worker.error_occurred.disconnect()
+                    except (TypeError, RuntimeError):
+                        pass
+                if thread.isRunning():
+                    try:
+                        thread.finished.disconnect()
+                    except (TypeError, RuntimeError):
+                        pass
             except Exception:
                 pass
         self._active_threads.clear()
@@ -160,14 +193,16 @@ class AQuaDripPlugin:
 
         Args:
             thread: QThread 实例
-            worker: 可选的 SimulationWorker，用于 deleteLater 清理
+            worker: 可选的 SimulationWorker / RotationWorker，用于卸载时
+                断开信号和 deleteLater 清理
         """
-        self._active_threads.append(thread)
+        self._active_threads.append((thread, worker))
 
         def on_finished():
             try:
-                if thread in self._active_threads:
-                    self._active_threads.remove(thread)
+                entry = (thread, worker)
+                if entry in self._active_threads:
+                    self._active_threads.remove(entry)
                 thread.deleteLater()
                 if worker is not None:
                     worker.deleteLater()
@@ -623,19 +658,10 @@ class AQuaDripPlugin:
         """将模拟结果保存到 sidecar 历史文件"""
         try:
             from .tools.sim_history import SimHistory
-            from qgis.core import QgsProject, QgsVectorLayer
+            from .tools.layer_utils import find_gpkg_path
 
             # 从项目找 GPKG 路径（优先用 aqd_fields，更稳定）
-            gpkg_path = None
-            for layer in QgsProject.instance().mapLayers().values():
-                if not isinstance(layer, QgsVectorLayer):
-                    continue
-                s = layer.source() if hasattr(layer, "source") else ""
-                if "aqd_fields" in s or layer.name() == "aqd_fields":
-                    gpkg_path = s.split("|")[0]
-                    if gpkg_path.endswith(".gpkg"):
-                        break
-                    gpkg_path = None
+            gpkg_path = find_gpkg_path(None, "aqd_fields")
 
             if not gpkg_path:
                 return  # 找不到 GPKG，静默跳过
@@ -872,15 +898,8 @@ class AQuaDripPlugin:
             return
 
         # 从 simhistory 读取最新模拟值 + 观测点坐标
-        gpkg_path = None
-        from qgis.core import QgsProject, QgsVectorLayer
-        for _lid, layer in QgsProject.instance().mapLayers().items():
-            if not isinstance(layer, QgsVectorLayer):
-                continue
-            s = layer.source() if hasattr(layer, "source") else ""
-            if "aqd_fields" in s or layer.name() == "aqd_fields":
-                gpkg_path = s.split("|")[0]
-                break
+        from .tools.layer_utils import find_gpkg_path
+        gpkg_path = find_gpkg_path(None, "aqd_fields")
         if not gpkg_path:
             self.iface.messageBar().pushWarning("aQuaDrip", "未找到项目 GPKG")
             return
@@ -995,13 +1014,8 @@ class AQuaDripPlugin:
             dlg.on_sim_done(self._update_obs_from_sim(obs_data))
 
     def _update_obs_from_sim(self, obs_data):
-        gpkg_path = None
-        from qgis.core import QgsProject, QgsVectorLayer
-        for _lid, layer in QgsProject.instance().mapLayers().items():
-            if not isinstance(layer, QgsVectorLayer): continue
-            s = layer.source() if hasattr(layer, "source") else ""
-            if "aqd_fields" in s or layer.name() == "aqd_fields":
-                gpkg_path = s.split("|")[0]; break
+        from .tools.layer_utils import find_gpkg_path
+        gpkg_path = find_gpkg_path(None, "aqd_fields")
         if not gpkg_path: return obs_data
         from .tools.sim_history import SimHistory
         recs = SimHistory(gpkg_path).load()
@@ -1031,14 +1045,9 @@ class AQuaDripPlugin:
         return new
 
     def _find_obs_layer(self):
-        from qgis.core import QgsProject, QgsVectorLayer
-        for _lid, layer in QgsProject.instance().mapLayers().items():
-            if not isinstance(layer, QgsVectorLayer):
-                continue
-            src = layer.source() if hasattr(layer, "source") else ""
-            if "aqd_obs_points" in src or layer.name() == "aqd_obs_points":
-                return layer
-        return None
+        from qgis.core import QgsProject
+        from .tools.layer_utils import find_layer
+        return find_layer(QgsProject.instance(), "aqd_obs_points")
 
     def on_open_project(self):
         """打开已有的 aQuaDrip GPKG 项目"""

@@ -52,7 +52,7 @@ class FieldInfo:
             return self.lateral_spacing
         return self.row_spacings[0]
 
-    def validate(self) -> list:
+    def validate(self) -> List[str]:
         """检查参数合法性，返回错误列表"""
         errors = []
         if self.area <= 0:

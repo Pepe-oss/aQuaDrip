@@ -89,18 +89,12 @@ class VisualizeDialog(QDialog):
 
     def _load_gpkg_path(self):
         """从当前项目找 aqd_pipes 图层的 GPKG 路径"""
-        from qgis.core import QgsProject, QgsVectorLayer
-        for layer in QgsProject.instance().mapLayers().values():
-            if not isinstance(layer, QgsVectorLayer):
-                continue
-            s = layer.source() if hasattr(layer, "source") else ""
-            if "aqd_pipes" in s or layer.name() == "aqd_pipes":
-                # source 格式: /path/to/aquadrip.gpkg|layername=aqd_pipes
-                gpkg_path = s.split("|")[0]
-                if gpkg_path.endswith(".gpkg"):
-                    self.history = SimHistory(gpkg_path)
-                    self._refresh_list()
-                    return
+        from ..tools.layer_utils import find_gpkg_path
+        gpkg_path = find_gpkg_path(None, "aqd_pipes")
+        if gpkg_path:
+            self.history = SimHistory(gpkg_path)
+            self._refresh_list()
+            return
         # 没找到 GPKG
         self.empty_label.setText("未找到 aQuaDrip 项目\n请先加载或创建项目")
         self.empty_label.show()

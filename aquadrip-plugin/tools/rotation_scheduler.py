@@ -248,14 +248,8 @@ class RotationScheduler:
         return result
 
     def _find_layer_by_key(self, key: str) -> Optional[QgsVectorLayer]:
-        from qgis.core import QgsProject, QgsVectorLayer
-        for _lid, layer in QgsProject.instance().mapLayers().items():
-            if not isinstance(layer, QgsVectorLayer):
-                continue
-            src = layer.source() if hasattr(layer, "source") else ""
-            if key in src or layer.name() == key:
-                return layer
-        return None
+        from .layer_utils import find_layer
+        return find_layer(None, key)
 
     # ── Phase 2 预留接口 ──
 
@@ -328,30 +322,20 @@ class RotationScheduler:
         return list(self._field_layer.getFeatures())
 
     def _find_layers(self):
-        from qgis.core import QgsProject, QgsVectorLayer
-        for _lid, layer in QgsProject.instance().mapLayers().items():
-            if not isinstance(layer, QgsVectorLayer):
-                continue
-            src = layer.source() if hasattr(layer, "source") else ""
-            name = layer.name()
-            if "aqd_valves" in src or name == "aqd_valves":
-                self._valve_layer = layer
-            elif "aqd_pipes" in src or name == "aqd_pipes":
-                self._pipe_layer = layer
-            elif "aqd_fields" in src or name == "aqd_fields":
-                self._field_layer = layer
-                if "|" in src:
-                    self._gpkg_path = src.split("|")[0]
+        from .layer_utils import find_layers, find_gpkg_path
+        found = find_layers(None, "aqd_valves", "aqd_pipes", "aqd_fields")
+        self._valve_layer = found.get("aqd_valves")
+        self._pipe_layer = found.get("aqd_pipes")
+        self._field_layer = found.get("aqd_fields")
+        gpkg = find_gpkg_path(None, "aqd_fields")
+        if gpkg:
+            self._gpkg_path = gpkg
 
     def _find_gpkg_path(self):
-        from qgis.core import QgsProject, QgsVectorLayer
-        for _lid, layer in QgsProject.instance().mapLayers().items():
-            if not isinstance(layer, QgsVectorLayer):
-                continue
-            src = layer.source() if hasattr(layer, "source") else ""
-            if "aqd_fields" in src or layer.name() == "aqd_fields":
-                self._gpkg_path = src.split("|")[0]
-                return
+        from .layer_utils import find_gpkg_path
+        gpkg = find_gpkg_path(None, "aqd_fields")
+        if gpkg:
+            self._gpkg_path = gpkg
 
     @property
     def rotation_id(self) -> str:
@@ -359,27 +343,18 @@ class RotationScheduler:
 
     @staticmethod
     def _safe_str(feat, field, default=""):
-        try:
-            val = feat.attribute(field)
-            return str(val).strip() if val is not None else default
-        except (KeyError, ValueError):
-            return default
+        from .layer_utils import safe_str
+        return safe_str(feat, field, default)
 
     @staticmethod
     def _safe_float(feat, field, default=0.0):
-        try:
-            val = feat.attribute(field)
-            return float(val) if val is not None else default
-        except (KeyError, ValueError, TypeError):
-            return default
+        from .layer_utils import safe_float
+        return safe_float(feat, field, default)
 
     @staticmethod
     def _safe_int(feat, field, default=0):
-        try:
-            val = feat.attribute(field)
-            return int(val) if val is not None else default
-        except (KeyError, ValueError, TypeError):
-            return default
+        from .layer_utils import safe_int
+        return safe_int(feat, field, default)
 
 
 class RotationWorker(QObject):

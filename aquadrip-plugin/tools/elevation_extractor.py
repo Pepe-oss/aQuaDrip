@@ -187,11 +187,8 @@ class ElevationExtractor:
 
     @staticmethod
     def _safe_attr(feat, name, default=None):
-        idx = feat.fields().lookupField(name)
-        if idx < 0:
-            return default
-        val = feat.attribute(idx)
-        return default if val is None else val
+        from .layer_utils import attr
+        return attr(feat, name, default)
 
     # ── 图层查找 ──
 
@@ -218,10 +215,5 @@ class ElevationExtractor:
 
     def _find_node_layer(self) -> Optional[QgsVectorLayer]:
         """查找 aqd_nodes 矢量图层。"""
-        for _lid, layer in self.project.mapLayers().items():
-            if not isinstance(layer, QgsVectorLayer):
-                continue
-            src = layer.source() if hasattr(layer, "source") else ""
-            if "aqd_nodes" in src or layer.name() == "aqd_nodes":
-                return layer
-        return None
+        from .layer_utils import find_layer
+        return find_layer(self.project, "aqd_nodes")

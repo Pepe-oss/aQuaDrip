@@ -32,6 +32,7 @@ SIGNATURE_FIELDS = {
 
 def is_aquadrip_gpkg(path: str) -> bool:
     """校验 GPKG 是否包含 aQuaDrip 项目的签名图层和字段"""
+    conn = None
     try:
         conn = sqlite3.connect(path)
         cur = conn.cursor()
@@ -40,19 +41,19 @@ def is_aquadrip_gpkg(path: str) -> bool:
         tables = {row[0] for row in cur.fetchall()}
         for sig in SIGNATURE_LAYERS:
             if sig not in tables:
-                conn.close()
                 return False
         # 检查每个签名图层的字段
         for sig in SIGNATURE_LAYERS:
             cur.execute(f"PRAGMA table_info(\"{sig}\")")
             columns = {row[1] for row in cur.fetchall()}
             if not any(f in columns for f in SIGNATURE_FIELDS[sig]):
-                conn.close()
                 return False
-        conn.close()
         return True
     except (sqlite3.Error, OSError):
         return False
+    finally:
+        if conn is not None:
+            conn.close()
 
 
 def load_layers(iface) -> bool:
@@ -119,6 +120,7 @@ def _read_gpkg_crs(path: str):
 
     OGR 加载时空图层可能不自动识别 CRS，这里直接从元数据表读取。
     """
+    conn = None
     try:
         conn = sqlite3.connect(path)
         cur = conn.cursor()
@@ -126,7 +128,6 @@ def _read_gpkg_crs(path: str):
             "SELECT srs_id FROM gpkg_contents "
             "WHERE srs_id IS NOT NULL LIMIT 1")
         row = cur.fetchone()
-        conn.close()
         if row and row[0]:
             from qgis.core import QgsCoordinateReferenceSystem
             crs = QgsCoordinateReferenceSystem.fromEpsgId(row[0])
@@ -134,6 +135,9 @@ def _read_gpkg_crs(path: str):
                 return crs
     except (sqlite3.Error, OSError):
         pass
+    finally:
+        if conn is not None:
+            conn.close()
     return None
 
 
@@ -314,151 +318,183 @@ def import_inp(iface) -> bool:
     n_added = 0
     if node_layer:
         node_layer.startEditing()
-        for name in wn.node_name_list:
-            node = wn.get_node(name)
-            if node is None:
-                continue
-            ntype = type(node).__name__
+        try:
+            for name in wn.node_name_list:
+                node = wn.get_node(name)
+                if node is None:
+                    continue
+                ntype = type(node).__name__
 
-            coords = getattr(node, 'coordinates', (0, 0))
-            if coords is None or len(coords) < 2:
-                continue
+                coords = getattr(node, 'coordinates', (0, 0))
+                if coords is None or len(coords) < 2:
+                    continue
 
-            feat = QgsFeature(node_layer.fields())
-            feat.setGeometry(QgsGeometry.fromPointXY(
-                QgsPointXY(float(coords[0]), float(coords[1]))))
+                feat = QgsFeature(node_layer.fields())
+                feat.setGeometry(QgsGeometry.fromPointXY(
+                    QgsPointXY(float(coords[0]), float(coords[1]))))
 
-            if ntype == "Reservoir":
-                feat.setAttribute("node_type", "source")
-                feat.setAttribute("head", float(node.base_head))
-                feat.setAttribute("source_type", "reservoir")
-            elif ntype == "Junction":
-                feat.setAttribute("node_type", "junction")
-                feat.setAttribute("elevation", float(node.elevation))
-            elif ntype == "Tank":
-                feat.setAttribute("node_type", "junction")
-                feat.setAttribute("elevation", float(node.elevation))
-            else:
-                feat.setAttribute("node_type", "junction")
+                if ntype == "Reservoir":
+                    feat.setAttribute("node_type", "source")
+                    feat.setAttribute("head", float(node.base_head))
+                    feat.setAttribute("source_type", "reservoir")
+                elif ntype == "Junction":
+                    feat.setAttribute("node_type", "junction")
+                    feat.setAttribute("elevation", float(node.elevation))
+                elif ntype == "Tank":
+                    feat.setAttribute("node_type", "junction")
+                    feat.setAttribute("elevation", float(node.elevation))
+                else:
+                    feat.setAttribute("node_type", "junction")
 
-            node_layer.addFeature(feat)
-            n_added += 1
-        node_layer.commitChanges()
+                node_layer.addFeature(feat)
+                n_added += 1
+        except Exception:
+            node_layer.rollBack()
+            raise
+        else:
+            if not node_layer.commitChanges():
+                node_layer.rollBack()
+                iface.messageBar().pushWarning(
+                    "aQuaDrip", "节点图层提交失败")
 
     # ── 4.2 写入管道 ──
     pipe_layer = _find_project_layer(project, "aqd_pipes")
     p_added = 0
     if pipe_layer:
         pipe_layer.startEditing()
-        for name in wn.pipe_name_list:
-            link = wn.get_link(name)
-            if link is None:
-                continue
-            from_node = wn.get_node(link.start_node_name)
-            to_node = wn.get_node(link.end_node_name)
-            if from_node is None or to_node is None:
-                continue
-            fc = getattr(from_node, 'coordinates', (0, 0))
-            tc = getattr(to_node, 'coordinates', (0, 0))
-            if fc is None or tc is None or len(fc) < 2 or len(tc) < 2:
-                continue
+        try:
+            for name in wn.pipe_name_list:
+                link = wn.get_link(name)
+                if link is None:
+                    continue
+                from_node = wn.get_node(link.start_node_name)
+                to_node = wn.get_node(link.end_node_name)
+                if from_node is None or to_node is None:
+                    continue
+                fc = getattr(from_node, 'coordinates', (0, 0))
+                tc = getattr(to_node, 'coordinates', (0, 0))
+                if fc is None or tc is None or len(fc) < 2 or len(tc) < 2:
+                    continue
 
-            feat = QgsFeature(pipe_layer.fields())
-            feat.setGeometry(QgsGeometry.fromPolylineXY([
-                QgsPointXY(float(fc[0]), float(fc[1])),
-                QgsPointXY(float(tc[0]), float(tc[1])),
-            ]))
-            feat.setAttribute("from_node", link.start_node_name)
-            feat.setAttribute("to_node", link.end_node_name)
-            feat.setAttribute("diameter", float(link.diameter) * 1000)
-            feat.setAttribute("status", "open")
-            feat.setAttribute("material", "PE")
-            if hasattr(link, 'roughness'):
-                feat.setAttribute("roughness", float(link.roughness))
+                feat = QgsFeature(pipe_layer.fields())
+                feat.setGeometry(QgsGeometry.fromPolylineXY([
+                    QgsPointXY(float(fc[0]), float(fc[1])),
+                    QgsPointXY(float(tc[0]), float(tc[1])),
+                ]))
+                feat.setAttribute("from_node", link.start_node_name)
+                feat.setAttribute("to_node", link.end_node_name)
+                feat.setAttribute("diameter", float(link.diameter) * 1000)
+                feat.setAttribute("status", "open")
+                feat.setAttribute("material", "PE")
+                if hasattr(link, 'roughness'):
+                    feat.setAttribute("roughness", float(link.roughness))
 
-            # pipe_type：优先从 [AQD_PIPES] 元数据恢复
-            if name in aqd_pipe_types:
-                feat.setAttribute("pipe_type", aqd_pipe_types[name])
-            else:
-                d_mm = float(link.diameter) * 1000
-                if d_mm >= 50:
-                    feat.setAttribute("pipe_type", "mainline")
-                elif d_mm >= 32:
-                    feat.setAttribute("pipe_type", "submain")
+                # pipe_type：优先从 [AQD_PIPES] 元数据恢复
+                if name in aqd_pipe_types:
+                    feat.setAttribute("pipe_type", aqd_pipe_types[name])
                 else:
-                    feat.setAttribute("pipe_type", "lateral")
+                    d_mm = float(link.diameter) * 1000
+                    if d_mm >= 50:
+                        feat.setAttribute("pipe_type", "mainline")
+                    elif d_mm >= 32:
+                        feat.setAttribute("pipe_type", "submain")
+                    else:
+                        feat.setAttribute("pipe_type", "lateral")
 
-            pipe_layer.addFeature(feat)
-            p_added += 1
-        pipe_layer.commitChanges()
+                pipe_layer.addFeature(feat)
+                p_added += 1
+        except Exception:
+            pipe_layer.rollBack()
+            raise
+        else:
+            if not pipe_layer.commitChanges():
+                pipe_layer.rollBack()
+                iface.messageBar().pushWarning(
+                    "aQuaDrip", "管道图层提交失败")
 
     # ── 4.3 写入水泵 ──
     pump_layer = _find_project_layer(project, "aqd_pumps")
     if pump_layer:
         pump_layer.startEditing()
-        for name in wn.pump_name_list:
-            link = wn.get_link(name)
-            if link is None:
-                continue
-            from_node = wn.get_node(link.start_node_name)
-            to_node = wn.get_node(link.end_node_name)
-            if from_node is None or to_node is None:
-                continue
-            fc = getattr(from_node, 'coordinates', (0, 0))
-            tc = getattr(to_node, 'coordinates', (0, 0))
-            if fc is None or tc is None or len(fc) < 2 or len(tc) < 2:
-                continue
+        try:
+            for name in wn.pump_name_list:
+                link = wn.get_link(name)
+                if link is None:
+                    continue
+                from_node = wn.get_node(link.start_node_name)
+                to_node = wn.get_node(link.end_node_name)
+                if from_node is None or to_node is None:
+                    continue
+                fc = getattr(from_node, 'coordinates', (0, 0))
+                tc = getattr(to_node, 'coordinates', (0, 0))
+                if fc is None or tc is None or len(fc) < 2 or len(tc) < 2:
+                    continue
 
-            feat = QgsFeature(pump_layer.fields())
-            feat.setGeometry(QgsGeometry.fromPolylineXY([
-                QgsPointXY(float(fc[0]), float(fc[1])),
-                QgsPointXY(float(tc[0]), float(tc[1])),
-            ]))
-            feat.setAttribute("from_node", link.start_node_name)
-            feat.setAttribute("to_node", link.end_node_name)
-            feat.setAttribute("diameter", float(link.diameter) * 1000)
-            feat.setAttribute("status", "open")
-            feat.setAttribute("pump_head", 0.0)
-            feat.setAttribute("pump_flow", 0.0)
-            feat.setAttribute("pump_power", 0.0)
-            p_added += 1
-            pump_layer.addFeature(feat)
-        pump_layer.commitChanges()
+                feat = QgsFeature(pump_layer.fields())
+                feat.setGeometry(QgsGeometry.fromPolylineXY([
+                    QgsPointXY(float(fc[0]), float(fc[1])),
+                    QgsPointXY(float(tc[0]), float(tc[1])),
+                ]))
+                feat.setAttribute("from_node", link.start_node_name)
+                feat.setAttribute("to_node", link.end_node_name)
+                feat.setAttribute("diameter", float(link.diameter) * 1000)
+                feat.setAttribute("status", "open")
+                feat.setAttribute("pump_head", 0.0)
+                feat.setAttribute("pump_flow", 0.0)
+                feat.setAttribute("pump_power", 0.0)
+                p_added += 1
+                pump_layer.addFeature(feat)
+        except Exception:
+            pump_layer.rollBack()
+            raise
+        else:
+            if not pump_layer.commitChanges():
+                pump_layer.rollBack()
+                iface.messageBar().pushWarning(
+                    "aQuaDrip", "水泵图层提交失败")
 
     # ── 4.4 写入阀门 ──
     valve_layer = _find_project_layer(project, "aqd_valves")
     if valve_layer:
         valve_layer.startEditing()
-        for name in wn.valve_name_list:
-            link = wn.get_link(name)
-            if link is None:
-                continue
-            from_node = wn.get_node(link.start_node_name)
-            to_node = wn.get_node(link.end_node_name)
-            if from_node is None or to_node is None:
-                continue
-            fc = getattr(from_node, 'coordinates', (0, 0))
-            tc = getattr(to_node, 'coordinates', (0, 0))
-            if fc is None or tc is None or len(fc) < 2 or len(tc) < 2:
-                continue
+        try:
+            for name in wn.valve_name_list:
+                link = wn.get_link(name)
+                if link is None:
+                    continue
+                from_node = wn.get_node(link.start_node_name)
+                to_node = wn.get_node(link.end_node_name)
+                if from_node is None or to_node is None:
+                    continue
+                fc = getattr(from_node, 'coordinates', (0, 0))
+                tc = getattr(to_node, 'coordinates', (0, 0))
+                if fc is None or tc is None or len(fc) < 2 or len(tc) < 2:
+                    continue
 
-            feat = QgsFeature(valve_layer.fields())
-            feat.setGeometry(QgsGeometry.fromPolylineXY([
-                QgsPointXY(float(fc[0]), float(fc[1])),
-                QgsPointXY(float(tc[0]), float(tc[1])),
-            ]))
-            feat.setAttribute("from_node", link.start_node_name)
-            feat.setAttribute("to_node", link.end_node_name)
-            feat.setAttribute("diameter", float(link.diameter) * 1000)
-            feat.setAttribute("status", "open")
-            if hasattr(link, 'valve_type'):
-                feat.setAttribute("valve_type", str(link.valve_type))
-            else:
-                feat.setAttribute("valve_type", "GATE")
-            feat.setAttribute("setting", 0.0)
-            p_added += 1
-            valve_layer.addFeature(feat)
-        valve_layer.commitChanges()
+                feat = QgsFeature(valve_layer.fields())
+                feat.setGeometry(QgsGeometry.fromPolylineXY([
+                    QgsPointXY(float(fc[0]), float(fc[1])),
+                    QgsPointXY(float(tc[0]), float(tc[1])),
+                ]))
+                feat.setAttribute("from_node", link.start_node_name)
+                feat.setAttribute("to_node", link.end_node_name)
+                feat.setAttribute("diameter", float(link.diameter) * 1000)
+                feat.setAttribute("status", "open")
+                if hasattr(link, 'valve_type'):
+                    feat.setAttribute("valve_type", str(link.valve_type))
+                else:
+                    feat.setAttribute("valve_type", "GATE")
+                feat.setAttribute("setting", 0.0)
+                p_added += 1
+                valve_layer.addFeature(feat)
+        except Exception:
+            valve_layer.rollBack()
+            raise
+        else:
+            if not valve_layer.commitChanges():
+                valve_layer.rollBack()
+                iface.messageBar().pushWarning(
+                    "aQuaDrip", "阀门图层提交失败")
 
     iface.messageBar().pushMessage(
         "aQuaDrip",
@@ -470,10 +506,5 @@ def import_inp(iface) -> bool:
 
 def _find_project_layer(project: QgsProject, key: str):
     """从已加载项目图层中查找（按 name 或 source 匹配）"""
-    for layer in project.mapLayers().values():
-        if not isinstance(layer, QgsVectorLayer):
-            continue
-        s = layer.source() if hasattr(layer, "source") else ""
-        if key in s or layer.name() == key:
-            return layer
-    return None
+    from .layer_utils import find_layer
+    return find_layer(project, key)

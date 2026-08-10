@@ -430,11 +430,8 @@ class TrimTool(QgsMapTool):
         return positions
 
     def _find_pipe_layer(self):
-        for layer in QgsProject.instance().mapLayers().values():
-            s = layer.source() if hasattr(layer, 'source') else ""
-            if "aqd_pipes" in s:
-                return layer
-        return None
+        from .layer_utils import find_layer
+        return find_layer(QgsProject.instance(), "aqd_pipes")
 
     def _hit_test(self, feat, point, tolerance):
         """检测点是否命中管道，返回 (dist, feat, position) 或 None"""

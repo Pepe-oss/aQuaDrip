@@ -337,27 +337,6 @@ class AQuaDripDockWidget(QDockWidget):
             self._set_error_cell(row, err_col, sim_v, new_val)
         self._update_stats()
 
-    def _update_error_column(self, row: int):
-        """计算并更新指定行的误差列"""
-        sim_item = self._obs_table.item(row, 2)
-        meas_item = self._obs_table.item(row, 1)
-        if sim_item is None or meas_item is None:
-            return
-        try:
-            sim_v = float(sim_item.text().strip() if sim_item.text() != "—" else "0")
-            meas_v = float(meas_item.text().strip())
-        except ValueError:
-            return
-        err = sim_v - meas_v
-        err_item = QTableWidgetItem(f"{err:+.2f}")
-        if abs(err) < 0.5:
-            err_item.setForeground(Qt.green)
-        else:
-            err_item.setForeground(Qt.red)
-        err_item.setFlags(Qt.ItemIsEnabled)
-        self._obs_table.setItem(row, 3, err_item)
-        self._update_stats()
-
     def _update_stats(self):
         """更新统计标签"""
         errors = []
@@ -380,15 +359,8 @@ class AQuaDripDockWidget(QDockWidget):
     @staticmethod
     def _load_latest_network_coords():
         """从 simhistory 加载最新记录的 node_coords, link_geometry, link_flow"""
-        from qgis.core import QgsProject, QgsVectorLayer
-        gpkg_path = None
-        for _lid, layer in QgsProject.instance().mapLayers().items():
-            if not isinstance(layer, QgsVectorLayer):
-                continue
-            s = layer.source() if hasattr(layer, "source") else ""
-            if "aqd_fields" in s or layer.name() == "aqd_fields":
-                gpkg_path = s.split("|")[0]
-                break
+        from ..tools.layer_utils import find_gpkg_path
+        gpkg_path = find_gpkg_path(None, "aqd_fields")
         if not gpkg_path:
             return {}, {}, {}
         from ..tools.sim_history import SimHistory
@@ -511,14 +483,9 @@ class AQuaDripDockWidget(QDockWidget):
 
     def _find_obs_layer(self):
         """查找 aqd_obs_points 图层"""
-        from qgis.core import QgsProject, QgsVectorLayer
-        for _lid, layer in QgsProject.instance().mapLayers().items():
-            if not isinstance(layer, QgsVectorLayer):
-                continue
-            src = layer.source() if hasattr(layer, "source") else ""
-            if "aqd_obs_points" in src or layer.name() == "aqd_obs_points":
-                return layer
-        return None
+        from qgis.core import QgsProject
+        from ..tools.layer_utils import find_layer
+        return find_layer(QgsProject.instance(), "aqd_obs_points")
 
     # ── 轮灌 tab ──
 

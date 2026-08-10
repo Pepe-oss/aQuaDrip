@@ -20,7 +20,7 @@ class TestProjectFile(unittest.TestCase):
         self.net.add_node(SourceNode("S1", 0, 0, head=30))
         self.net.add_node(Junction("J1", 10, 10, elevation=5))
         self.net.add_node(EmitterNode("E1", 20, 10, emitter_k=0.506, lateral_id="L1"))
-        self.net.add_link(Pipe("P1", "S1", "J1", pipe_type="mainline", diameter=0.05, length=100))
+        self.net.add_link(Pipe("P1", "S1", "J1", pipe_type="mainline", diameter=50, length=100))
 
     def test_save_and_load(self):
         with tempfile.NamedTemporaryFile(suffix=".aqd", delete=False) as f:
@@ -74,9 +74,9 @@ class TestInpWriter(unittest.TestCase):
         self.net.add_node(EmitterNode("E1", 20, 0, elevation=5,
                                        emitter_k=0.5164, emitter_x=0.5))
         self.net.add_link(Pipe("P1", "R1", "J1", pipe_type="mainline",
-                                diameter=0.05, length=100, roughness=130))
+                                diameter=50, length=100, roughness=130))
         self.net.add_link(Pipe("P2", "J1", "E1", pipe_type="lateral",
-                                diameter=0.016, length=100, roughness=130))
+                                diameter=16, length=100, roughness=130))
     
     def test_to_string(self):
         inp = InpWriter(self.net).to_string()
@@ -121,10 +121,10 @@ class TestInpWriterAdvanced(unittest.TestCase):
         net.add_node(Junction("J1", 10, 0))
         net.add_node(Junction("J2", 20, 0))
         net.add_node(EmitterNode("E1", 30, 0, emitter_k=0.5, lateral_id="L1"))
-        net.add_link(Pipe("P1", "R1", "J1", pipe_type="mainline", diameter=0.05, length=50))
+        net.add_link(Pipe("P1", "R1", "J1", pipe_type="mainline", diameter=50, length=50))
         net.add_link(Pump("PU1", "J1", "J2", rated_head=20, rated_flow=10))
         net.add_link(Valve("V1", "J2", "E1", valve_type=ValveType.PRV, setting=15))
-        net.add_link(Pipe("L1", "E1", "E1", pipe_type="lateral", diameter=0.016, length=10))
+        net.add_link(Pipe("L1", "E1", "E1", pipe_type="lateral", diameter=16, length=10))
         
         inp = InpWriter(net).to_string()
         self.assertIn("[PUMPS]", inp)

@@ -93,8 +93,5 @@ class EdgeSelectTool(QgsMapTool):
         self.canvas.unsetMapTool(self)
 
     def _find_field_layer(self):
-        for layer in QgsProject.instance().mapLayers().values():
-            s = layer.source() if hasattr(layer, 'source') else ""
-            if "aqd_fields" in s:
-                return layer
-        return None
+        from .layer_utils import find_layer
+        return find_layer(QgsProject.instance(), "aqd_fields")

@@ -83,7 +83,7 @@ class IrrigationSchedule:
                 return (group.open_start, group.open_end)
         return None
 
-    def validate(self) -> list:
+    def validate(self) -> List[str]:
         """检查参数合法性"""
         errors = []
         # 检查轮灌组时间是否重叠

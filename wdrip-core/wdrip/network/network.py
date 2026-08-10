@@ -201,13 +201,19 @@ class DripNetwork:
 
         Returns:
             新的 DripNetwork，只含匹配链路及其端点节点
+
+        注意：返回的子网络中链路对象是浅拷贝（expand_lateral 会就地修改
+        link.to_node / link.length，浅拷贝避免污染原网络）；节点对象保持
+        共享引用（_upgrade_to_emitter 用字典替换而非就地修改，安全）。
         """
         from copy import copy
 
         filtered_links = {}
         for lid, link in self.links.items():
             if keep_link(link):
-                filtered_links[lid] = link
+                # 浅拷贝 link：后续 expand_lateral 会就地修改 to_node/length，
+                # 拷贝避免影响原网络（dataclass 字段均为标量，浅拷贝足够）
+                filtered_links[lid] = copy(link)
 
         keep_nodes = set()
         for link in filtered_links.values():
@@ -227,19 +233,3 @@ class DripNetwork:
             schedule=self.schedule,
             units=self.units,
         )
-
-    # ---- 转换为 WNTR（占位，Phase 1.6 实现） ----
-
-    def to_wntr(self):
-        """转换为 WNTR WaterNetworkModel
-        
-        暂未实现，Phase 1.6（模拟封装）时完成。
-        """
-        raise NotImplementedError("to_wntr() 将在 Sprint 1.6 实现")
-
-    def to_hydraulic_graph(self):
-        """生成水力计算图
-        
-        暂未实现，Phase 1.2（拓扑引擎）时完成。
-        """
-        raise NotImplementedError("to_hydraulic_graph() 将在 Sprint 1.2 实现")

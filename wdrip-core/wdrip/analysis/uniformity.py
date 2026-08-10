@@ -50,10 +50,18 @@ class UniformityAnalyzer:
     @staticmethod
     def eu(flows: np.ndarray, pressures: np.ndarray, emitter_x: float = 0.5) -> float:
         """灌水均匀度 Emission Uniformity (%)
-        
-        考虑压力变异和发射器流态指数的影响。
-        EU = 100 × (q_min / q_avg)
-        其中 q_min 是最小压力下滴头的流量
+
+        实测流量法：EU = 100 × (q̄_low_p / q̄_avg)
+        其中 q̄_low_p 是压力最低的 1/4 区域滴头的平均流量。
+
+        本方法直接用模拟/实测流量计算，emitter_x 参数保留用于签名兼容
+        （标准 ASAE EU 公式 EU = 100·(1-1.27·CV/√e)·(q_min/q_avg) 中的
+        压力估算分支需要 x，但当前路径总有流量数据，故不参与计算）。
+
+        Args:
+            flows: 各滴头流量数组（L/h）
+            pressures: 各滴头节点压力数组（m），用于定位低压区
+            emitter_x: 滴头流态指数（保留参数，当前实现未使用）
         """
         if flows is None or len(flows) == 0:
             return 0.0

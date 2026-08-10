@@ -6,8 +6,8 @@
 """
 
 from abc import ABC
-from dataclasses import dataclass, field
-from enum import Enum, auto
+from dataclasses import dataclass
+from enum import Enum
 from typing import Optional, List, Tuple
 
 
@@ -122,18 +122,21 @@ class Pump(DripLink):
 @dataclass
 class Valve(DripLink):
     """阀门 — 映射为 WNTR Valve（Link 类型）
-    
-    方向约束：
-    - PRV: from_node = 高压侧, to_node = 低压侧
-    - FCV/PSV/GPV/SOLENOID/CHECK: 有方向性
-    - GATE（手动闸阀）: 双向，无方向约束
-    
+
+    方向约束（与 ValveType 枚举一致，仅 PRV/FCV/PSV 三种调节阀）：
+    - PRV: from_node = 高压侧, to_node = 低压侧，设定下游压力
+    - PSV: 维持上游（from_node 侧）压力
+    - FCV: 限制流量上限（方向为水流方向）
+
+    注意：普通开关闸阀（无水力调节作用）在当前模型中用 Pipe + status=CLOSED
+    表达，不在 ValveType 中。如需新建普通闸阀，请用 Pipe 并设置 status。
+
     Attributes:
-        valve_type: 阀门类型（ValveType 枚举）
-        setting: 设定值（PRV=压力 m, FCV=流量, PSV=压力）
+        valve_type: 阀门类型（ValveType 枚举：PRV/FCV/PSV）
+        setting: 设定值（PRV/PSV=压力 m, FCV=流量）
         status: 状态（OPEN/CLOSED）
         diameter: 口径（mm）
-        has_direction: 是否有方向约束
+        has_direction: 是否有方向约束（三种调节阀均为 True）
         minor_loss: 局部水头损失系数
     """
     valve_type: ValveType = ValveType.PRV

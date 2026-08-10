@@ -54,6 +54,17 @@ def expand_lateral(net, link_id: str,
     if emitter_spacing <= 0:
         raise ValueError("滴头间距必须大于 0")
 
+    # 幂等检查：已展开的毛管直接跳过。
+    # 判据：to_node 已是 EmitterNode（展开会把末端或中间节点升级为滴头），
+    # 或已存在该毛管产生的滴头节点（E_{link_id}_xxx）。
+    # 这同时覆盖展开产生的 seg 段（其 to_node 指向已升级的滴头）。
+    to_node = net.get_node(link.to_node)
+    if isinstance(to_node, EmitterNode):
+        return 0
+    prefix = f"E_{link_id}_"
+    if any(nid.startswith(prefix) for nid in net.nodes):
+        return 0
+
     # 默认滴头参数
     if emitter_k is None or emitter_x is None:
         spec = emitter_spec or BUILTIN_EMITTERS.get(DEFAULT_EMITTER_KEY)
@@ -168,6 +179,8 @@ def expand_all_laterals(net,
     lateral_ids = [
         lid for lid, link in net.links.items()
         if getattr(link, "pipe_type", None) == "lateral"
+        # 跳过展开产生的分段（id 含 _seg 后缀），避免重复展开
+        and "_seg" not in lid
     ]
     result: Dict[str, int] = {}
     for lid in lateral_ids:

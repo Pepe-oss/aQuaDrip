@@ -154,10 +154,5 @@ class DirectionFixer:
         return fixed
 
     def _find_layer(self, key: str) -> Optional[QgsVectorLayer]:
-        for _lid, layer in QgsProject.instance().mapLayers().items():
-            if not isinstance(layer, QgsVectorLayer):
-                continue
-            src = layer.source() if hasattr(layer, "source") else ""
-            if key in src or layer.name() == key:
-                return layer
-        return None
+        from .layer_utils import find_layer
+        return find_layer(QgsProject.instance(), key)

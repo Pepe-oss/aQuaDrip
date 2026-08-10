@@ -1,6 +1,6 @@
 """滴头规格参数"""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List, Dict
 
 
@@ -53,7 +53,7 @@ class EmitterSpec:
             return 0.0
         return self.k * (pressure ** self.x)
 
-    def validate(self) -> list:
+    def validate(self) -> List[str]:
         """检查参数合法性，返回错误列表"""
         errors = []
         if self.k <= 0 and not self.is_pressure_compensating:

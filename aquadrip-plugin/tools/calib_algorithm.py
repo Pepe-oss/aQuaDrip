@@ -237,9 +237,6 @@ class HazenWilliamsCalibrator(CalibrationAlgorithm):
         return len(details), details
 
     def _find_layer(self, key: str):
-        from qgis.core import QgsProject, QgsVectorLayer
-        for _lid, layer in QgsProject.instance().mapLayers().items():
-            if not isinstance(layer, QgsVectorLayer): continue
-            src = layer.source() if hasattr(layer, "source") else ""
-            if key in src or layer.name() == key: return layer
-        return None
+        from qgis.core import QgsProject
+        from .layer_utils import find_layer
+        return find_layer(QgsProject.instance(), key)

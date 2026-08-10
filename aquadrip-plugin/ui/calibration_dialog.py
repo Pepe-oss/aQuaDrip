@@ -164,12 +164,9 @@ class CalibrationDialog(QDialog):
         self._btn_apply.setEnabled(False)
 
     def _find_layer(self, key: str):
-        from qgis.core import QgsProject, QgsVectorLayer
-        for _lid, layer in QgsProject.instance().mapLayers().items():
-            if not isinstance(layer, QgsVectorLayer): continue
-            src = layer.source() if hasattr(layer, "source") else ""
-            if key in src or layer.name() == key: return layer
-        return None
+        from qgis.core import QgsProject
+        from ..tools.layer_utils import find_layer
+        return find_layer(QgsProject.instance(), key)
 
     def _run_one_iteration(self):
         if not self._running:

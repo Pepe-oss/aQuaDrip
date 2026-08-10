@@ -1,8 +1,8 @@
 """滴灌管网节点模型"""
 
 from abc import ABC
-from dataclasses import dataclass, field
-from typing import Optional, List
+from dataclasses import dataclass
+from typing import Optional
 
 
 @dataclass

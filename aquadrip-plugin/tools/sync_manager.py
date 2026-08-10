@@ -38,14 +38,10 @@ class SyncManager:
     def _attr(feat: QgsFeature, name: str, default=None):
         """安全读取字段值（字段不存在或 NULL 时返回 default）
 
-        不直接依赖 QgsFeature.attribute(name) 对缺失字段的行为——
-        不同 QGIS 版本/构建下可能返回 None 或抛 KeyError('id')。
+        委托给公共 layer_utils.attr，保持调用点不变。
         """
-        idx = feat.fields().lookupField(name)
-        if idx < 0:
-            return default
-        val = feat.attribute(idx)
-        return default if val is None else val
+        from .layer_utils import attr
+        return attr(feat, name, default)
 
     # ── 从 QGIS 读取 → 构建 DripNetwork ──
 
@@ -198,6 +194,7 @@ class SyncManager:
                 for seg in segs:
                     fid_to_segs.setdefault(seg["fid"], []).append(seg)
 
+
                 for seg in segs:
                     pts = seg["pts"]
                     seg_length = QgsGeometry.fromPolylineXY(pts).length()
@@ -266,9 +263,14 @@ class SyncManager:
                     f.setAttribute("from_node", fsegs[0]["from_node"] or "")
                     f.setAttribute("to_node", fsegs[-1]["to_node"] or "")
                     layer.updateFeature(f)
-            finally:
+            except Exception:
                 if need_edit:
-                    layer.commitChanges()
+                    layer.rollBack()
+                raise
+            else:
+                if need_edit and not layer.commitChanges():
+                    layer.rollBack()
+                    self.log(f"⚠️ 图层 {layer.name()} 提交失败")
 
         # 5. 毛管展开为 EmitterNode 滴头链
         #    关键：emitter_spacing 是米单位，必须投影到米制 CRS（UTM）后再展开，
@@ -443,9 +445,14 @@ class SyncManager:
                             changed = True
                     if changed:
                         layer.updateFeature(feat)
-            finally:
+            except Exception:
                 if need_edit:
-                    layer.commitChanges()
+                    layer.rollBack()
+                raise
+            else:
+                if need_edit and not layer.commitChanges():
+                    layer.rollBack()
+                    self.log(f"⚠️ 图层 {layer.name()} 提交失败")
             layer.triggerRepaint()
 
         # 写入节点结果（压力）
@@ -462,9 +469,14 @@ class SyncManager:
                         if len(arr) > 0:
                             feat.setAttribute("pressure", float(arr[-1]))
                             node_layer.updateFeature(feat)
-            finally:
+            except Exception:
                 if need_edit:
-                    node_layer.commitChanges()
+                    node_layer.rollBack()
+                raise
+            else:
+                if need_edit and not node_layer.commitChanges():
+                    node_layer.rollBack()
+                    self.log(f"⚠️ 图层 {node_layer.name()} 提交失败")
             node_layer.triggerRepaint()
 
     # ── 顶点切段（INP 导出用）──
@@ -530,12 +542,8 @@ class SyncManager:
         注意：必须用项目中的图层实例，写回结果才能实时刷新；
         用 gpkg 路径重开的图层对象修改后项目视图不会更新。
         """
-        for layer in self.project.mapLayers().values():
-            if not isinstance(layer, QgsVectorLayer):
-                continue
-            if layer.name() == key or key in (layer.source() or ""):
-                return layer
-        return None
+        from .layer_utils import find_layer
+        return find_layer(self.project, key)
 
     def log(self, msg: str):
         """输出日志（线程安全：非主线程时跳过 pushMessage）"""

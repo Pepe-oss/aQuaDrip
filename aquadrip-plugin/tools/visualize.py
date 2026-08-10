@@ -313,10 +313,5 @@ class Visualizer:
 
     def _find_layer(self, keyword: str) -> Optional[QgsVectorLayer]:
         """查找项目中的矢量图层（按 name 或 source）"""
-        for layer in QgsProject.instance().mapLayers().values():
-            if not isinstance(layer, QgsVectorLayer):
-                continue
-            s = layer.source() if hasattr(layer, "source") else ""
-            if keyword in s or layer.name() == keyword:
-                return layer
-        return None
+        from .layer_utils import find_layer
+        return find_layer(QgsProject.instance(), keyword)

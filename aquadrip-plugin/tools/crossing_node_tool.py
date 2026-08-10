@@ -56,6 +56,8 @@ class CrossingNodeGenerator:
             raise RuntimeError("未找到 aqd_pipes/aqd_pumps/aqd_valves 图层，请先初始化图层")
 
         # 阀门/水泵图层没有 pipe_type 字段，用图层名推断
+        # 默认为 pipe（aqd_pipes），仅当来自 pump/valve 图层时才覆盖
+        sel_type = "pipe"
         sel_layer = self._find_layer_for_feature(selected_feature)
         if sel_layer is not None:
             src = sel_layer.source() or ""
@@ -244,7 +246,10 @@ class CrossingNodeGenerator:
                     nodes.rollBack()
                     return count
                 count += 1
-            nodes.commitChanges()
+            if not nodes.commitChanges():
+                self.iface.messageBar().pushWarning(
+                    "aQuaDrip", "连接节点图层提交失败")
+                nodes.rollBack()
         except Exception:
             nodes.rollBack()
             raise
@@ -286,10 +291,5 @@ class CrossingNodeGenerator:
         return None
 
     def _find_layer(self, keyword: str) -> Optional[QgsVectorLayer]:
-        for layer in self.project.mapLayers().values():
-            if not isinstance(layer, QgsVectorLayer):
-                continue
-            s = layer.source() if hasattr(layer, "source") else ""
-            if keyword in s:
-                return layer
-        return None
+        from .layer_utils import find_layer
+        return find_layer(self.project, keyword)

@@ -438,10 +438,5 @@ class LateralGenerator:
         return parts[0] if parts else []
 
     def _get_pipes_layer(self) -> Optional[QgsVectorLayer]:
-        for layer in self.project.mapLayers().values():
-            if not isinstance(layer, QgsVectorLayer):
-                continue
-            s = layer.source() if hasattr(layer, 'source') else ""
-            if "aqd_pipes" in s:
-                return layer
-        return None
+        from .layer_utils import find_layer
+        return find_layer(self.project, "aqd_pipes")

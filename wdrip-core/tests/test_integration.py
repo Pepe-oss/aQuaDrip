@@ -75,13 +75,13 @@ class TestFullWorkflow(unittest.TestCase):
                                   lateral_id="L2"))
         # 管道
         net.add_link(Pipe("M", "R1", "J1", pipe_type="mainline",
-                          diameter=0.05, length=10, roughness=130))
+                          diameter=50, length=10, roughness=130))
         net.add_link(Pipe("S1", "J1", "J2", pipe_type="submain",
-                          diameter=0.04, length=10, roughness=130))
+                          diameter=40, length=10, roughness=130))
         net.add_link(Pipe("L1", "J1", "E1", pipe_type="lateral",
-                          diameter=0.016, length=15, roughness=130))
+                          diameter=16, length=15, roughness=130))
         net.add_link(Pipe("L2", "J2", "E2", pipe_type="lateral",
-                          diameter=0.016, length=15, roughness=130))
+                          diameter=16, length=15, roughness=130))
         
         # 验证
         errors = net.validate()
@@ -157,9 +157,9 @@ class TestFullWorkflow(unittest.TestCase):
         net.add_node(Junction("J1", 10, 10))
         net.add_node(EmitterNode("E1", 20, 10, emitter_k=0.5))
         net.add_link(Pipe("P1", "R1", "J1", pipe_type="mainline",
-                          diameter=0.05, length=50))
+                          diameter=50, length=50))
         net.add_link(Pipe("L1", "J1", "E1", pipe_type="lateral",
-                          diameter=0.016, length=50))
+                          diameter=16, length=50))
         
         # .aqd
         with tempfile.NamedTemporaryFile(suffix=".aqd", delete=False) as f:

@@ -156,5 +156,43 @@ class TestExpandedSimulation(unittest.TestCase):
         self.assertLessEqual(cu, 100.0)
 
 
+class TestExpandIdempotent(unittest.TestCase):
+    """幂等性：重复展开同一毛管不应崩溃"""
+
+    def test_double_expand_returns_zero(self):
+        """已展开的毛管再次调用 expand_lateral 返回 0，不抛 KeyError"""
+        net = _make_net_with_lateral(10.0)
+        n1 = expand_lateral(net, "L1", emitter_spacing=0.5)
+        self.assertEqual(n1, 20)
+        # 第二次展开：应幂等跳过
+        n2 = expand_lateral(net, "L1", emitter_spacing=0.5)
+        self.assertEqual(n2, 0)
+
+    def test_expand_all_idempotent(self):
+        """expand_all_laterals 重复调用不崩溃"""
+        net = _make_net_with_lateral(10.0)
+        r1 = expand_all_laterals(net, default_spacing=0.5)
+        self.assertEqual(r1, {"L1": 20})
+        r2 = expand_all_laterals(net, default_spacing=0.5)
+        self.assertEqual(r2, {"L1": 0})
+
+
+class TestSubNetworkIsolation(unittest.TestCase):
+    """子网络构建不应污染原网络"""
+
+    def test_sub_network_link_modification_isolated(self):
+        """在子网络上 expand_lateral 修改的 link.to_node 不影响原网络"""
+        net = _make_net_with_lateral(10.0)
+        original_to_node = net.links["L1"].to_node
+
+        sub = net.sub_network(lambda link: link.id == "L1")
+        expand_lateral(sub, "L1", emitter_spacing=0.5)
+
+        # 子网络中 L1 的 to_node 已被修改
+        self.assertNotEqual(sub.links["L1"].to_node, original_to_node)
+        # 原网络中 L1 的 to_node 保持不变
+        self.assertEqual(net.links["L1"].to_node, original_to_node)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -3,7 +3,7 @@
 在 TopologyGraph 的基础上附加工程参数，形成可直接转换为 WNTR 的水力模型。
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from .graph import TopologyGraph, TopologyLevel
@@ -138,12 +138,5 @@ class HydraulicGraph:
                 hl.valve_setting = link.setting
             
             self.links[lid] = hl
-        
-        return self
 
-    def to_wntr(self):
-        """转换为 WNTR WaterNetworkModel
-        
-        暂未实现，Sprint 1.6 完成。
-        """
-        raise NotImplementedError("to_wntr() 将在 Sprint 1.6 实现")
+        return self
