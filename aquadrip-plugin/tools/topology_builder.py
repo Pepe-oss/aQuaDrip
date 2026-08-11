@@ -7,7 +7,7 @@
 流程：
   A. 节点空间索引
   B. 管道端点 snap 到节点（容差内自动连接）
-  C. 管道-管道交叉检测（不同 pipe_type 之间）→ 在交叉点切断
+  C. 管道-管道交叉检测（受层级规则约束）→ 在合法交叉点切断
   D. 建立 DripNetwork 拓扑（节点 ID 引用，坐标统一）
 """
 
@@ -17,6 +17,36 @@ from qgis.core import (
     QgsSpatialIndex, QgsFeature, QgsGeometry, QgsPointXY,
     QgsVectorLayer, QgsWkbTypes,
 )
+
+
+# ── 管道层级规则 ──
+# 只有相邻层级（或同级）的管道才允许在交叉点建立连接。
+# 这确保了水流的层级结构：水源 → 主管 → 支管 → 毛管。
+# 跨级交叉（如主管×毛管视觉相交）被完全忽略，不生成节点、不切断管道。
+
+PIPE_LEVELS = {"mainline": 0, "submain": 1, "lateral": 2}
+
+# 节点级别 → node_type 映射（CrossingNodeGenerator 按选中管道层级写入）
+NODE_TYPE_BY_PIPE = {
+    "mainline": "main_junction",
+    "submain": "sub_junction",
+    "lateral": "lateral_junction",
+}
+
+
+def can_connect(type_a: str, type_b: str) -> bool:
+    """判断两种管道类型是否允许在交叉点建立连接
+
+    规则：只有相邻层级或同级的管道可以连接（|level_a - level_b| ≤ 1）。
+    例如 mainline×submain 允许，mainline×lateral 不允许。
+
+    未知类型（空值/自定义值）不阻断连接，保持向后兼容。
+    """
+    la = PIPE_LEVELS.get(type_a)
+    lb = PIPE_LEVELS.get(type_b)
+    if la is None or lb is None:
+        return True
+    return abs(la - lb) <= 1
 
 
 class TopologyBuilder:
@@ -159,7 +189,7 @@ class TopologyBuilder:
             line = rec["line"]
             my_type = rec["pipe_type"]
 
-            # 找所有其他管道的交叉点（含同类型：并列支管/环状干管需连接）
+            # 找所有其他管道的交叉点（受层级规则约束）
             crossing_points = []
             for other in records:
                 if other["fid"] == rec["fid"]:
@@ -167,6 +197,10 @@ class TopologyBuilder:
                 other_type = other["pipe_type"]
                 if not other_type:
                     continue  # 跳过类型缺失的管道
+
+                # 层级约束：跨级组合（如 mainline×lateral）不建立连接
+                if not can_connect(my_type, other_type):
+                    continue
 
                 inter = rec["geom"].intersection(other["geom"])
                 pts = self._extract_points(inter)

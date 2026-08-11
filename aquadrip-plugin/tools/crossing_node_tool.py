@@ -67,7 +67,11 @@ class CrossingNodeGenerator:
                 sel_type = "valve"
         sel_id = selected_feature.id()
 
+        # 选中管道的层级（pump/valve 无 pipe_type 字段，默认 mainline）
+        sel_ptype = str(selected_feature.attribute("pipe_type") or "mainline")
+
         # 1. 遍历所有 link 图层中的所有要素，求交叉点
+        from .topology_builder import can_connect
         connect_tol = self._connect_tolerance(nodes)
         crossing_points: List[QgsPointXY] = []
 
@@ -75,6 +79,11 @@ class CrossingNodeGenerator:
             for feat in link_layer.getFeatures():
                 # 跳过自身（同图层+同 fid）
                 if feat.id() == sel_id:
+                    continue
+
+                # 层级约束：跳过不合法的连接组合（如 mainline×lateral）
+                other_ptype = str(feat.attribute("pipe_type") or "mainline")
+                if not can_connect(sel_ptype, other_ptype):
                     continue
 
                 other_geom = feat.geometry()
@@ -114,7 +123,7 @@ class CrossingNodeGenerator:
             return 0
 
         # 4. 写入 aqd_nodes
-        written = self._write_nodes(nodes, crossing_points)
+        written = self._write_nodes(nodes, crossing_points, sel_ptype)
         nodes.triggerRepaint()
         self.iface.messageBar().pushMessage(
             "aQuaDrip", f"已生成 {written} 个连接节点", level=0, duration=4)
@@ -232,14 +241,18 @@ class CrossingNodeGenerator:
     # ── 图层写入 ──
 
     def _write_nodes(self, nodes: QgsVectorLayer,
-                     points: List[QgsPointXY]) -> int:
+                     points: List[QgsPointXY],
+                     pipe_type: str = "") -> int:
+        from .topology_builder import NODE_TYPE_BY_PIPE
+        # 按选中管道层级决定 node_type（main_junction / sub_junction / ...）
+        node_type = NODE_TYPE_BY_PIPE.get(pipe_type, "junction")
         nodes.startEditing()
         count = 0
         try:
             for pt in points:
                 feat = QgsFeature(nodes.fields())
                 feat.setGeometry(QgsGeometry.fromPointXY(pt))
-                feat.setAttribute("node_type", "junction")
+                feat.setAttribute("node_type", node_type)
                 if not nodes.addFeature(feat):
                     self.iface.messageBar().pushWarning(
                         "aQuaDrip", "添加连接节点失败")

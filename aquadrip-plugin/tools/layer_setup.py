@@ -196,7 +196,9 @@ FIELD_DEFS = {
             _double_field("pressure"),
         ],
         "value_maps": {
-            "node_type": {"水源": "source", "施肥罐": "fertilizer", "连接点": "junction"},
+            "node_type": {"水源": "source", "施肥罐": "fertilizer",
+                          "主管节点": "main_junction", "支管节点": "sub_junction",
+                          "毛管节点": "lateral_junction", "连接点": "junction"},
             "source_type": {"机井": "well", "蓄水池": "reservoir", "河渠": "canal", "出水口": "outlet"},
         },
         "defaults": {
