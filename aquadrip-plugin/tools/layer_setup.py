@@ -101,6 +101,8 @@ FIELD_DEFS = {
             _text_field("to_node", 50),
             _double_field("flow"),
             _double_field("velocity"),
+            _double_field("max_pressure"),
+            _text_field("pressure_status", 12),
         ],
         "value_maps": {
             "pipe_type": {"干管": "mainline", "支管": "submain", "毛管": "lateral"},
@@ -245,6 +247,7 @@ FIELD_ALIASES = {
     "lateral_spacing": "毛管间距(m)", "zone": "分区", "zone_id": "分区号",
     "from_node": "起点节点", "to_node": "终点节点",
     "flow": "流量(模拟)", "velocity": "流速(模拟)",
+    "max_pressure": "最大承压(m)", "pressure_status": "承压状态",
     "diameter": "管径(mm)", "status": "状态",
     "emitter_spacing": "滴头间距(m)", "emitter_k": "滴头流量系数 k",
     "emitter_x": "滴头流态指数 x",

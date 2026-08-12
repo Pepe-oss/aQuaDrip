@@ -87,6 +87,7 @@ class Pipe(DripLink):
     material: str = "PE"
     minor_loss: float = 0.0
     status: str = "OPEN"
+    max_pressure: float = 0.0    # 最大承压（m 水柱），0=未设置
 
 
 @dataclass

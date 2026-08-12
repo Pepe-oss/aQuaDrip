@@ -41,6 +41,7 @@ FIELD_LABELS = {
     "from_node": "起点节点", "to_node": "终点节点",
     "flow": "流量 (模拟)", "velocity": "流速 (模拟)",
     "lateral_spacing": "毛管间距 (m)", "zone_id": "分区号",
+    "max_pressure": "最大承压 (m)",
     # aqd_nodes
     "node_type": "节点类型", "source_type": "水源类型", "head": "水头 (m)",
     "available_flow": "可用流量 (m³/s)", "fertilizer_volume": "施肥罐容积 (L)",
@@ -54,8 +55,9 @@ MODE_FIELDS = {
                    "row_spacing", "tapes_per_ridge", "tape_spacing",
                    "ridge_count", "row_direction", "emitter_spacing"],
     "aqd_pipes": ["pipe_type", "status", "diameter", "material",
-                  "roughness", "minor_loss", "emitter_spacing",
-                  "emitter_k", "emitter_x", "zone_id", "zone"],
+                  "roughness", "minor_loss", "max_pressure",
+                  "emitter_spacing", "emitter_k", "emitter_x",
+                  "zone_id", "zone"],
     "aqd_pumps": ["pump_type", "status", "diameter", "pump_head",
                   "pump_flow", "pump_power", "minor_loss", "zone"],
     "aqd_valves": ["valve_type", "status", "diameter", "setting",
@@ -80,7 +82,7 @@ SPACING_FIELDS = {"row_spacing"}  # 垄间距范围 0.1~100 m
 NONNEG_FIELDS = {"diameter", "roughness", "head", "available_flow",
                  "pump_head", "pump_flow", "pump_power", "minor_loss",
                  "elevation", "fertilizer_volume",
-                 "fertilizer_concentration"}  # >= 0
+                 "fertilizer_concentration", "max_pressure"}  # >= 0
 ANGLE_FIELDS = {"row_direction"}  # 0~360
 RANGE_0_1 = {"emitter_x"}  # 流态指数 0~1
 INT_RANGES = {  # int 字段范围
@@ -89,10 +91,12 @@ INT_RANGES = {  # int 字段范围
 
 # 田块内管道批量设置：各管道类型的可编辑字段
 BATCH_PIPE_FIELDS = {
-    "mainline": ["diameter", "roughness", "material", "minor_loss"],
-    "submain": ["diameter", "roughness", "material", "minor_loss"],
+    "mainline": ["diameter", "roughness", "material", "minor_loss",
+                 "max_pressure"],
+    "submain": ["diameter", "roughness", "material", "minor_loss",
+                "max_pressure"],
     "lateral": ["diameter", "roughness", "emitter_spacing", "emitter_k",
-                "emitter_x"],
+                "emitter_x", "max_pressure"],
 }
 # 管道类型中文标签（用于下拉和应用按钮文案）
 BATCH_PIPE_LABELS = {"mainline": "干管", "submain": "支管", "lateral": "毛管"}
@@ -511,7 +515,8 @@ class PropertyDialog(QDialog):
 
         # 所有可能的参数字段（并集）+ 滴头型号
         all_fields = ["diameter", "roughness", "material", "minor_loss",
-                       "emitter_spacing", "emitter_k", "emitter_x"]
+                       "emitter_spacing", "emitter_k", "emitter_x",
+                       "max_pressure"]
         pipe_value_maps = FIELD_DEFS.get("aqd_pipes", {}).get("value_maps", {})
 
         # 获取 pipe 图层用于字段类型查找（self.layer 是 aqd_fields，无管道字段）
@@ -555,7 +560,8 @@ class PropertyDialog(QDialog):
         is_lateral = (ptype == "lateral")
 
         for fname in ("diameter", "roughness", "material", "minor_loss",
-                       "emitter_spacing", "emitter_k", "emitter_x"):
+                       "emitter_spacing", "emitter_k", "emitter_x",
+                       "max_pressure"):
             self._set_batch_row_visible(fname, fname in visible_fields)
         self._set_batch_row_visible("emitter_model", is_lateral)
 

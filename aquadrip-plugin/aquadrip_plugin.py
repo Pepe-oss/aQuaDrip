@@ -88,6 +88,8 @@ class AQuaDripPlugin:
              "根据阀门位置自动划分管网分区"),
             ("rotation.svg", "轮灌管理", self.on_rotation,
              "配置轮灌调度方案并逐轮次运行水力模拟"),
+            ("pipe_pressure.svg", "管道承压", self.on_pipe_pressure_check,
+             "根据模拟结果检测管道超压泄漏风险"),
             ("inp_tools.svg", "INP 处理", None,
              "导出当前管网为 EPANET INP 文件，或从 INP 文件导入为临时图层"),
         ]
@@ -748,6 +750,17 @@ class AQuaDripPlugin:
             traceback.print_exc()
             self.iface.messageBar().pushWarning(
                 "aQuaDrip", f"分区划分失败: {e}")
+
+    def on_pipe_pressure_check(self):
+        """检查管道承压：对比模拟压力与最大承压"""
+        try:
+            from .tools.pipe_pressure_check import PipePressureChecker
+            PipePressureChecker(self.iface).check()
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self.iface.messageBar().pushWarning(
+                "aQuaDrip", f"承压分析失败: {e}")
 
     # ── 轮灌管理 ──
 
