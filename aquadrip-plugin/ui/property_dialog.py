@@ -198,8 +198,14 @@ class PropertyDialog(QDialog):
             w.addItem(label, key)
         return w
 
-    def _make_widget(self, fname: str, vmap: Optional[dict]):
-        """按字段类型/下拉选项创建控件"""
+    def _make_widget(self, fname: str, vmap: Optional[dict],
+                     source_layer=None):
+        """按字段类型/下拉选项创建控件
+
+        Args:
+            source_layer: 用于字段类型查找的图层（默认用 self.layer）。
+                田块批量设置管道参数时需传入 aqd_pipes 图层。
+        """
         if vmap:
             w = QComboBox()
             for label, val in vmap.items():
@@ -209,7 +215,8 @@ class PropertyDialog(QDialog):
                 w.addItem("选择边…", "pick_edge")
             return w
 
-        qfield = self.layer.fields().field(fname)
+        layer = source_layer or self.layer
+        qfield = layer.fields().field(fname)
         if qfield.type() == QVariant.Double:
             w = QDoubleSpinBox()
             if fname in SPACING_FIELDS:
@@ -489,6 +496,10 @@ class PropertyDialog(QDialog):
                        "emitter_spacing", "emitter_k", "emitter_x"]
         pipe_value_maps = FIELD_DEFS.get("aqd_pipes", {}).get("value_maps", {})
 
+        # 获取 pipe 图层用于字段类型查找（self.layer 是 aqd_fields，无管道字段）
+        from .layer_utils import find_layer
+        pipe_layer = find_layer(None, "aqd_pipes")
+
         # 滴头型号下拉（仅毛管可见）
         model_combo = self._make_emitter_model_combo()
         model_label = QLabel("滴头型号")
@@ -497,7 +508,8 @@ class PropertyDialog(QDialog):
         self._batch_rows["emitter_model"] = (model_label, model_combo)
 
         for fname in all_fields:
-            widget = self._make_widget(fname, pipe_value_maps.get(fname))
+            widget = self._make_widget(
+                fname, pipe_value_maps.get(fname), source_layer=pipe_layer)
             label = QLabel(FIELD_LABELS.get(fname, fname))
             batch_form.addRow(label, widget)
             self._batch_widgets[fname] = widget
