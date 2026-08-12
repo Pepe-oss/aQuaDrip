@@ -238,7 +238,11 @@ class PropertyDialog(QDialog):
             return w
 
         layer = source_layer or self.layer
-        qfield = layer.fields().field(fname)
+        try:
+            qfield = layer.fields().field(fname)
+        except KeyError:
+            # 字段在 GPKG schema 中不存在（旧项目未迁移）→ 回退为文本输入框
+            return QLineEdit()
         if qfield.type() == QVariant.Double:
             w = QDoubleSpinBox()
             if fname in SPACING_FIELDS:
