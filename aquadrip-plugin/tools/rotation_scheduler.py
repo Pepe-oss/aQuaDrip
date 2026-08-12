@@ -197,14 +197,22 @@ class RotationScheduler:
         link_zone = self._get_link_zone_map()
 
         def get_link_zone(lid: str) -> str:
-            """查 link 的 zone，分段管道（_p后缀）继承原始管道的 zone"""
+            """查 link 的 zone，分段管道继承原始管道的 zone
+
+            拓扑构建和毛管展开会产生两种分段后缀：
+              _p:  交叉切断分段（如 L3_p2 → 原始 L3）
+              _seg: 毛管展开分段（如 L4_seg003 → 原始 L4）
+            """
             lz = link_zone.get(lid, "")
             if lz:
                 return lz
-            # 拓扑切断的分段（如 L3_p2）查不到，回退查原始 ID（L3）
-            if "_p" in lid:
-                base_id = lid.rsplit("_p", 1)[0]
-                return link_zone.get(base_id, "")
+            # 回退：逐级去掉后缀查基础 ID
+            for sep in ("_p", "_seg"):
+                if sep in lid:
+                    base_id = lid.rsplit(sep, 1)[0]
+                    lz = link_zone.get(base_id, "")
+                    if lz:
+                        return lz
             return ""
 
         def keep_link(link) -> bool:
