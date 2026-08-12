@@ -131,7 +131,11 @@ class PropertyDialog(QDialog):
         self._batch_widgets = {}  # 管道批量设置控件
         self._batch_rows = {}     # 管道批量设置行（用于显隐控制）
 
-        title = MODE_TITLES[self.mode]
+        # 标题：编辑属性入口的田块模式显示"管道批量设置"
+        if not show_generate and self.mode == "aqd_fields":
+            title = "管道批量设置"
+        else:
+            title = MODE_TITLES[self.mode]
         if len(self._feats) > 1:
             title += f"（{len(self._feats)} 个要素）"
         self.setWindowTitle(title)
@@ -146,30 +150,37 @@ class PropertyDialog(QDialog):
 
     def _build_ui(self, show_generate: bool):
         layout = QVBoxLayout(self)
-        form = QFormLayout()
-        form.setSpacing(6)
 
-        value_maps = FIELD_DEFS[self.mode].get("value_maps", {})
-        for fname in MODE_FIELDS[self.mode]:
-            # 滴头型号下拉：从内置滴头库动态构建
-            if fname == "emitter_model":
-                widget = self._make_emitter_model_combo()
-            else:
-                widget = self._make_widget(fname, value_maps.get(fname))
-            label = QLabel(FIELD_LABELS.get(fname, fname))
-            form.addRow(label, widget)
-            self._widgets[fname] = widget
-            self._rows[fname] = (label, widget)
+        # 田块参数表单：仅在毛管生成入口(show_generate=True)或非田块模式时显示。
+        # 编辑属性入口选中田块时只显示管道批量设置，不显示农艺参数。
+        show_field_params = show_generate or self.mode != "aqd_fields"
 
-        layout.addLayout(form)
+        if show_field_params:
+            form = QFormLayout()
+            form.setSpacing(6)
 
-        # 方向"选择边"按钮（农田模式 pick_edge）
-        if self.mode == "aqd_fields":
+            value_maps = FIELD_DEFS[self.mode].get("value_maps", {})
+            for fname in MODE_FIELDS[self.mode]:
+                # 滴头型号下拉：从内置滴头库动态构建
+                if fname == "emitter_model":
+                    widget = self._make_emitter_model_combo()
+                else:
+                    widget = self._make_widget(fname, value_maps.get(fname))
+                label = QLabel(FIELD_LABELS.get(fname, fname))
+                form.addRow(label, widget)
+                self._widgets[fname] = widget
+                self._rows[fname] = (label, widget)
+
+            layout.addLayout(form)
+
+        # 方向"选择边"按钮（仅毛管生成入口的农田模式）
+        if show_generate and self.mode == "aqd_fields":
             self.btn_pick_edge = QPushButton("在地图上选择边…")
             self.btn_pick_edge.clicked.connect(self._on_pick_edge)
             layout.addWidget(self.btn_pick_edge)
 
-            # 管道批量设置分区（仅田块模式）
+        # 管道批量设置分区：仅编辑属性入口的田块模式
+        if not show_generate and self.mode == "aqd_fields":
             self._build_batch_section(layout)
 
         # 生成毛管按钮
@@ -179,13 +190,21 @@ class PropertyDialog(QDialog):
             self.btn_gen.clicked.connect(self._on_generate)
             layout.addWidget(self.btn_gen)
 
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.Save | QDialogButtonBox.Close)
-        buttons.button(QDialogButtonBox.Save).setText("保存")
-        buttons.button(QDialogButtonBox.Close).setText("关闭")
-        buttons.accepted.connect(self._on_save)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+        # 保存/关闭按钮：有田块参数表单时才需要"保存"
+        if show_field_params:
+            buttons = QDialogButtonBox(
+                QDialogButtonBox.Save | QDialogButtonBox.Close)
+            buttons.button(QDialogButtonBox.Save).setText("保存")
+            buttons.button(QDialogButtonBox.Close).setText("关闭")
+            buttons.accepted.connect(self._on_save)
+            buttons.rejected.connect(self.reject)
+            layout.addWidget(buttons)
+        else:
+            # 仅管道批量设置模式：只需要"关闭"按钮
+            buttons = QDialogButtonBox(QDialogButtonBox.Close)
+            buttons.button(QDialogButtonBox.Close).setText("关闭")
+            buttons.rejected.connect(self.reject)
+            layout.addWidget(buttons)
 
     def _make_emitter_model_combo(self) -> QComboBox:
         """从内置滴头库构建型号下拉（含"自定义"选项）"""
