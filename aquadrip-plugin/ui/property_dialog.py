@@ -497,7 +497,7 @@ class PropertyDialog(QDialog):
         pipe_value_maps = FIELD_DEFS.get("aqd_pipes", {}).get("value_maps", {})
 
         # 获取 pipe 图层用于字段类型查找（self.layer 是 aqd_fields，无管道字段）
-        from .layer_utils import find_layer
+        from ..tools.layer_utils import find_layer
         pipe_layer = find_layer(None, "aqd_pipes")
 
         # 滴头型号下拉（仅毛管可见）
@@ -605,7 +605,7 @@ class PropertyDialog(QDialog):
         Returns:
             QgsFeature 列表
         """
-        from .layer_utils import find_layer
+        from ..tools.layer_utils import find_layer
         pipe_layer = find_layer(None, "aqd_pipes")
         if pipe_layer is None:
             return []
@@ -642,7 +642,7 @@ class PropertyDialog(QDialog):
                 self, "aQuaDrip", f"田块内未找到{label}，请先生成或绘制{label}")
             return
 
-        from .layer_utils import find_layer
+        from ..tools.layer_utils import find_layer
         pipe_layer = find_layer(None, "aqd_pipes")
         if pipe_layer is None:
             return
