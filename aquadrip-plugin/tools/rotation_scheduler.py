@@ -196,8 +196,19 @@ class RotationScheduler:
         """
         link_zone = self._get_link_zone_map()
 
+        def get_link_zone(lid: str) -> str:
+            """查 link 的 zone，分段管道（_p后缀）继承原始管道的 zone"""
+            lz = link_zone.get(lid, "")
+            if lz:
+                return lz
+            # 拓扑切断的分段（如 L3_p2）查不到，回退查原始 ID（L3）
+            if "_p" in lid:
+                base_id = lid.rsplit("_p", 1)[0]
+                return link_zone.get(base_id, "")
+            return ""
+
         def keep_link(link) -> bool:
-            lz = link_zone.get(link.id, "")
+            lz = get_link_zone(link.id)
             is_valve = hasattr(link, "valve_type")
 
             if is_valve:
