@@ -88,6 +88,16 @@ INT_RANGES = {  # int 字段范围
     "tapes_per_ridge": (1, 100), "ridge_count": (1, 10000), "zone_id": (0, 9999),
 }
 
+# 田块内管道批量设置：各管道类型的可编辑字段
+BATCH_PIPE_FIELDS = {
+    "mainline": ["diameter", "roughness", "material", "minor_loss"],
+    "submain": ["diameter", "roughness", "material", "minor_loss"],
+    "lateral": ["diameter", "roughness", "emitter_spacing", "emitter_k",
+                "emitter_x"],
+}
+# 管道类型中文标签（用于下拉和应用按钮文案）
+BATCH_PIPE_LABELS = {"mainline": "干管", "submain": "支管", "lateral": "毛管"}
+
 
 class PropertyDialog(QDialog):
     """统一属性编辑浮动窗
@@ -119,6 +129,8 @@ class PropertyDialog(QDialog):
         self._widgets = {}   # {field_name: widget}
         self._rows = {}      # {field_name: (label_widget, field_widget)}
         self._edge_tool = None
+        self._batch_widgets = {}  # 管道批量设置控件
+        self._batch_rows = {}     # 管道批量设置行（用于显隐控制）
 
         title = MODE_TITLES[self.mode]
         if len(self._feats) > 1:
@@ -157,6 +169,9 @@ class PropertyDialog(QDialog):
             self.btn_pick_edge = QPushButton("在地图上选择边…")
             self.btn_pick_edge.clicked.connect(self._on_pick_edge)
             layout.addWidget(self.btn_pick_edge)
+
+            # 管道批量设置分区（仅田块模式）
+            self._build_batch_section(layout)
 
         # 生成毛管按钮
         if show_generate and self.mode == "aqd_fields":
@@ -444,6 +459,225 @@ class PropertyDialog(QDialog):
             import traceback
             traceback.print_exc()
             QMessageBox.critical(self, "aQuaDrip", f"生成失败:\n{e}")
+
+    # ── 田块内管道批量设置 ──
+
+    def _build_batch_section(self, parent_layout):
+        """构建「管道批量设置」分区（仅 aqd_fields 模式）"""
+        from qgis.PyQt.QtWidgets import QFrame
+
+        # 分隔线 + 标题
+        line = QFrame()
+        line.setFrameShape(QFrame.HLine)
+        line.setFrameShadow(QFrame.Sunken)
+        parent_layout.addWidget(line)
+        parent_layout.addWidget(QLabel("📋 管道批量设置"))
+
+        # 管道类型下拉（延迟连接信号，避免 addItem 时触发）
+        batch_form = QFormLayout()
+        batch_form.setSpacing(6)
+        self._batch_pipe_combo = QComboBox()
+        self._batch_pipe_combo.blockSignals(True)
+        for ptype in ("lateral", "submain", "mainline"):
+            self._batch_pipe_combo.addItem(
+                BATCH_PIPE_LABELS[ptype], ptype)
+        self._batch_pipe_combo.blockSignals(False)
+        batch_form.addRow("管道类型:", self._batch_pipe_combo)
+
+        # 所有可能的参数字段（并集）+ 滴头型号
+        all_fields = ["diameter", "roughness", "material", "minor_loss",
+                       "emitter_spacing", "emitter_k", "emitter_x"]
+        pipe_value_maps = FIELD_DEFS.get("aqd_pipes", {}).get("value_maps", {})
+
+        # 滴头型号下拉（仅毛管可见）
+        model_combo = self._make_emitter_model_combo()
+        model_label = QLabel("滴头型号")
+        batch_form.addRow(model_label, model_combo)
+        self._batch_widgets["emitter_model"] = model_combo
+        self._batch_rows["emitter_model"] = (model_label, model_combo)
+
+        for fname in all_fields:
+            widget = self._make_widget(fname, pipe_value_maps.get(fname))
+            label = QLabel(FIELD_LABELS.get(fname, fname))
+            batch_form.addRow(label, widget)
+            self._batch_widgets[fname] = widget
+            self._batch_rows[fname] = (label, widget)
+
+        parent_layout.addLayout(batch_form)
+
+        # 应用按钮
+        self._batch_apply_btn = QPushButton("📋 应用到田块内所有毛管")
+        self._batch_apply_btn.clicked.connect(self._on_batch_apply)
+        parent_layout.addWidget(self._batch_apply_btn)
+
+        # 所有控件已创建，现在安全地连接信号 + 初始化
+        self._batch_pipe_combo.currentIndexChanged.connect(
+            self._on_batch_pipe_type_changed)
+        model_combo.currentIndexChanged.connect(
+            self._on_batch_emitter_model_changed)
+        self._on_batch_pipe_type_changed(self._batch_pipe_combo.currentIndex())
+        self._batch_prefill()
+
+    def _on_batch_pipe_type_changed(self, idx):
+        """管道类型切换：显示/隐藏对应参数"""
+        ptype = self._batch_pipe_combo.currentData()
+        visible_fields = set(BATCH_PIPE_FIELDS.get(ptype, []))
+        is_lateral = (ptype == "lateral")
+
+        for fname in ("diameter", "roughness", "material", "minor_loss",
+                       "emitter_spacing", "emitter_k", "emitter_x"):
+            self._set_batch_row_visible(fname, fname in visible_fields)
+        self._set_batch_row_visible("emitter_model", is_lateral)
+
+        # 更新应用按钮文案
+        label = BATCH_PIPE_LABELS.get(ptype, "管道")
+        self._batch_apply_btn.setText(f"📋 应用到田块内所有{label}")
+
+    def _on_batch_emitter_model_changed(self, idx):
+        """滴头型号下拉 → 自动填充 k/x"""
+        w = self._batch_widgets.get("emitter_model")
+        if not w:
+            return
+        model_key = w.itemData(idx)
+        if model_key:
+            from wdrip.network.emitter import BUILTIN_EMITTERS
+            spec = BUILTIN_EMITTERS.get(model_key)
+            if spec:
+                for fname, val in (("emitter_k", spec.k), ("emitter_x", spec.x)):
+                    bw = self._batch_widgets.get(fname)
+                    if bw:
+                        bw.setValue(val)
+                        bw.setEnabled(False)
+                return
+        # "自定义" → k/x 可编辑
+        for fname in ("emitter_k", "emitter_x"):
+            bw = self._batch_widgets.get(fname)
+            if bw:
+                bw.setEnabled(True)
+
+    def _set_batch_row_visible(self, fname, visible):
+        row = self._batch_rows.get(fname)
+        if row:
+            row[0].setVisible(visible)
+            row[1].setVisible(visible)
+
+    def _batch_prefill(self):
+        """从田块内第一条该类型管道预填充参数值"""
+        ptype = self._batch_pipe_combo.currentData()
+        sample = self._find_pipes_in_field(ptype, limit=1)
+        if not sample:
+            return
+        feat = sample[0]
+        for fname, w in self._batch_widgets.items():
+            if fname == "emitter_model":
+                continue
+            idx = feat.fields().lookupField(fname)
+            val = feat.attribute(idx) if idx >= 0 else None
+            if isinstance(w, QComboBox):
+                ci = w.findData(str(val) if val is not None else "")
+                w.setCurrentIndex(ci if ci >= 0 else 0)
+            elif isinstance(w, (QDoubleSpinBox, QSpinBox)):
+                try:
+                    w.setValue(float(val) if val is not None else 0)
+                except (TypeError, ValueError):
+                    w.setValue(0)
+            else:
+                w.setText("" if val is None else str(val))
+
+    def _find_pipes_in_field(self, pipe_type: str, limit: int = 0):
+        """用质心包含判定找到田块内指定类型的管道
+
+        Args:
+            pipe_type: mainline / submain / lateral
+            limit: >0 时最多返回 limit 条（用于预填充取样）
+        Returns:
+            QgsFeature 列表
+        """
+        from .layer_utils import find_layer
+        pipe_layer = find_layer(None, "aqd_pipes")
+        if pipe_layer is None:
+            return []
+
+        field_geom = self.feat.geometry()
+        if not field_geom or field_geom.isEmpty():
+            return []
+
+        crs_geo = pipe_layer.crs().isValid() and pipe_layer.crs().isGeographic()
+        tol = 1e-5 if crs_geo else 0.01
+
+        result = []
+        for feat in pipe_layer.getFeatures():
+            if str(feat.attribute("pipe_type") or "") != pipe_type:
+                continue
+            g = feat.geometry()
+            if not g or g.isEmpty():
+                continue
+            centroid = g.centroid()
+            if field_geom.contains(centroid) or \
+               field_geom.distance(centroid) < tol:
+                result.append(QgsFeature(feat))
+                if limit > 0 and len(result) >= limit:
+                    break
+        return result
+
+    def _on_batch_apply(self):
+        """批量更新田块内所有该类型管道的参数"""
+        ptype = self._batch_pipe_combo.currentData()
+        label = BATCH_PIPE_LABELS.get(ptype, "管道")
+        pipes = self._find_pipes_in_field(ptype)
+        if not pipes:
+            QMessageBox.information(
+                self, "aQuaDrip", f"田块内未找到{label}，请先生成或绘制{label}")
+            return
+
+        from .layer_utils import find_layer
+        pipe_layer = find_layer(None, "aqd_pipes")
+        if pipe_layer is None:
+            return
+
+        # 收集用户修改的字段值
+        updates = {}
+        visible_fields = set(BATCH_PIPE_FIELDS.get(ptype, []))
+        if ptype == "lateral":
+            visible_fields.add("emitter_model")
+        for fname, w in self._batch_widgets.items():
+            if fname not in visible_fields:
+                continue
+            if isinstance(w, QComboBox):
+                updates[fname] = w.currentData()
+            elif isinstance(w, QDoubleSpinBox):
+                updates[fname] = float(w.value())
+            elif isinstance(w, QSpinBox):
+                updates[fname] = int(w.value())
+            else:
+                updates[fname] = w.text()
+
+        # 批量更新
+        need_edit = not pipe_layer.isEditable()
+        if need_edit:
+            pipe_layer.startEditing()
+        try:
+            count = 0
+            for feat in pipes:
+                for fname, val in updates.items():
+                    if fname == "emitter_model":
+                        continue  # emitter_model 不是 GPKG 字段
+                    feat.setAttribute(fname, val)
+                pipe_layer.updateFeature(feat)
+                count += 1
+            if need_edit and not pipe_layer.commitChanges():
+                pipe_layer.rollBack()
+                QMessageBox.warning(self, "aQuaDrip", "管道图层提交失败")
+                return
+        except Exception:
+            if need_edit:
+                pipe_layer.rollBack()
+            raise
+
+        pipe_layer.triggerRepaint()
+        self.iface.messageBar().pushMessage(
+            "aQuaDrip", f"已更新田块内 {count} 条{label}的参数",
+            level=0, duration=4)
 
     # ── 工具 ──
 
