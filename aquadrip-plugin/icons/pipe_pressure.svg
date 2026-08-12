@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- 管道主体 -->
+  <rect x="2" y="12" width="28" height="8" rx="4" fill="#6c8ebf" stroke="#2c5a8c" stroke-width="1"/>
+  <!-- 管道高光 -->
+  <rect x="4" y="13" width="24" height="2" rx="1" fill="#a0c4e8" opacity="0.6"/>
+  <!-- 压力表盘 -->
+  <circle cx="16" cy="8" r="6" fill="#f5f5f5" stroke="#555" stroke-width="1"/>
+  <!-- 表盘红色区域 -->
+  <path d="M 16 8 L 20 3 A 6 6 0 0 1 22 8 Z" fill="#e74c3c" opacity="0.5"/>
+  <!-- 指针（指向红色区域） -->
+  <line x1="16" y1="8" x2="21" y2="3" stroke="#333" stroke-width="1.2" stroke-linecap="round"/>
+  <!-- 中心圆点 -->
+  <circle cx="16" cy="8" r="1.2" fill="#333"/>
+</svg>
