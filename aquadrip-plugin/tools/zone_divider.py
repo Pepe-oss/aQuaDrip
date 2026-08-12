@@ -138,13 +138,14 @@ class ZoneDivider:
                 is_valve = hasattr(link, "valve_type")
 
                 if is_valve and link in all_valves and link.id not in zone_map:
-                    # 阀门自身属于当前父分区
-                    zone_map[link.id] = zone_prefix or "0"
                     # 计算子分区编号
                     level = (zone_prefix.count("-") + 1) if zone_prefix else 1
                     valve_counter[level] = valve_counter.get(level, 0) + 1
                     seq = valve_counter[level]
                     child_prefix = f"{zone_prefix}-{seq}" if zone_prefix else str(seq)
+                    # 阀门标记为它控制的子分区（而非父分区），
+                    # 这样轮灌调度可直接从阀门 zone 字段读取分区归属
+                    zone_map[link.id] = child_prefix
                     # 确定阀门的「另一侧」节点（可能因反向遍历而不同）
                     other_side = link.from_node if node == link.to_node else link.to_node
                     # 递归处理阀门下游

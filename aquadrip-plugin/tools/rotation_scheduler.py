@@ -41,27 +41,13 @@ class RotationScheduler:
         if self._valve_layer is None:
             return {"zones": []}
 
-        # 从管道建 node→zone 映射
-        node_zone: Dict[str, str] = {}
-        if self._pipe_layer:
-            for feat in self._pipe_layer.getFeatures():
-                pz = str(feat.attribute("zone") or "").strip()
-                if not pz or pz == "0":
-                    continue
-                fn = str(feat.attribute("from_node") or "")
-                tn = str(feat.attribute("to_node") or "")
-                if fn:
-                    node_zone[fn] = pz
-                if tn:
-                    node_zone[tn] = pz
-
         # 收集阀门 → 按有效分区分组
+        # 阀门的 zone 字段由 ZoneDivider 写入，直接编码它控制的子分区编号
+        # （如 "1"、"1-1"、"2"），无需通过管道 from_node/to_node 间接查找
         zones: Dict[str, dict] = {}
         for feat in self._valve_layer.getFeatures():
             vid = f"V{feat.id()}"
-            fn = str(feat.attribute("from_node") or "")
-            tn = str(feat.attribute("to_node") or "")
-            effective_zone = node_zone.get(tn) or node_zone.get(fn) or ""
+            effective_zone = str(feat.attribute("zone") or "").strip()
             if not effective_zone or effective_zone == "0":
                 continue
 
@@ -215,19 +201,9 @@ class RotationScheduler:
             is_valve = hasattr(link, "valve_type")
 
             if is_valve:
-                # 阀门：zone="0"（公共区），但只有连接了目标分区管道的才保留
-                if lz != "0":
-                    return False  # 非公共区阀门直接排除
-                fn, tn = link.from_node, link.to_node
-                for lid, lz2 in link_zone.items():
-                    if lid == link.id:
-                        continue
-                    if lz2 == zone:
-                        other = net.links.get(lid)
-                        if other and (other.from_node in (fn, tn)
-                                      or other.to_node in (fn, tn)):
-                            return True
-                return False  # 阀门未连接到目标分区 → 排除
+                # 阀门的 zone 直接编码它控制的子分区编号（由 ZoneDivider 写入）
+                # 保留：控制目标分区的阀门 + 公共区阀门（zone="0"）
+                return lz == zone or lz == "0"
             else:
                 # 管道/水泵：保留公共区 + 目标分区
                 return lz in ("", "0", zone)
