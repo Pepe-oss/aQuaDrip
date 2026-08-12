@@ -119,8 +119,22 @@ class PipePressureChecker:
 
     # ── 写回图层 ──
 
+    @staticmethod
+    def _ensure_field(layer: QgsVectorLayer, name: str):
+        """确保图层存在指定字段（旧GPKG缺新字段时自动补建）"""
+        if layer.fields().lookupField(name) >= 0:
+            return
+        from qgis.core import QgsField
+        from qgis.PyQt.QtCore import QVariant
+        field_type = QVariant.String if name.endswith("_status") else QVariant.Double
+        layer.dataProvider().addAttributes([QgsField(name, field_type)])
+        layer.updateFields()
+
     def _write_status(self, layer: QgsVectorLayer,
                       statuses: Dict[int, str]) -> int:
+        # 确保字段存在（旧 GPKG 可能缺少新增字段）
+        self._ensure_field(layer, "pressure_status")
+
         need_edit = not layer.isEditable()
         if need_edit:
             layer.startEditing()
