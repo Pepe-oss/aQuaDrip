@@ -692,7 +692,18 @@ class PropertyDialog(QDialog):
             else:
                 updates[fname] = w.text()
 
-        # 批量更新
+        # 批量更新（自动补建旧 GPKG 中缺失的字段）
+        for fname in list(updates.keys()):
+            if fname == "emitter_model":
+                del updates[fname]
+                continue
+            if pipe_layer.fields().lookupField(fname) < 0:
+                from qgis.core import QgsField
+                from qgis.PyQt.QtCore import QVariant
+                pipe_layer.dataProvider().addAttributes(
+                    [QgsField(fname, QVariant.Double)])
+                pipe_layer.updateFields()
+
         need_edit = not pipe_layer.isEditable()
         if need_edit:
             pipe_layer.startEditing()
@@ -700,8 +711,8 @@ class PropertyDialog(QDialog):
             count = 0
             for feat in pipes:
                 for fname, val in updates.items():
-                    if fname == "emitter_model":
-                        continue  # emitter_model 不是 GPKG 字段
+                    if feat.fields().lookupField(fname) < 0:
+                        continue
                     feat.setAttribute(fname, val)
                 pipe_layer.updateFeature(feat)
                 count += 1
