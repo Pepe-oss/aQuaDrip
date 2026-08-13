@@ -53,7 +53,8 @@ FIELD_LABELS = {
 MODE_FIELDS = {
     "aqd_fields": ["name", "crop_type", "planting_pattern", "direction_type",
                    "row_spacing", "tapes_per_ridge", "tape_spacing",
-                   "ridge_count", "row_direction", "emitter_spacing"],
+                   "ridge_count", "row_direction", "emitter_spacing",
+                   "emitter_model", "emitter_k", "emitter_x"],
     "aqd_pipes": ["pipe_type", "status", "diameter", "material",
                   "roughness", "minor_loss", "max_pressure",
                   "emitter_spacing", "emitter_k", "emitter_x",
