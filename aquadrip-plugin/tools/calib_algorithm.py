@@ -205,6 +205,10 @@ class TopologyOrderedCalibrator(CalibrationAlgorithm):
         self.c_limits = params.get("c_limits", DEFAULT_C_LIMITS) if params else dict(DEFAULT_C_LIMITS)
 
     def calibrate(self, obs_data: dict) -> dict:
+        # 矫正管道/阀门/水泵方向（BFS 下游追踪依赖正确方向）
+        from .direction_fixer import DirectionFixer
+        DirectionFixer(self.iface).fix()
+
         from .sync_manager import SyncManager
         sync = SyncManager(self.iface)
         self.net = sync.sync_qgis_to_network(expand=False, split_vertices=False)
@@ -348,6 +352,10 @@ class HazenWilliamsCalibrator(CalibrationAlgorithm):
         self._new_roughness: Dict[str, float] = {}
 
     def calibrate(self, obs_data: dict) -> dict:
+        # 矫正管道/阀门/水泵方向（BFS 下游追踪依赖正确方向）
+        from .direction_fixer import DirectionFixer
+        DirectionFixer(self.iface).fix()
+
         from .sync_manager import SyncManager
         sync = SyncManager(self.iface)
         self.net = sync.sync_qgis_to_network(expand=False, split_vertices=False)
