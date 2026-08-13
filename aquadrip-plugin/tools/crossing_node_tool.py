@@ -71,7 +71,9 @@ class CrossingNodeGenerator:
         sel_ptype = str(selected_feature.attribute("pipe_type") or "mainline")
 
         # 1. 遍历所有 link 图层中的所有要素，求交叉点
-        from .topology_builder import can_connect
+        #    注意：手动生成交叉节点不受层级约束限制——用户主动选中管道
+        #    声明"这里需要连接"，应尊重用户意图。层级约束仅在 TopologyBuilder
+        #    的自动交叉检测中生效（sync 时防止错误的自动连接）。
         connect_tol = self._connect_tolerance(nodes)
         crossing_points: List[QgsPointXY] = []
 
@@ -79,11 +81,6 @@ class CrossingNodeGenerator:
             for feat in link_layer.getFeatures():
                 # 跳过自身（同图层+同 fid）
                 if feat.id() == sel_id:
-                    continue
-
-                # 层级约束：跳过不合法的连接组合（如 mainline×lateral）
-                other_ptype = str(feat.attribute("pipe_type") or "mainline")
-                if not can_connect(sel_ptype, other_ptype):
                     continue
 
                 other_geom = feat.geometry()
