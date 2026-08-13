@@ -327,18 +327,15 @@ class SyncManager:
 
         expand_lateral 创建的 auto_N / E_* 节点 elevation 为 0，
         导致模拟压力 = total_head − 0 = 虚高的几千。此方法从项目
-        中的 DEM 栅格直接采样补全所有节点高程。
+        中的 DEM 栅格直接采样补全所有节点高程，并修正水源水头。
+
+        无 DEM 时所有节点高程保持 0（同一高度），模拟只考虑管道
+        摩擦损失，不考虑地形高差。
         """
-        # 1. 查找 DEM 图层
-        dem_layer = None
-        for _lid, layer in self.project.mapLayers().items():
-            if not isinstance(layer, QgsRasterLayer):
-                continue
-            if layer.name() == "DEM 高程" or "dem" in layer.name().lower():
-                dem_layer = layer
-                break
+        # 1. 查找 DEM 图层（与 ElevationExtractor 相同的优先级+fallback）
+        dem_layer = self._find_dem_layer()
         if dem_layer is None:
-            return  # 无 DEM 图层，静默跳过
+            return  # 无 DEM 图层，高程保持 0（同一高度）
 
         provider = dem_layer.dataProvider()
         if provider is None:
@@ -355,6 +352,7 @@ class SyncManager:
         # 3. 采样所有节点
         updated = 0
         total = len(net.nodes)
+        max_elev = 0.0
         for node in net.nodes.values():
             pt = QgsPointXY(node.x, node.y)
             if xform is not None:
@@ -362,9 +360,23 @@ class SyncManager:
             value, valid = provider.sample(pt, 1)
             if valid:
                 node.elevation = float(value)
+                max_elev = max(max_elev, node.elevation)
                 updated += 1
 
-        if updated > 0:
+        # 4. 修正水源水头（DEM 高程远大于默认水头 20m 时必须修正，
+        #    否则 pressure = head - elevation < 0 → 负压 → 管网不出水）
+        if updated > 0 and max_elev > 0:
+            from wdrip.network import SourceNode
+            margin = 20.0  # 安全裕量（m）
+            for node in net.nodes.values():
+                if isinstance(node, SourceNode):
+                    required = max(node.elevation, max_elev) + margin
+                    if node.head < required:
+                        node.head = required
+                        self.log(
+                            f"🔧 水源 {node.id} 水头修正: "
+                            f"{node.head - margin:.1f} → {required:.1f}m")
+
             self.log(f"🌐 DEM 高程已应用于 {updated}/{total} 个节点")
 
     def _detect_crs(self) -> Optional[QgsCoordinateReferenceSystem]:
@@ -376,6 +388,23 @@ class SyncManager:
         if self.project.crs().isValid():
             return self.project.crs()
         return None
+
+    def _find_dem_layer(self) -> Optional[QgsRasterLayer]:
+        """查找 DEM 栅格图层（与 ElevationExtractor 相同的优先级）
+
+        优先级: name=="DEM 高程" > name 含 "dem" > 任意栅格
+        """
+        rasters = []
+        for _lid, layer in self.project.mapLayers().items():
+            if not isinstance(layer, QgsRasterLayer):
+                continue
+            if layer.name() == "DEM 高程":
+                return layer
+            rasters.append(layer)
+        for layer in rasters:
+            if "dem" in layer.name().lower():
+                return layer
+        return rasters[0] if rasters else None
 
     def _reproject_net(self, net, src_crs: QgsCoordinateReferenceSystem,
                        to_utm: bool):
