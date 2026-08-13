@@ -98,14 +98,12 @@ class HazenWilliamsCalibrator(CalibrationAlgorithm):
     # ── 上游图 + 调整 ──
 
     def _build_upstream_graph(self, obs_data: dict):
+        # 构建有向下游图（仅 from→to 方向），避免双向 BFS 逆流误归上游。
+        # DirectionFixer 已确保 from_node 朝向水源侧，水流方向 = from→to。
         graph: Dict[str, List] = {nid: [] for nid in self.net.nodes}
         for lid, link in self.net.links.items():
             fn, tn = link.from_node, link.to_node
-            if hasattr(link, "valve_type") or hasattr(link, "pump_type"):
-                graph.setdefault(fn, []).append((lid, link, tn))
-            else:
-                graph.setdefault(fn, []).append((lid, link, tn))
-                graph.setdefault(tn, []).append((lid, link, fn))
+            graph.setdefault(fn, []).append((lid, link, tn))
 
         sources = [nid for nid, n in self.net.nodes.items() if hasattr(n, "source_type")]
         node_upstream: Dict[str, Set[str]] = {}
@@ -160,15 +158,17 @@ class HazenWilliamsCalibrator(CalibrationAlgorithm):
                         node = self.net.nodes.get(nid)
                         if node:
                             node_elev = getattr(node, "elevation", 0.0) or 0.0
-                    # 观测点处总水头 ≈ 节点高程 + 模拟压力
-                    obs_total_head = node_elev + ps
+                    # 用实测压力估算观测点总水头（校准目标对齐实测值）
+                    obs_total_head = node_elev + po
                     est_hf = max(1.0, src_head - obs_total_head)
                     # Hazen-Williams 物理公式: dC = -C * dp / (1.852 * h_f)
                     dC_phys = -cc * dp_abs / (1.852 * est_hf)
                     td += self.learning_rate * dC_phys
                     tw += 1.0
                 if qs is not None and qo is not None and qo > 0:
-                    dq_rel = (qs - qo) / qo
+                    # 流量误差：sim > obs → C 太大（摩阻太小、压力偏高、流量偏大）
+                    # → 应减小 C。用 (obs - sim) 使正误差对应 C 减小。
+                    dq_rel = (qo - qs) / qo
                     td += self.learning_rate * dq_rel * 20.0 * (cc / 130.0)
                     tw += 1.0
             if tw == 0: continue
@@ -184,7 +184,7 @@ class HazenWilliamsCalibrator(CalibrationAlgorithm):
         for nid, node in self.net.nodes.items():
             if hasattr(node, "source_type"):
                 elev = getattr(node, "elevation", 0.0) or 0.0
-                head = getattr(node, "source_head", 30.0) or 30.0
+                head = getattr(node, "head", 30.0) or 30.0
                 best = max(best, elev + head)
         return best
 
@@ -216,23 +216,31 @@ class HazenWilliamsCalibrator(CalibrationAlgorithm):
 
         details = []
         need_edit = not pipe_layer.isEditable()
-        if need_edit: pipe_layer.startEditing()
+        if need_edit:
+            pipe_layer.startEditing()
         try:
             for lid, nc in self._new_roughness.items():
-                if not lid.startswith("L"): continue
-                try: fid = int(lid[1:])
-                except ValueError: continue
+                if not lid.startswith("L"):
+                    continue
+                try:
+                    fid = int(lid[1:])
+                except ValueError:
+                    continue
                 feat = fid_map.get(fid)
-                if feat is None: continue
+                if feat is None:
+                    continue
                 oc = old_vals.get(lid, 130.0)
                 feat.setAttribute("roughness", float(nc))
                 pipe_layer.updateFeature(feat)
                 pt = str(feat.attribute("pipe_type") or "mainline")
-                details.append((lid, pt, oc, nc, nc-oc))
-            if need_edit: pipe_layer.commitChanges()
+                details.append((lid, pt, oc, nc, nc - oc))
         except Exception:
-            if need_edit: pipe_layer.rollBack()
+            if need_edit:
+                pipe_layer.rollBack()
             raise
+        else:
+            if need_edit and not pipe_layer.commitChanges():
+                pipe_layer.rollBack()
         pipe_layer.triggerRepaint()
         return len(details), details
 
