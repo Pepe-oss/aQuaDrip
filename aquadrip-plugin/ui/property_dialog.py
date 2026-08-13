@@ -586,7 +586,7 @@ class PropertyDialog(QDialog):
             if spec:
                 for fname, val in (("emitter_k", spec.k), ("emitter_x", spec.x)):
                     bw = self._batch_widgets.get(fname)
-                    if bw:
+                    if bw and hasattr(bw, 'setValue'):
                         bw.setValue(val)
                         bw.setEnabled(False)
                 return
@@ -694,23 +694,37 @@ class PropertyDialog(QDialog):
                 updates[fname] = w.text()
 
         # 批量更新（自动补建旧 GPKG 中缺失的字段）
+        from qgis.core import QgsField
+        from qgis.PyQt.QtCore import QVariant
+        # 字段类型映射（避免 material 等文本字段被误建为 Double）
+        field_types = {
+            "material": QVariant.String,
+            "status": QVariant.String,
+        }
         for fname in list(updates.keys()):
             if fname == "emitter_model":
                 del updates[fname]
                 continue
             if pipe_layer.fields().lookupField(fname) < 0:
-                from qgis.core import QgsField
-                from qgis.PyQt.QtCore import QVariant
+                ftype = field_types.get(fname, QVariant.Double)
                 pipe_layer.dataProvider().addAttributes(
-                    [QgsField(fname, QVariant.Double)])
+                    [QgsField(fname, ftype)])
                 pipe_layer.updateFields()
+
+        # 补建字段后重新获取 features（旧 feat 的 fields 快照已过期）
+        fids = [f.id() for f in pipes]
+        fresh_feats = {f.id(): f for f in pipe_layer.getFeatures()
+                       if f.id() in fids}
 
         need_edit = not pipe_layer.isEditable()
         if need_edit:
             pipe_layer.startEditing()
         try:
             count = 0
-            for feat in pipes:
+            for fid in fids:
+                feat = fresh_feats.get(fid)
+                if feat is None:
+                    continue
                 for fname, val in updates.items():
                     if feat.fields().lookupField(fname) < 0:
                         continue

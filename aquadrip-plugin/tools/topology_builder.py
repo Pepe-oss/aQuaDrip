@@ -198,9 +198,14 @@ class TopologyBuilder:
                 if not other_type:
                     continue  # 跳过类型缺失的管道
 
-                # 层级约束：跨级组合（如 mainline×lateral）不建立连接
-                if not can_connect(my_type, other_type):
-                    continue
+                # 层级约束：跨级组合（如 mainline×lateral）不建立连接。
+                # 但设备（水泵/阀门）可连接任意层级——它们是受控连接点，
+                # 不受管道层级规则限制。
+                my_is_device = rec.get("device") in ("pump", "valve")
+                other_is_device = other.get("device") in ("pump", "valve")
+                if not (my_is_device or other_is_device):
+                    if not can_connect(my_type, other_type):
+                        continue
 
                 inter = rec["geom"].intersection(other["geom"])
                 pts = self._extract_points(inter)

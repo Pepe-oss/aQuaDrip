@@ -44,11 +44,20 @@ class PipePressureChecker:
                 "aQuaDrip", "未找到 aqd_pipes 图层")
             return
 
-        node_pressure = self._load_node_pressure()
+        node_pressure, record_info = self._load_node_pressure()
         if not node_pressure:
             self.iface.messageBar().pushWarning(
                 "aQuaDrip",
                 "未找到模拟结果，请先运行水力模拟并保存历史记录")
+            return
+
+        # 轮灌模拟只含单分区节点压力，其余分区管道查不到压力 → 误判安全
+        if record_info.get("rotation_id"):
+            zone_name = record_info.get("zone", "?")
+            self.iface.messageBar().pushWarning(
+                "aQuaDrip",
+                f"最新记录是轮灌分区 {zone_name} 的结果，仅含该分区压力。"
+                f"建议先运行完整模拟（非轮灌）再做承压分析")
             return
 
         # 逐管道判定
@@ -160,16 +169,18 @@ class PipePressureChecker:
 
     # ── 数据读取 ──
 
-    def _load_node_pressure(self) -> Dict[str, float]:
+    def _load_node_pressure(self):
+        """返回 (node_pressure_dict, record_info)"""
         from .layer_utils import find_gpkg_path
         gpkg_path = find_gpkg_path(None, "aqd_fields")
         if not gpkg_path:
-            return {}
+            return {}, {}
         from .sim_history import SimHistory
         records = SimHistory(gpkg_path).load()
         if not records:
-            return {}
-        return records[0].get("node_pressure", {})
+            return {}, {}
+        rec = records[0]
+        return rec.get("node_pressure", {}), rec
 
     @staticmethod
     def _safe_float(feat: QgsFeature, fname: str,

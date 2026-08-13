@@ -372,10 +372,11 @@ class SyncManager:
                 if isinstance(node, SourceNode):
                     required = max(node.elevation, max_elev) + margin
                     if node.head < required:
+                        old_head = node.head
                         node.head = required
                         self.log(
                             f"🔧 水源 {node.id} 水头修正: "
-                            f"{node.head - margin:.1f} → {required:.1f}m")
+                            f"{old_head:.1f} → {required:.1f}m")
 
             self.log(f"🌐 DEM 高程已应用于 {updated}/{total} 个节点")
 
@@ -390,9 +391,10 @@ class SyncManager:
         return None
 
     def _find_dem_layer(self) -> Optional[QgsRasterLayer]:
-        """查找 DEM 栅格图层（与 ElevationExtractor 相同的优先级）
+        """查找 DEM 栅格图层
 
-        优先级: name=="DEM 高程" > name 含 "dem" > 任意栅格
+        优先级: name=="DEM 高程" > name 含 dem/elevation/高程 > 无匹配
+        不回退到任意栅格（避免从正射影像/卫星底图采样错误高程）。
         """
         rasters = []
         for _lid, layer in self.project.mapLayers().items():
@@ -401,10 +403,12 @@ class SyncManager:
             if layer.name() == "DEM 高程":
                 return layer
             rasters.append(layer)
+        dem_keywords = ("dem", "elevation", "高程", "altitude", "dtm", "srtm")
         for layer in rasters:
-            if "dem" in layer.name().lower():
+            name_lower = layer.name().lower()
+            if any(kw in name_lower for kw in dem_keywords):
                 return layer
-        return rasters[0] if rasters else None
+        return None
 
     def _reproject_net(self, net, src_crs: QgsCoordinateReferenceSystem,
                        to_utm: bool):
