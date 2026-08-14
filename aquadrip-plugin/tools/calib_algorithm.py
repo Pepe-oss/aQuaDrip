@@ -119,6 +119,46 @@ def _estimate_source_head(net) -> float:
     return best
 
 
+def _hw_headloss(length_m: float, flow_lph: float, c: float,
+                 diameter_mm: float) -> float:
+    """Hazen-Williams 单管水头损失 (m)
+
+    hf = 10.67 * L * Q^1.852 / (C^1.852 * D^4.87)
+    Q 单位 m³/s，D 单位 m。
+
+    Args:
+        length_m: 管长 (m)
+        flow_lph: 流量 (L/h)，0 时返回 0
+        c: H-W 粗糙系数
+        diameter_mm: 管径 (mm)
+    """
+    if length_m <= 0 or flow_lph <= 0 or diameter_mm <= 0 or c <= 0:
+        return 0.0
+    q_cms = flow_lph / 3.6e6  # L/h → m³/s
+    d_m = diameter_mm / 1000.0  # mm → m
+    return 10.67 * length_m * (q_cms ** 1.852) / \
+        ((c ** 1.852) * (d_m ** 4.87))
+
+
+def _load_link_flow() -> Dict[str, float]:
+    """从 sim_history 读取最新记录的 link_flow，转为 L/h"""
+    from .layer_utils import find_gpkg_path
+    gpkg_path = find_gpkg_path(None, "aqd_fields")
+    if not gpkg_path:
+        return {}
+    try:
+        from .sim_history import SimHistory
+        records = SimHistory(gpkg_path).load()
+        if not records:
+            return {}
+        lf = records[0].get("link_flow", {})
+        # sim_history 中 link_flow 单位是 m³/s，转为 L/h
+        return {lid: abs(float(v)) * 3.6e6
+                for lid, v in lf.items() if isinstance(v, (int, float))}
+    except Exception:
+        return {}
+
+
 def _apply_roughness(iface, net, new_roughness, old_vals, c_limits) -> Tuple[int, list]:
     """应用粗糙度到 GPKG + 同类型差异约束。
 
@@ -250,15 +290,16 @@ class TopologyOrderedCalibrator(CalibrationAlgorithm):
             group.setdefault(key, []).append(lid)
         layers = sorted(group.items(), key=lambda x: -len(x[0]))
 
-        # 4. 逐层校准
+        # 4. 逐层校准（按管道自身水头损失加权）
         src_head = _estimate_source_head(self.net)
+        link_flow_lph = _load_link_flow()  # {lid: 流量 L/h}
         new_roughness: Dict[str, float] = {}
         old_vals: Dict[str, float] = {}
 
         for obs_set, pipe_ids in layers:
             self._calibrate_layer(
                 obs_set, pipe_ids, obs_data, obs_node,
-                src_head, new_roughness, old_vals)
+                src_head, link_flow_lph, new_roughness, old_vals)
 
         # 5. 应用约束 + 写回 GPKG
         adjusted, details = _apply_roughness(
@@ -276,9 +317,32 @@ class TopologyOrderedCalibrator(CalibrationAlgorithm):
 
     def _calibrate_layer(self, obs_set: FrozenSet[str], pipe_ids: List[str],
                          obs_data: dict, obs_node: dict,
-                         src_head: float,
+                         src_head: float, link_flow_lph: dict,
                          new_roughness: dict, old_vals: dict):
-        """校准一层管道（共享同一组观测点的管道）"""
+        """校准一层管道（共享同一组观测点的管道）
+
+        按管道自身水头损失占比加权分配调整量：
+        - 毛管（hf 大，敏感）→ 分到大部分修正量
+        - 干管（hf 小，不敏感）→ 几乎不动
+        避免干管 C 值被不必要地改动（其改变对压力几乎无影响）。
+        """
+        # 1. 计算层内每条管道的自身水头损失
+        pipe_hf: Dict[str, float] = {}
+        for lid in pipe_ids:
+            link = self.net.get_link(lid)
+            if link is None:
+                continue
+            cc = getattr(link, "roughness", 130.0)
+            length = getattr(link, "length", 0.0) or 0.0
+            diameter = getattr(link, "diameter", 0.0) or 0.0
+            flow = link_flow_lph.get(lid, 0.0)
+            pipe_hf[lid] = _hw_headloss(length, flow, cc, diameter)
+
+        # hf² 加权：水头损失大的管道（毛管）分到更多调整量，
+        # 水头损失小的管道（干管）几乎不动。总修正量精确等于目标。
+        total_hf2 = sum(h * h for h in pipe_hf.values())
+
+        # 2. 逐管道按 hf² 占比加权计算调整量
         for lid in pipe_ids:
             link = self.net.get_link(lid)
             if link is None:
@@ -286,12 +350,20 @@ class TopologyOrderedCalibrator(CalibrationAlgorithm):
             cc = getattr(link, "roughness", 130.0)
             old_vals[lid] = cc
 
+            # 无流量数据时退化为均匀分配
+            hf_own = pipe_hf.get(lid, 0.0)
+            if total_hf2 > 0:
+                # dC ∝ hf_own：毛管（hf大）重点校准，干管（hf小）几乎不动
+                hf_factor = hf_own / total_hf2
+            else:
+                hf_factor = 1.0 / (len(pipe_ids) * max(hf_own, 0.5))
+
             td, tw = 0.0, 0.0
             for obs_label in obs_set:
                 ox, oy, ps, po, qs, qo = obs_data.get(
                     obs_label, (None, None, None, None, None, None))
 
-                # 压力误差 → C 值调整
+                # 压力误差 → C 值调整（hf² 加权）
                 if ps is not None and po is not None and po > 0:
                     dp_abs = ps - po
                     nid = obs_node.get(obs_label)
@@ -302,14 +374,17 @@ class TopologyOrderedCalibrator(CalibrationAlgorithm):
                             node_elev = getattr(node, "elevation", 0.0) or 0.0
                     obs_total_head = node_elev + po
                     est_hf = max(1.0, src_head - obs_total_head)
-                    dC_phys = -cc * dp_abs / (1.852 * est_hf)
+                    # dC = -C * dp * hf_own / (1.852 * Σ hf²)
+                    dC_phys = -cc * dp_abs * hf_factor / 1.852
                     td += self.learning_rate * dC_phys
                     tw += 1.0
 
-                # 流量误差 → C 值调整
+                # 流量误差 → C 值调整（同样按 hf 占比加权）
                 if qs is not None and qo is not None and qo > 0:
                     dq_rel = (qo - qs) / qo
-                    td += self.learning_rate * dq_rel * 20.0 * (cc / 130.0)
+                    # 用 hf 归一化权重（0~1）
+                    w_norm = hf_own * hf_factor if total_hf2 > 0 else 1.0 / len(pipe_ids)
+                    td += self.learning_rate * dq_rel * 20.0 * (cc / 130.0) * w_norm
                     tw += 1.0
 
             if tw == 0:
