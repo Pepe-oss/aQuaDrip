@@ -305,7 +305,7 @@ class TopologyOrderedCalibrator(CalibrationAlgorithm):
         adjusted, details = _apply_roughness(
             self.iface, self.net, new_roughness, old_vals, self.c_limits)
 
-        # 6. RMSE
+        # 6. RMSE + 分类型统计（hf² 权重）
         errors = []
         for obs_label, (ox, oy, ps, po, qs, qo) in obs_data.items():
             if ps is not None and po is not None:
@@ -313,7 +313,34 @@ class TopologyOrderedCalibrator(CalibrationAlgorithm):
         rmse = (sum(e * e for e in errors) / max(len(errors), 1)) ** 0.5 \
             if errors else 0
 
-        return {"rmse": rmse, "details": details, "adjusted": adjusted}
+        # 分类型统计：各类型管道的调整量和 hf² 权重
+        type_stats: Dict[str, dict] = {}
+        for lid, (l_type, old_c, new_c, delta) in [
+            (d[0], (d[1], d[2], d[3], d[4])) for d in details
+        ]:
+            if l_type not in type_stats:
+                type_stats[l_type] = {
+                    "count": 0, "total_delta": 0.0,
+                    "total_hf2": 0.0,
+                }
+            type_stats[l_type]["count"] += 1
+            type_stats[l_type]["total_delta"] += delta
+            hf_own = _hw_headloss(
+                getattr(self.net.get_link(lid), "length", 0) or 0,
+                link_flow_lph.get(lid, 0),
+                old_c,
+                getattr(self.net.get_link(lid), "diameter", 0) or 0)
+            type_stats[l_type]["total_hf2"] += hf_own * hf_own
+
+        total_hf2_all = sum(ts["total_hf2"] for ts in type_stats.values())
+        for ts in type_stats.values():
+            ts["hf2_weight"] = (ts["total_hf2"] / total_hf2_all
+                                if total_hf2_all > 0 else 0.0)
+            ts["avg_delta"] = (ts["total_delta"] / ts["count"]
+                               if ts["count"] > 0 else 0.0)
+
+        return {"rmse": rmse, "details": details, "adjusted": adjusted,
+                "type_stats": type_stats}
 
     def _calibrate_layer(self, obs_set: FrozenSet[str], pipe_ids: List[str],
                          obs_data: dict, obs_node: dict,

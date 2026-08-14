@@ -179,6 +179,7 @@ class CalibrationDialog(QDialog):
             result = algo.calibrate(self._obs_data)
             rmse = result["rmse"]
             details = result.get("details", [])
+            type_stats = result.get("type_stats", {})
 
             self._result_text.append(
                 f"\n── 迭代 {self._iteration}  RMSE = {rmse:.2f} m"
@@ -192,6 +193,24 @@ class CalibrationDialog(QDialog):
                 else:
                     self._result_text.append(
                         f"  {lid} [{pt}] C: {old_c:.0f} → {new_c:.0f} ({sign}{abs(delta):.0f})")
+
+            # 分类型统计：显示各管道类型的 hf² 权重和平均调整量
+            if type_stats:
+                type_names = {"mainline": "干管", "submain": "支管",
+                              "lateral": "毛管"}
+                parts = []
+                for pt in ("mainline", "submain", "lateral"):
+                    ts = type_stats.get(pt)
+                    if ts and ts["count"] > 0:
+                        w = ts.get("hf2_weight", 0)
+                        avg_d = ts.get("avg_delta", 0)
+                        sign = "↑" if avg_d > 0 else ("↓" if avg_d < 0 else "→")
+                        parts.append(
+                            f"{type_names.get(pt, pt)} {ts['count']}条"
+                            f"(hf²={w*100:.0f}% {sign}{abs(avg_d):.1f})")
+                if parts:
+                    self._result_text.append(
+                        f"  📊 分型: " + " | ".join(parts))
 
             # 收敛判据：RMSE 变化 < 0.02 且本次参数无实际变化
             has_change = any(abs(d) > 0.05 for _, _, _, _, d in details)
