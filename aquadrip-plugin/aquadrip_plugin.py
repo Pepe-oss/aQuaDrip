@@ -884,8 +884,35 @@ class AQuaDripPlugin:
             self.dockwidget.log_message(f"❌ 校准模拟失败: {err}")
 
     def _on_calib_refresh(self):
-        """校准 tab: 刷新模拟值 → 运行一次完整模拟"""
-        self.on_run_simulation()
+        """校准 tab: 刷新模拟值 → 读取最新模拟历史（不重新模拟）"""
+        from .tools.layer_utils import find_gpkg_path
+        gpkg_path = find_gpkg_path(None, "aqd_fields")
+        if not gpkg_path:
+            self.iface.messageBar().pushWarning("aQuaDrip", "未找到项目 GPKG")
+            return
+
+        from .tools.sim_history import SimHistory
+        records = SimHistory(gpkg_path).load()
+        if not records:
+            # 无历史记录 → 回退到运行模拟
+            self.on_run_simulation()
+            return
+
+        record = records[0]
+
+        # 轻量适配器：node_pressure 值包装为数组，
+        # 兼容 dockwidget._find_nearest_pressure 的 p_arr[0] 访问
+        class _SimAdapter:
+            pass
+        adapter = _SimAdapter()
+        adapter.node_pressure = {
+            nid: [float(v)] for nid, v in record.get("node_pressure", {}).items()
+            if isinstance(v, (int, float))}
+
+        if self.dockwidget:
+            self.dockwidget.refresh_obs_points(adapter)
+            ts = record.get("timestamp", "?")
+            self.dockwidget.log_message(f"✅ 已加载最新模拟结果 ({ts})，未重新模拟")
 
     def _on_calib_run(self):
         """校准 tab: 弹出参数对话框 + 迭代校准"""
