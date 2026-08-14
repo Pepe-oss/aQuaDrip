@@ -63,7 +63,7 @@ DEFAULT_C_LIMITS = {
 def _build_downstream_graph(net) -> Dict[str, List[Tuple]]:
     """构建有向下游图（仅 from→to 方向）。
 
-    DirectionFixer 已确保 from_node 朝向水源侧。
+    调用前需先 _fix_link_directions_in_memory 确保方向正确。
     """
     graph: Dict[str, List] = {nid: [] for nid in net.nodes}
     for lid, link in net.net_links() if hasattr(net, 'net_links') else net.links.items():
@@ -106,6 +106,49 @@ def _nearest_node(net, ox, oy) -> Optional[str]:
             bd = d
             bn = nid
     return bn
+
+
+def _fix_link_directions_in_memory(net) -> int:
+    """在内存 DripNetwork 上修正 link 方向（from_node 朝向水源侧）。
+
+    TopologyBuilder 按几何顶点顺序（pts[0]→pts[-1]）确定方向，
+    用户画反顶点序的管道在内存网络中 from→to 是逆向的。
+    DirectionFixer 只改 GPKG 属性，不影响内存网络。
+
+    用 BFS 距源跳数判断：from_node 跳数应 ≤ to_node 跳数。
+
+    Returns:
+        修正的 link 数量
+    """
+    # 构建无向邻接表
+    adj: Dict[str, List[Tuple[str, str]]] = {}
+    for lid, link in net.links.items():
+        adj.setdefault(link.from_node, []).append((lid, link.to_node))
+        adj.setdefault(link.to_node, []).append((lid, link.from_node))
+
+    # BFS 从水源计算距源跳数
+    sources = [nid for nid, n in net.nodes.items()
+               if hasattr(n, "source_type")]
+    dist: Dict[str, int] = {}
+    queue = deque(sources)
+    for src in sources:
+        dist[src] = 0
+    while queue:
+        node = queue.popleft()
+        for _lid, neighbor in adj.get(node, []):
+            if neighbor not in dist:
+                dist[neighbor] = dist[node] + 1
+                queue.append(neighbor)
+
+    # 修正方向：from_node 跳数 > to_node 跳数 → 交换
+    fixed = 0
+    for lid, link in net.links.items():
+        df = dist.get(link.from_node)
+        dt = dist.get(link.to_node)
+        if df is not None and dt is not None and df > dt:
+            link.from_node, link.to_node = link.to_node, link.from_node
+            fixed += 1
+    return fixed
 
 
 def _estimate_source_head(net) -> float:
@@ -245,15 +288,15 @@ class TopologyOrderedCalibrator(CalibrationAlgorithm):
         self.c_limits = params.get("c_limits", DEFAULT_C_LIMITS) if params else dict(DEFAULT_C_LIMITS)
 
     def calibrate(self, obs_data: dict) -> dict:
-        # 矫正管道/阀门/水泵方向（BFS 下游追踪依赖正确方向）
-        from .direction_fixer import DirectionFixer
-        DirectionFixer(self.iface).fix()
-
         from .sync_manager import SyncManager
         sync = SyncManager(self.iface)
         self.net = sync.sync_qgis_to_network(expand=False, split_vertices=False)
         if not self.net.links:
             return {"rmse": 0, "details": []}
+
+        # 在内存网络上修正方向（TopologyBuilder 按几何顶点序定方向，
+        # 顶点序画反的管道 from→to 是逆向的，GPKG 属性修正不影响它）
+        _fix_link_directions_in_memory(self.net)
 
         # 1. 构建拓扑 + 上游追踪
         graph = _build_downstream_graph(self.net)
@@ -454,15 +497,14 @@ class HazenWilliamsCalibrator(CalibrationAlgorithm):
         self._new_roughness: Dict[str, float] = {}
 
     def calibrate(self, obs_data: dict) -> dict:
-        # 矫正管道/阀门/水泵方向（BFS 下游追踪依赖正确方向）
-        from .direction_fixer import DirectionFixer
-        DirectionFixer(self.iface).fix()
-
         from .sync_manager import SyncManager
         sync = SyncManager(self.iface)
         self.net = sync.sync_qgis_to_network(expand=False, split_vertices=False)
         if not self.net.links:
             return {"rmse": 0, "details": []}
+
+        # 在内存网络上修正方向（同拓扑顺序校准）
+        _fix_link_directions_in_memory(self.net)
 
         self._build_upstream_graph(obs_data)
         self._compute_adjustments()
