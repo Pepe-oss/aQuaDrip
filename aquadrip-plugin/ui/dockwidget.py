@@ -76,8 +76,12 @@ class AQuaDripDockWidget(QDockWidget):
         # 按钮
         btn_layout = QHBoxLayout()
         self._btn_refresh = QPushButton("🔄 刷新模拟值")
-        self._btn_refresh.setToolTip("运行模拟并将结果回填到观测点")
+        self._btn_refresh.setToolTip("读取最新模拟历史并回填到观测点（不重新模拟）")
         btn_layout.addWidget(self._btn_refresh)
+
+        self._btn_resim = QPushButton("▶ 重新模拟")
+        self._btn_resim.setToolTip("运行完整水力模拟并更新模拟值")
+        btn_layout.addWidget(self._btn_resim)
 
         self._btn_calibrate = QPushButton("🎯 开始校准")
         self._btn_calibrate.setToolTip("根据实测-模拟误差调整管道粗糙系数")

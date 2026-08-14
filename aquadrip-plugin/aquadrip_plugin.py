@@ -55,6 +55,7 @@ class AQuaDripPlugin:
 
         # 校准 tab 按钮连接
         self.dockwidget._btn_refresh.clicked.connect(self._on_calib_refresh)
+        self.dockwidget._btn_resim.clicked.connect(self.on_run_simulation)
         self.dockwidget._btn_calibrate.clicked.connect(self._on_calib_run)
         # 轮灌 tab 按钮连接
         self.dockwidget._btn_rot_visualize.clicked.connect(self._on_rot_visualize)
