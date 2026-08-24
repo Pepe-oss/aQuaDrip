@@ -18,7 +18,12 @@ from .aquadrip_plugin import AQuaDripPlugin
 def classFactory(iface):
     """QGIS 插件入口"""
     # 必须在实例化插件(创建任何 UI)之前安装翻译器,
-    # 否则首个会话的界面字符串会以源语言(中文)显示
-    from .tools.i18n import install_translator
-    install_translator()
+    # 否则首个会话的界面字符串会以源语言(中文)显示。
+    # 翻译层任何异常都不阻断插件加载(回退中文源语言)。
+    try:
+        from .tools.i18n import install_translator
+        install_translator()
+    except Exception:
+        import traceback
+        traceback.print_exc()
     return AQuaDripPlugin(iface)

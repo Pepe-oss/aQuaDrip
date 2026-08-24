@@ -34,10 +34,16 @@ def resolve_locale() -> str:
     """解析当前应使用的 locale(如 zh_CN / en_US)"""
     choice = QSettings().value(SETTING_KEY, "auto", type=str) or "auto"
     if choice == "auto":
-        # 跟随 QGIS 界面语言(UI 而非系统,与 QGIS 自身行为一致)
-        loc = QLocale(QApplication.instance().locale() if QApplication.instance()
-                     else QLocale.system())
-        return loc.name()
+        # 跟随 QGIS 界面语言。QgsApplication.locale() 反映 QGIS 的
+        # 语言设置(含 override);注意 QApplication 没有 locale() 方法。
+        try:
+            from qgis.core import QgsApplication
+            loc = str(QgsApplication.locale() or "").strip()
+            if loc:
+                return loc
+        except Exception:
+            pass
+        return QLocale.system().name()
     lang = LANGUAGES.get(choice)
     if lang and lang[1]:
         return lang[1]
