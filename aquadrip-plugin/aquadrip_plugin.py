@@ -91,8 +91,8 @@ class AQuaDripPlugin:
              QApplication.translate("AquadripPlugin", "配置轮灌调度方案并逐轮次运行水力模拟")),
             ("pipe_pressure.svg", QApplication.translate("AquadripPlugin", "管道承压"), self.on_pipe_pressure_check,
              QApplication.translate("AquadripPlugin", "根据模拟结果检测管道超压泄漏风险")),
-            ("inp_tools.svg", QApplication.translate("AquadripPlugin", "INP 处理"), None,
-             QApplication.translate("AquadripPlugin", "导出当前管网为 EPANET INP 文件，或从 INP 文件导入为临时图层")),
+            ("inp_tools.svg", QApplication.translate("AquadripPlugin", "导出 INP"), self.on_export_inp,
+             QApplication.translate("AquadripPlugin", "导出当前管网为 EPANET INP 文件")),
         ]
         for filename, name, handler, tip in entries:
             action = QAction(_icon(filename),
@@ -103,20 +103,6 @@ class AQuaDripPlugin:
             menu.addAction(action)
             toolbar.addAction(action)
             self.actions.append(action)
-
-        # 设置 "INP 处理"按钮设为下拉菜单（导出 / 导入）
-        from qgis.PyQt.QtWidgets import QMenu, QToolButton
-        inp_action = self.actions[-1]
-        inp_menu = QMenu(self.iface.mainWindow())
-        export_act = inp_menu.addAction(QApplication.translate("AquadripPlugin", "导出 INP..."))
-        import_act = inp_menu.addAction(QApplication.translate("AquadripPlugin", "导入 INP..."))
-        export_act.triggered.connect(self.on_export_inp)
-        import_act.triggered.connect(self.on_import_inp)
-        inp_action.setMenu(inp_menu)
-        # 设置工具栏按钮为 InstantPopup（点击直接弹出菜单）
-        btn = toolbar.widgetForAction(inp_action)
-        if btn is not None:
-            btn.setPopupMode(QToolButton.InstantPopup)
 
         # 语言切换子菜单(元 UI 双语硬编码——用户尚未选择语言时也要能看懂)
         self._add_language_menu(menu)
@@ -1156,8 +1142,3 @@ class AQuaDripPlugin:
         """导出为 EPANET INP 文件"""
         from .tools.project_io import export_inp
         export_inp(self.iface)
-
-    def on_import_inp(self):
-        """从 EPANET INP 文件导入为临时图层"""
-        from .tools.project_io import import_inp
-        import_inp(self.iface)

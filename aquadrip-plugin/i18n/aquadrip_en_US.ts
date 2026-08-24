@@ -3,7 +3,7 @@
     <context>
         <name>AQuaDripPlugin</name>
         <message>
-            <location filename="../tools/i18n.py" line="84" />
+            <location filename="../tools/i18n.py" line="90" />
             <source>语言设置已保存,重启 QGIS 后生效。</source>
             <translation>Language saved. Restart QGIS to apply.</translation>
         </message>
@@ -131,102 +131,82 @@
             <translation>Detect over-pressure leak risk from simulation results</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="94" />
-            <source>INP 处理</source>
-            <translation>INP Tools</translation>
-        </message>
-        <message>
-            <location filename="../aquadrip_plugin.py" line="94" />
-            <source>导出当前管网为 EPANET INP 文件，或从 INP 文件导入为临时图层</source>
-            <translation>Export the network to an EPANET INP file, or import an INP file as temporary layers</translation>
-        </message>
-        <message>
-            <location filename="../aquadrip_plugin.py" line="111" />
-            <source>导出 INP...</source>
-            <translation>Export INP...</translation>
-        </message>
-        <message>
-            <location filename="../aquadrip_plugin.py" line="112" />
-            <source>导入 INP...</source>
-            <translation>Import INP...</translation>
-        </message>
-        <message>
-            <location filename="../aquadrip_plugin.py" line="187" />
+            <location filename="../aquadrip_plugin.py" line="173" />
             <source>语言 Language</source>
             <translation>语言 Language</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="191" />
+            <location filename="../aquadrip_plugin.py" line="177" />
             <source>自动(跟随 QGIS) Auto (follow QGIS)</source>
             <translation>自动(跟随 QGIS) Auto (follow QGIS)</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="192" />
+            <location filename="../aquadrip_plugin.py" line="178" />
             <source>简体中文</source>
             <translation>简体中文</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="297" />
+            <location filename="../aquadrip_plugin.py" line="283" />
             <source>正在创建图层...</source>
             <translation>Creating layers...</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="307" />
+            <location filename="../aquadrip_plugin.py" line="293" />
             <source>图层创建失败，请查看 Python 日志</source>
             <translation>Layer creation failed; check the Python log</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="315" />
+            <location filename="../aquadrip_plugin.py" line="301" />
             <source>图层已创建: {0} (CRS: {1})</source>
             <translation>Layers created: {0} (CRS: {1})</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="321" />
+            <location filename="../aquadrip_plugin.py" line="307" />
             <source>创建失败: {0}</source>
             <translation>Creation failed: {0}</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="356" />
+            <location filename="../aquadrip_plugin.py" line="342" />
             <source>正射影像</source>
             <translation>Orthophoto</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="341" />
+            <location filename="../aquadrip_plugin.py" line="327" />
             <source>项目已保存: {0}</source>
             <translation>Project saved: {0}</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="345" />
+            <location filename="../aquadrip_plugin.py" line="331" />
             <source>保存 QGZ 失败: {0}</source>
             <translation>Failed to save QGZ: {0}</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="353" />
+            <location filename="../aquadrip_plugin.py" line="339" />
             <source>农田地块 (aqd_fields)</source>
             <translation>Fields (aqd_fields)</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="353" />
+            <location filename="../aquadrip_plugin.py" line="339" />
             <source>管道 (aqd_pipes)</source>
             <translation>Pipes (aqd_pipes)</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="354" />
+            <location filename="../aquadrip_plugin.py" line="340" />
             <source>节点 (aqd_nodes)</source>
             <translation>Nodes (aqd_nodes)</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="354" />
+            <location filename="../aquadrip_plugin.py" line="340" />
             <source>观测点 (aqd_obs_points)</source>
             <translation>Observation points (aqd_obs_points)</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="358" />
+            <location filename="../aquadrip_plugin.py" line="344" />
             <source>DEM 高程</source>
             <translation>DEM elevation</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="360" />
+            <location filename="../aquadrip_plugin.py" line="346" />
             <source>项目创建完成
 
 {0}
@@ -241,7 +221,7 @@ Layers loaded:
 </translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="360" />
+            <location filename="../aquadrip_plugin.py" line="346" />
             <source>
 
 下次可直接用 QGIS 打开 .qgz 文件，
@@ -252,72 +232,72 @@ Next time you can open the .qgz file directly in QGIS,
 or load a .gpkg via Open Project.</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="383" />
+            <location filename="../aquadrip_plugin.py" line="369" />
             <source>无法加载栅格图层: {0}</source>
             <translation>Cannot load raster layer: {0}</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="421" />
+            <location filename="../aquadrip_plugin.py" line="407" />
             <source>请先在图层面板选中 aqd_pipes 图层</source>
             <translation>Select the aqd_pipes layer in the panel first</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="430" />
+            <location filename="../aquadrip_plugin.py" line="416" />
             <source>当前活动图层不是 aqd_pipes / aqd_pumps / aqd_valves</source>
             <translation>Active layer is not aqd_pipes / aqd_pumps / aqd_valves</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="437" />
+            <location filename="../aquadrip_plugin.py" line="423" />
             <source>请恰好选中 1 条管道</source>
             <translation>Select exactly 1 pipe</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="444" />
+            <location filename="../aquadrip_plugin.py" line="430" />
             <source>选中要素的 pipe_type 为空，请先设置管道类型</source>
             <translation>pipe_type of the selected feature is empty; set the pipe type first</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="454" />
+            <location filename="../aquadrip_plugin.py" line="440" />
             <source>生成连接节点失败: {0}</source>
             <translation>Failed to generate junction nodes: {0}</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="543" />
+            <location filename="../aquadrip_plugin.py" line="529" />
             <source>请先在图层面板选中相应图层和要素</source>
             <translation>Select the layer and features in the panel first</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="556" />
+            <location filename="../aquadrip_plugin.py" line="542" />
             <source>当前图层不是 aQuaDrip 图层（地块/管道/节点）</source>
             <translation>Current layer is not an aQuaDrip layer (field/pipe/node)</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="508" />
+            <location filename="../aquadrip_plugin.py" line="494" />
             <source>请至少选中 1 个要素</source>
             <translation>Select at least 1 feature</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="516" />
+            <location filename="../aquadrip_plugin.py" line="502" />
             <source>选中的要素包含多种管道类型（{0}），请仅选择同一类型</source>
             <translation>Selection contains multiple pipe types ({0}); select a single type</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="523" />
+            <location filename="../aquadrip_plugin.py" line="509" />
             <source>选中的要素包含多种节点类型（{0}），请仅选择同一类型</source>
             <translation>Selection contains multiple node types ({0}); select a single type</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="550" />
+            <location filename="../aquadrip_plugin.py" line="536" />
             <source>当前活动图层不是 {0}</source>
             <translation>Active layer is not {0}</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="562" />
+            <location filename="../aquadrip_plugin.py" line="548" />
             <source>请恰好选中 1 个要素</source>
             <translation>Select exactly 1 feature</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="580" />
+            <location filename="../aquadrip_plugin.py" line="566" />
             <source>管网中没有水源节点。
 
 请先用「添加水源」在地图上放置水源。</source>
@@ -326,148 +306,158 @@ or load a .gpkg via Open Project.</translation>
 Place a water source on the map first.</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="586" />
+            <location filename="../aquadrip_plugin.py" line="572" />
             <source>管网中没有管道。</source>
             <translation>No pipes in the network.</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="594" />
+            <location filename="../aquadrip_plugin.py" line="580" />
             <source>⚠️ 校验: {0}</source>
             <translation>⚠️ Validation: {0}</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="621" />
+            <location filename="../aquadrip_plugin.py" line="607" />
             <source>正在模拟...</source>
             <translation>Simulating...</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="645" />
+            <location filename="../aquadrip_plugin.py" line="631" />
             <source>模拟启动失败: {0}</source>
             <translation>Failed to start simulation: {0}</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="653" />
+            <location filename="../aquadrip_plugin.py" line="639" />
             <source>模拟失败：
 {0}</source>
             <translation>Simulation failed:
 {0}</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="678" />
+            <location filename="../aquadrip_plugin.py" line="664" />
             <source>节点 {0} / 管道 {1} / 滴头 {2}</source>
             <translation>Nodes {0} / pipes {1} / emitters {2}</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="681" />
+            <location filename="../aquadrip_plugin.py" line="667" />
             <source>滴头流量 {0:.2f}~{1:.2f} L/h</source>
             <translation>Emitter flow {0:.2f}~{1:.2f} L/h</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="684" />
+            <location filename="../aquadrip_plugin.py" line="670" />
             <source>结果已保存，可点击「可视化」工具查看</source>
             <translation>Result saved; use the Visualize tool to view it</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="689" />
+            <location filename="../aquadrip_plugin.py" line="675" />
             <source>aQuaDrip 模拟完成</source>
             <translation>aQuaDrip Simulation Finished</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="699" />
+            <location filename="../aquadrip_plugin.py" line="685" />
             <source>❌ 模拟运行失败: {0}</source>
             <translation>❌ Simulation failed: {0}</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="700" />
+            <location filename="../aquadrip_plugin.py" line="686" />
             <source>模拟失败: {0}</source>
             <translation>Simulation failed: {0}</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="756" />
+            <location filename="../aquadrip_plugin.py" line="742" />
             <source>⚠️ 模拟历史保存失败: {0}</source>
             <translation>⚠️ Failed to save simulation history: {0}</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="783" />
+            <location filename="../aquadrip_plugin.py" line="769" />
             <source>分区划分失败: {0}</source>
             <translation>Zone division failed: {0}</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="794" />
+            <location filename="../aquadrip_plugin.py" line="780" />
             <source>承压分析失败: {0}</source>
             <translation>Pressure check failed: {0}</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="810" />
+            <location filename="../aquadrip_plugin.py" line="796" />
             <source>未找到农田地块 (aqd_fields) 图层</source>
             <translation>Fields layer (aqd_fields) not found</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="842" />
+            <location filename="../aquadrip_plugin.py" line="828" />
             <source>未配置有效的轮灌分区</source>
             <translation>No valid rotation zones configured</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="853" />
+            <location filename="../aquadrip_plugin.py" line="839" />
             <source>错误: {0}
 {1}</source>
             <translation>Error: {0}
 {1}</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="857" />
+            <location filename="../aquadrip_plugin.py" line="843" />
             <source>管网为空，无法轮灌模拟</source>
             <translation>Network is empty; cannot run rotation simulation</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="870" />
+            <location filename="../aquadrip_plugin.py" line="856" />
             <source>错误: {0}</source>
             <translation>Error: {0}</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="918" />
+            <location filename="../aquadrip_plugin.py" line="904" />
             <source>正在重新模拟...</source>
             <translation>Re-simulating...</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="936" />
+            <location filename="../aquadrip_plugin.py" line="922" />
             <source>⚠️ 模拟失败: {0}</source>
             <translation>⚠️ Simulation failed: {0}</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="946" />
+            <location filename="../aquadrip_plugin.py" line="932" />
             <source>✅ 模拟完成，观测值已更新</source>
             <translation>✅ Simulation finished; observations updated</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="952" />
+            <location filename="../aquadrip_plugin.py" line="938" />
             <source>❌ 校准模拟失败: {0}</source>
             <translation>❌ Calibration simulation failed: {0}</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="999" />
+            <location filename="../aquadrip_plugin.py" line="985" />
             <source>未找到项目 GPKG</source>
             <translation>Project GPKG not found</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="983" />
+            <location filename="../aquadrip_plugin.py" line="969" />
             <source>✅ 已加载最新模拟结果 ({0})，未重新模拟</source>
             <translation>✅ Latest simulation result loaded ({0}); no re-simulation</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="991" />
+            <location filename="../aquadrip_plugin.py" line="977" />
             <source>请先在「校准」tab 中输入实测压力值</source>
             <translation>Enter measured pressures in the Calibration tab first</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="1006" />
+            <location filename="../aquadrip_plugin.py" line="992" />
             <source>请先运行模拟</source>
             <translation>Run a simulation first</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="1084" />
+            <location filename="../aquadrip_plugin.py" line="1070" />
             <source>校准模拟中...</source>
             <translation>Calibration simulation running...</translation>
+        </message>
+        <message>
+            <location filename="../aquadrip_plugin.py" line="94" />
+            <source>导出 INP</source>
+            <translation>Export INP</translation>
+        </message>
+        <message>
+            <location filename="../aquadrip_plugin.py" line="94" />
+            <source>导出当前管网为 EPANET INP 文件</source>
+            <translation>Export the network to an EPANET INP file</translation>
         </message>
     </context>
     <context>
@@ -1192,12 +1182,12 @@ Overwrite?</translation>
     <context>
         <name>ProjectIo</name>
         <message>
-            <location filename="../tools/project_io.py" line="66" />
+            <location filename="../tools/project_io.py" line="67" />
             <source>打开 aQuaDrip 项目</source>
             <translation>Open aQuaDrip Project</translation>
         </message>
         <message>
-            <location filename="../tools/project_io.py" line="76" />
+            <location filename="../tools/project_io.py" line="77" />
             <source>该文件不是 aQuaDrip 项目 GPKG：
 {0}
 
@@ -1208,117 +1198,55 @@ aQuaDrip 项目必须包含 {1} 图层。</source>
 An aQuaDrip project must contain the {1} layer.</translation>
         </message>
         <message>
-            <location filename="../tools/project_io.py" line="106" />
+            <location filename="../tools/project_io.py" line="107" />
             <source>项目 CRS 已设为 {0}（来自 GPKG）</source>
             <translation>Project CRS set to {0} (from GPKG)</translation>
         </message>
         <message>
-            <location filename="../tools/project_io.py" line="111" />
+            <location filename="../tools/project_io.py" line="112" />
             <source>已加载 {0} 个图层（{1}）</source>
             <translation>{0} layers loaded ({1})</translation>
         </message>
         <message>
-            <location filename="../tools/project_io.py" line="204" />
+            <location filename="../tools/project_io.py" line="205" />
             <source>aQuaDrip INP 导出</source>
             <translation>aQuaDrip INP Export</translation>
         </message>
         <message>
-            <location filename="../tools/project_io.py" line="159" />
+            <location filename="../tools/project_io.py" line="160" />
             <source>同步管网失败:
 {0}</source>
             <translation>Failed to sync network:
 {0}</translation>
         </message>
         <message>
-            <location filename="../tools/project_io.py" line="165" />
+            <location filename="../tools/project_io.py" line="166" />
             <source>管网为空，无法导出。请先绘制管道和节点。</source>
             <translation>Network is empty; cannot export. Draw pipes and nodes first.</translation>
         </message>
         <message>
-            <location filename="../tools/project_io.py" line="171" />
+            <location filename="../tools/project_io.py" line="172" />
             <source>导出 EPANET INP 文件</source>
             <translation>Export EPANET INP file</translation>
         </message>
         <message>
-            <location filename="../tools/project_io.py" line="185" />
+            <location filename="../tools/project_io.py" line="186" />
             <source>构建 WNTR 模型失败:
 {0}</source>
             <translation>Failed to build WNTR model:
 {0}</translation>
         </message>
         <message>
-            <location filename="../tools/project_io.py" line="204" />
+            <location filename="../tools/project_io.py" line="205" />
             <source>写入 INP 文件失败:
 {0}</source>
             <translation>Failed to write INP file:
 {0}</translation>
         </message>
         <message>
-            <location filename="../tools/project_io.py" line="209" />
+            <location filename="../tools/project_io.py" line="210" />
             <source>INP 已导出: {0}（节点 {1}，管道 {2}）</source>
             <translation>INP exported: {0} ({1} nodes, {2} pipes)</translation>
-        </message>
-        <message>
-            <location filename="../tools/project_io.py" line="253" />
-            <source>导入 EPANET INP 文件</source>
-            <translation>Import EPANET INP file</translation>
-        </message>
-        <message>
-            <location filename="../tools/project_io.py" line="303" />
-            <source>aQuaDrip INP 导入</source>
-            <translation>aQuaDrip INP Import</translation>
-        </message>
-        <message>
-            <location filename="../tools/project_io.py" line="267" />
-            <source>WNTR 未安装。请运行: pip install wntr</source>
-            <translation>WNTR is not installed. Run: pip install wntr</translation>
-        </message>
-        <message>
-            <location filename="../tools/project_io.py" line="272" />
-            <source>INP 文件解析失败:
-{0}</source>
-            <translation>Failed to parse INP file:
-{0}</translation>
-        </message>
-        <message>
-            <location filename="../tools/project_io.py" line="281" />
-            <source>INP 文件中没有节点数据</source>
-            <translation>No node data in the INP file</translation>
-        </message>
-        <message>
-            <location filename="../tools/project_io.py" line="290" />
-            <source>选择 aQuaDrip 项目保存位置</source>
-            <translation>Choose where to save the aQuaDrip project</translation>
-        </message>
-        <message>
-            <location filename="../tools/project_io.py" line="303" />
-            <source>创建 GPKG 失败: {0}</source>
-            <translation>Failed to create GPKG: {0}</translation>
-        </message>
-        <message>
-            <location filename="../tools/project_io.py" line="356" />
-            <source>节点图层提交失败</source>
-            <translation>Node layer commit failed</translation>
-        </message>
-        <message>
-            <location filename="../tools/project_io.py" line="411" />
-            <source>管道图层提交失败</source>
-            <translation>Pipe layer commit failed</translation>
-        </message>
-        <message>
-            <location filename="../tools/project_io.py" line="468" />
-            <source>水泵图层提交失败</source>
-            <translation>Pump layer commit failed</translation>
-        </message>
-        <message>
-            <location filename="../tools/project_io.py" line="520" />
-            <source>阀门图层提交失败</source>
-            <translation>Valve layer commit failed</translation>
-        </message>
-        <message>
-            <location filename="../tools/project_io.py" line="523" />
-            <source>已导入 {0}.inp（{1} 节点, {2} 管道） → {3}</source>
-            <translation>Imported {0}.inp ({1} nodes, {2} pipes) → {3}</translation>
         </message>
     </context>
     <context>
