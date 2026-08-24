@@ -103,7 +103,7 @@ class AQuaDripPlugin:
             toolbar.addAction(action)
             self.actions.append(action)
 
-        # "INP 处理"按钮设为下拉菜单（导出 / 导入）
+        # 设置 "INP 处理"按钮设为下拉菜单（导出 / 导入）
         from qgis.PyQt.QtWidgets import QMenu, QToolButton
         inp_action = self.actions[-1]
         inp_menu = QMenu(self.iface.mainWindow())
@@ -116,6 +116,9 @@ class AQuaDripPlugin:
         btn = toolbar.widgetForAction(inp_action)
         if btn is not None:
             btn.setPopupMode(QToolButton.InstantPopup)
+
+        # 语言切换子菜单(元 UI 双语硬编码——用户尚未选择语言时也要能看懂)
+        self._add_language_menu(menu)
 
     def unload(self):
         """卸载插件"""
@@ -167,6 +170,39 @@ class AQuaDripPlugin:
 
         # 断开所有活跃线程/worker 的信号连接（让它们自行结束，不阻塞卸载）
         self._stop_all_threads()
+
+        # 卸载翻译器
+        from .tools.i18n import remove_translator
+        remove_translator()
+
+    # ── 语言切换 ──
+
+    def _add_language_menu(self, parent_menu):
+        """在插件菜单尾部添加语言子菜单(重启 QGIS 后生效)"""
+        from qgis.PyQt.QtWidgets import QMenu
+        from qgis.PyQt.QtCore import QSettings
+        from .tools.i18n import LANGUAGES, SETTING_KEY
+
+        lang_menu = QMenu("语言 Language", parent_menu)
+        current = QSettings().value(SETTING_KEY, "auto", type=str) or "auto"
+        # 元 UI:标签双语硬写,不经过 tr()(用户可能尚未选择语言)
+        labels = {
+            "auto": "自动(跟随 QGIS) Auto (follow QGIS)",
+            "zh_CN": "简体中文",
+            "en_US": "English",
+        }
+        for key in LANGUAGES:
+            act = lang_menu.addAction(labels.get(key, key))
+            act.setCheckable(True)
+            act.setChecked(key == current)
+            act.triggered.connect(lambda _=False, k=key: self._on_language_selected(k))
+        parent_menu.addSeparator()
+        parent_menu.addMenu(lang_menu)
+
+    def _on_language_selected(self, key: str):
+        from .tools.i18n import set_language
+        msg = set_language(key)
+        self.iface.messageBar().pushMessage("aQuaDrip", msg, level=0, duration=8)
 
     # ── 线程安全管理 ──
 
