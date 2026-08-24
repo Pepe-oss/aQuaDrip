@@ -8,6 +8,7 @@ from qgis.PyQt.QtWidgets import (
 from qgis.PyQt.QtCore import Qt, pyqtSignal
 
 from ..tools.calib_algorithm import ALGORITHMS, CalibrationAlgorithm
+from qgis.PyQt.QtWidgets import QApplication
 
 
 class CalibrationDialog(QDialog):
@@ -23,7 +24,7 @@ class CalibrationDialog(QDialog):
         self._running = False
         self._prev_rmse = None
 
-        self.setWindowTitle("aQuaDrip 校准")
+        self.setWindowTitle(QApplication.translate("CalibrationDialog", "aQuaDrip 校准"))
         self.setMinimumWidth(480)
         self.setMinimumHeight(440)
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
@@ -34,7 +35,7 @@ class CalibrationDialog(QDialog):
 
         # ── 算法选择 ──
         algo_layout = QHBoxLayout()
-        algo_layout.addWidget(QLabel("校准算法:"))
+        algo_layout.addWidget(QLabel(QApplication.translate("CalibrationDialog", "校准算法:")))
         self._combo_algo = QComboBox()
         for name, cls in ALGORITHMS.items():
             self._combo_algo.addItem(cls.label, name)
@@ -46,22 +47,22 @@ class CalibrationDialog(QDialog):
         self._spin_iter = QSpinBox()
         self._spin_iter.setRange(1, 50)
         self._spin_iter.setValue(3)
-        form.addRow("最大迭代次数:", self._spin_iter)
+        form.addRow(QApplication.translate("CalibrationDialog", "最大迭代次数:"), self._spin_iter)
         self._spin_lr = QDoubleSpinBox()
         self._spin_lr.setRange(0.05, 1.0)
         self._spin_lr.setSingleStep(0.05)
         self._spin_lr.setValue(0.30)
-        form.addRow("学习率:", self._spin_lr)
+        form.addRow(QApplication.translate("CalibrationDialog", "学习率:"), self._spin_lr)
         layout.addLayout(form)
 
         # ── C 限值（按管道类型）──
-        c_group = QGroupBox("C 限值 (Hazen-Williams)")
+        c_group = QGroupBox(QApplication.translate("CalibrationDialog", "C 限值 (Hazen-Williams)"))
         c_form = QFormLayout(c_group)
         self._c_spins = {}
         for key, label, dlo, dhi in [
-            ("mainline", "主/干管", 100, 150),
-            ("submain", "支管", 90, 140),
-            ("lateral", "毛管", 80, 130),
+            ("mainline", QApplication.translate("CalibrationDialog", "主/干管"), 100, 150),
+            ("submain", QApplication.translate("CalibrationDialog", "支管"), 90, 140),
+            ("lateral", QApplication.translate("CalibrationDialog", "毛管"), 80, 130),
         ]:
             row = QHBoxLayout()
             slo = QDoubleSpinBox()
@@ -76,10 +77,10 @@ class CalibrationDialog(QDialog):
         layout.addWidget(c_group)
 
         # ── 结果区 ──
-        layout.addWidget(QLabel("校准结果:"))
+        layout.addWidget(QLabel(QApplication.translate("CalibrationDialog", "校准结果:")))
         self._result_text = QTextEdit()
         self._result_text.setReadOnly(True)
-        self._result_text.setPlaceholderText("点击「开始校准」后显示迭代结果...")
+        self._result_text.setPlaceholderText(QApplication.translate("CalibrationDialog", "点击「开始校准」后显示迭代结果..."))
         layout.addWidget(self._result_text, stretch=1)
 
         # ── 进度 ──
@@ -89,20 +90,20 @@ class CalibrationDialog(QDialog):
 
         # ── 按钮 ──
         btn = QHBoxLayout()
-        self._btn_start = QPushButton("▶ 开始校准")
+        self._btn_start = QPushButton(QApplication.translate("CalibrationDialog", "▶ 开始校准"))
         self._btn_start.setStyleSheet("font-weight: bold;")
         self._btn_start.clicked.connect(self._on_start)
         btn.addWidget(self._btn_start)
-        self._btn_stop = QPushButton("⏹ 停止")
+        self._btn_stop = QPushButton(QApplication.translate("CalibrationDialog", "⏹ 停止"))
         self._btn_stop.setEnabled(False)
         self._btn_stop.clicked.connect(self._on_stop)
         btn.addWidget(self._btn_stop)
-        self._btn_apply = QPushButton("✅ 应用校准结果")
+        self._btn_apply = QPushButton(QApplication.translate("CalibrationDialog", "✅ 应用校准结果"))
         self._btn_apply.setEnabled(False)
         self._btn_apply.clicked.connect(self._on_apply)
         btn.addWidget(self._btn_apply)
         btn.addStretch()
-        btn_close = QPushButton("关闭")
+        btn_close = QPushButton(QApplication.translate("CalibrationDialog", "关闭"))
         btn_close.clicked.connect(self.reject)
         btn.addWidget(btn_close)
         layout.addLayout(btn)
@@ -152,12 +153,11 @@ class CalibrationDialog(QDialog):
         self._btn_apply.setEnabled(self._iteration > 0)
         if self._iteration > 0:
             self._result_text.append(
-                f"\n── 校准{'完成' if not self._running else '已停止'}，"
-                f"共 {self._iteration} 次迭代 ──")
+                QApplication.translate("CalibrationDialog", "\n── 校准{0}，共 {1} 次迭代 ──").format('完成' if not self._running else '已停止', self._iteration))
 
     def _on_apply(self):
         """应用校准结果：刷新图层渲染并确认"""
-        self._result_text.append("\n✅ 已应用校准结果")
+        self._result_text.append(QApplication.translate("CalibrationDialog", "\n✅ 已应用校准结果"))
         layer = self._find_layer("aqd_pipes")
         if layer:
             layer.triggerRepaint()
@@ -182,8 +182,7 @@ class CalibrationDialog(QDialog):
             type_stats = result.get("type_stats", {})
 
             self._result_text.append(
-                f"\n── 迭代 {self._iteration}  RMSE = {rmse:.2f} m"
-                f"  ({len(details)} 条管道)  [{algo.label}]")
+                QApplication.translate("CalibrationDialog", "\n── 迭代 {0}  RMSE = {1:.2f} m  ({2} 条管道)  [{3}]").format(self._iteration, rmse, len(details), algo.label))
             for lid, pt, old_c, new_c, delta in details:
                 sign = "↑" if delta > 0 else ("↓" if delta < 0 else "→")
                 # 小变化时显示更多小数位，避免 130→130(↓0) 的迷惑显示
@@ -196,8 +195,8 @@ class CalibrationDialog(QDialog):
 
             # 分类型统计：显示各管道类型的 hf² 权重和平均调整量
             if type_stats:
-                type_names = {"mainline": "干管", "submain": "支管",
-                              "lateral": "毛管"}
+                type_names = {"mainline": QApplication.translate("CalibrationDialog", "干管"), "submain": QApplication.translate("CalibrationDialog", "支管"),
+                              "lateral": QApplication.translate("CalibrationDialog", "毛管")}
                 parts = []
                 for pt in ("mainline", "submain", "lateral"):
                     ts = type_stats.get(pt)
@@ -206,25 +205,24 @@ class CalibrationDialog(QDialog):
                         avg_d = ts.get("avg_delta", 0)
                         sign = "↑" if avg_d > 0 else ("↓" if avg_d < 0 else "→")
                         parts.append(
-                            f"{type_names.get(pt, pt)} {ts['count']}条"
-                            f"(hf²={w*100:.0f}% {sign}{abs(avg_d):.1f})")
+                            QApplication.translate("CalibrationDialog", "{0} {1}条(hf²={2:.0f}% {3}{4:.1f})").format(type_names.get(pt, pt), ts['count'], w*100, sign, abs(avg_d)))
                 if parts:
                     self._result_text.append(
-                        f"  📊 分型: " + " | ".join(parts))
+                        QApplication.translate("CalibrationDialog", "  📊 分型: ").format() + " | ".join(parts))
 
             # 收敛判据：RMSE 变化 < 0.02 且本次参数无实际变化
             has_change = any(abs(d) > 0.05 for _, _, _, _, d in details)
             if self._prev_rmse is not None and abs(rmse - self._prev_rmse) < 0.02:
                 if not has_change:
-                    self._result_text.append("  ✓ 已收敛 (参数无变化)"); self._finish(); return
+                    self._result_text.append(QApplication.translate("CalibrationDialog", "  ✓ 已收敛 (参数无变化)")); self._finish(); return
             if rmse < 0.1:
                 self._result_text.append("  ✓ RMSE < 0.1m"); self._finish(); return
             if self._iteration >= self._spin_iter.value():
-                self._result_text.append("  ✓ 达到最大迭代次数"); self._finish(); return
+                self._result_text.append(QApplication.translate("CalibrationDialog", "  ✓ 达到最大迭代次数")); self._finish(); return
             self._prev_rmse = rmse
         except Exception as e:
             import traceback
-            self._result_text.append(f"\n❌ 迭代 {self._iteration} 失败: {e}\n{traceback.format_exc()}")
+            self._result_text.append(QApplication.translate("CalibrationDialog", "\n❌ 迭代 {0} 失败: {1}\n{2}").format(self._iteration, e, traceback.format_exc()))
             self._finish(); return
 
         self.sim_requested.emit(self._obs_data)

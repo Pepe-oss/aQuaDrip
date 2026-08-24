@@ -8,6 +8,7 @@ import json
 import os
 from datetime import datetime
 from typing import Dict, List, Optional
+from qgis.PyQt.QtWidgets import QApplication
 
 
 class SimHistory:
@@ -161,5 +162,5 @@ class SimHistory:
         rid = record.get("rotation_id")
         si = record.get("shift_index")
         if rid is not None and si is not None:
-            return f"{ts}  [轮灌 {rid} 轮次{si+1}]  CU={cu:.1f}%  DU={du:.1f}%  滴头={n}"
-        return f"{ts}  CU={cu:.1f}%  DU={du:.1f}%  滴头={n}"
+            return QApplication.translate("SimHistory", "{0}  [轮灌 {1} 轮次{2}]  CU={3:.1f}%  DU={4:.1f}%  滴头={5}").format(ts, rid, si+1, cu, du, n)
+        return QApplication.translate("SimHistory", "{0}  CU={1:.1f}%  DU={2:.1f}%  滴头={3}").format(ts, cu, du, n)

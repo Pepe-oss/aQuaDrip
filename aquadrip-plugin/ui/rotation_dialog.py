@@ -7,6 +7,7 @@ from qgis.PyQt.QtWidgets import (
     QHeaderView, QTextEdit,
 )
 from qgis.PyQt.QtCore import Qt, pyqtSignal
+from qgis.PyQt.QtWidgets import QApplication
 
 
 class RotationDialog(QDialog):
@@ -22,7 +23,7 @@ class RotationDialog(QDialog):
         self._zones_data = []
         self._running = False
 
-        self.setWindowTitle("aQuaDrip 轮灌管理")
+        self.setWindowTitle(QApplication.translate("RotationDialog", "aQuaDrip 轮灌管理"))
         self.setMinimumWidth(520)
         self.setMinimumHeight(400)
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
@@ -33,7 +34,7 @@ class RotationDialog(QDialog):
 
         # ── 田块选择 ──
         field_layout = QHBoxLayout()
-        field_layout.addWidget(QLabel("田块:"))
+        field_layout.addWidget(QLabel(QApplication.translate("RotationDialog", "田块:")))
         self._combo_field = QComboBox()
         self._combo_field.setMinimumWidth(200)
         self._combo_field.currentIndexChanged.connect(self._on_field_changed)
@@ -42,13 +43,13 @@ class RotationDialog(QDialog):
         layout.addLayout(field_layout)
 
         # ── 分区表格：分区 | 阀门 | 灌溉量(mm) | 顺序 ──
-        label = QLabel("分区灌溉量配置（双击灌溉量编辑）:")
+        label = QLabel(QApplication.translate("RotationDialog", "分区灌溉量配置（双击灌溉量编辑）:"))
         layout.addWidget(label)
 
         table_layout = QHBoxLayout()
         self._zone_table = QTableWidget(0, 4)
         self._zone_table.setHorizontalHeaderLabels(
-            ["分区", "阀门", "灌溉量(mm)", "顺序"])
+            [QApplication.translate("RotationDialog", "分区"), QApplication.translate("RotationDialog", "阀门"), QApplication.translate("RotationDialog", "灌溉量(mm)"), QApplication.translate("RotationDialog", "顺序")])
         self._zone_table.horizontalHeader().setSectionResizeMode(
             0, QHeaderView.ResizeToContents)
         self._zone_table.horizontalHeader().setSectionResizeMode(
@@ -65,13 +66,13 @@ class RotationDialog(QDialog):
         btn_col = QVBoxLayout()
         self._btn_up = QPushButton("▲")
         self._btn_up.setFixedWidth(32)
-        self._btn_up.setToolTip("上移")
+        self._btn_up.setToolTip(QApplication.translate("RotationDialog", "上移"))
         self._btn_up.clicked.connect(self._on_move_up)
         self._btn_up.setEnabled(False)
         btn_col.addWidget(self._btn_up)
         self._btn_down = QPushButton("▼")
         self._btn_down.setFixedWidth(32)
-        self._btn_down.setToolTip("下移")
+        self._btn_down.setToolTip(QApplication.translate("RotationDialog", "下移"))
         self._btn_down.clicked.connect(self._on_move_down)
         self._btn_down.setEnabled(False)
         btn_col.addWidget(self._btn_down)
@@ -83,7 +84,7 @@ class RotationDialog(QDialog):
         self._result_text = QTextEdit()
         self._result_text.setReadOnly(True)
         self._result_text.setMaximumHeight(120)
-        self._result_text.setPlaceholderText("运行结果将显示在此...")
+        self._result_text.setPlaceholderText(QApplication.translate("RotationDialog", "运行结果将显示在此..."))
         layout.addWidget(self._result_text)
 
         # ── 进度 ──
@@ -93,19 +94,19 @@ class RotationDialog(QDialog):
 
         # ── 按钮 ──
         btn_layout = QHBoxLayout()
-        self._btn_run = QPushButton("▶ 运行轮灌模拟")
+        self._btn_run = QPushButton(QApplication.translate("RotationDialog", "▶ 运行轮灌模拟"))
         self._btn_run.setStyleSheet("font-weight: bold;")
         self._btn_run.clicked.connect(self._on_run)
         self._btn_run.setEnabled(False)
         btn_layout.addWidget(self._btn_run)
 
-        self._btn_stop = QPushButton("⏹ 停止")
+        self._btn_stop = QPushButton(QApplication.translate("RotationDialog", "⏹ 停止"))
         self._btn_stop.setEnabled(False)
         self._btn_stop.clicked.connect(self._on_stop)
         btn_layout.addWidget(self._btn_stop)
 
         btn_layout.addStretch()
-        self._btn_close = QPushButton("关闭")
+        self._btn_close = QPushButton(QApplication.translate("RotationDialog", "关闭"))
         self._btn_close.clicked.connect(self.reject)
         btn_layout.addWidget(self._btn_close)
         layout.addLayout(btn_layout)
@@ -122,7 +123,7 @@ class RotationDialog(QDialog):
         self._combo_field.clear()
         target_idx = 0
         for i, feat in enumerate(features):
-            name = str(feat.attribute("name") or f"田块_{feat.id()}")
+            name = str(feat.attribute("name") or QApplication.translate("RotationDialog", "田块_{0}").format(feat.id()))
             self._combo_field.addItem(name, feat.id())
             if feat.id() == selected_id:
                 target_idx = i
@@ -275,15 +276,10 @@ class RotationDialog(QDialog):
         lines = []
         for r in results:
             if r.get("error"):
-                lines.append(f"❌ 分区 {r['zone']}: {r['error'][:80]}")
+                lines.append(QApplication.translate("RotationDialog", "❌ 分区 {0}: {1}").format(r['zone'], r['error'][:80]))
             else:
                 lines.append(
-                    f"✅ 分区 {r['zone']}  "
-                    f"灌{r['irrigation_mm']:.0f}mm  "
-                    f"CU={r['cu']:.1f}% DU={r['du']:.1f}%  "
-                    f"均压{r['avg_pressure_m']:.2f}m  "
-                    f"最大{r['max_pressure_m']:.2f}m  "
-                    f"需{r['duration_min']:.0f}min"
+                    QApplication.translate("RotationDialog", "✅ 分区 {0}  灌{1:.0f}mm  CU={2:.1f}% DU={3:.1f}%  均压{4:.2f}m  最大{5:.2f}m  需{6:.0f}min").format(r['zone'], r['irrigation_mm'], r['cu'], r['du'], r['avg_pressure_m'], r['max_pressure_m'], r['duration_min'])
                 )
         self._result_text.setPlainText("\n".join(lines))
-        self._progress.setFormat(f"完成 ({ok}/{len(results)} 分区)")
+        self._progress.setFormat(QApplication.translate("RotationDialog", "完成 ({0}/{1} 分区)").format(ok, len(results)))

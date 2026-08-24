@@ -13,6 +13,7 @@ from qgis.core import (
     QgsCoordinateReferenceSystem, QgsCoordinateTransform,
 )
 from qgis.PyQt.QtCore import QVariant
+from qgis.PyQt.QtWidgets import QApplication
 
 
 class LateralGenerator:
@@ -90,7 +91,7 @@ class LateralGenerator:
         self._dropped_parts = 0
         geom = feat.geometry()
         if not geom or geom.isEmpty():
-            raise ValueError("农田几何为空")
+            raise ValueError(QApplication.translate("LateralGenerator", "农田几何为空"))
 
         # 解析 CRS，判定单位：地理坐标系（度）需重投影到 UTM（米）做布局
         self._src_crs = self._resolve_crs(feat)
@@ -111,27 +112,26 @@ class LateralGenerator:
         # 2. 参数校验（间距 ≤ 0 会让布局 while 循环永不退出，必须拦截）
         errors = []
         if tape_spacing <= 0:
-            errors.append(f"滴灌带间距必须大于 0（当前 {tape_spacing}）")
+            errors.append(QApplication.translate("LateralGenerator", "滴灌带间距必须大于 0（当前 {0}）").format(tape_spacing))
         if tapes_per_ridge < 1:
-            errors.append(f"每垄滴灌带数必须 ≥ 1（当前 {tapes_per_ridge}）")
+            errors.append(QApplication.translate("LateralGenerator", "每垄滴灌带数必须 ≥ 1（当前 {0}）").format(tapes_per_ridge))
         # 单带模式（tapes_per_ridge==1）同样以 row_spacing 驱动 while 循环，
         # 负值/零会导致死循环——"or 0.6" 兜底只能拦截 0/NULL，拦不住负数
         if row_spacing <= 0:
-            errors.append(f"垄间距必须大于 0（当前 {row_spacing}）")
+            errors.append(QApplication.translate("LateralGenerator", "垄间距必须大于 0（当前 {0}）").format(row_spacing))
         if planting_pattern == "ridge_count" and ridge_count <= 0:
-            errors.append(f"按垄数模式必须指定垄数 > 0（当前 {ridge_count}）")
+            errors.append(QApplication.translate("LateralGenerator", "按垄数模式必须指定垄数 > 0（当前 {0}）").format(ridge_count))
         if emitter_spacing <= 0:
-            errors.append(f"滴头间距必须大于 0（当前 {emitter_spacing}）")
+            errors.append(QApplication.translate("LateralGenerator", "滴头间距必须大于 0（当前 {0}）").format(emitter_spacing))
         if errors:
-            raise ValueError("农艺参数非法：\n" + "\n".join(errors))
+            raise ValueError(QApplication.translate("LateralGenerator", "农艺参数非法：\n") + "\n".join(errors))
 
         # 3. CRS 适配：地理坐标系（度）→ UTM（米）做布局，算完转回原 CRS
         layout_geom = self._reproject_for_layout(geom)
         if self._is_geographic:
             self.iface.messageBar().pushMessage(
                 "aQuaDrip",
-                f"图层为地理坐标系（{self._src_crs.authid()}），已临时投影到 "
-                f"UTM（米制）进行布局计算，结果转回原 CRS",
+                QApplication.translate("LateralGenerator", "图层为地理坐标系（{0}），已临时投影到 UTM（米制）进行布局计算，结果转回原 CRS").format(self._src_crs.authid()),
                 level=0, duration=5)
 
         # 4. 计算方向角度（在投影几何上）
@@ -152,14 +152,12 @@ class LateralGenerator:
         # 诊断：输出实际生成的毛管数量
         self.iface.messageBar().pushMessage(
             "aQuaDrip",
-            f"布局计算: pattern={planting_pattern} tpr={tapes_per_ridge} "
-            f"rs={row_spacing} ts={tape_spacing} rc={ridge_count} "
-            f"→ {len(lines)} 条毛管",
+            QApplication.translate("LateralGenerator", "布局计算: pattern={0} tpr={1} rs={2} ts={3} rc={4} → {5} 条毛管").format(planting_pattern, tapes_per_ridge, row_spacing, tape_spacing, ridge_count, len(lines)),
             level=0, duration=6)
 
         if not lines:
             raise ValueError(
-                "未生成任何毛管：地块可能太小，或间距参数过大")
+                QApplication.translate("LateralGenerator", "未生成任何毛管：地块可能太小，或间距参数过大"))
 
         # 7. 写入 aqd_pipes（先清除该地块的旧毛管，避免重复生成叠加）
         count = self._write_to_pipes(lines, emitter_spacing, emitter_k, emitter_x,
@@ -167,8 +165,7 @@ class LateralGenerator:
         if self._dropped_parts > 0:
             self.iface.messageBar().pushMessage(
                 "aQuaDrip",
-                f"注意：地块为凹形，{self._dropped_parts} 个毛管分段被省略"
-                f"（每行仅保留最长段）",
+                QApplication.translate("LateralGenerator", "注意：地块为凹形，{0} 个毛管分段被省略（每行仅保留最长段）").format(self._dropped_parts),
                 level=1, duration=6)
         return count
 
@@ -358,7 +355,7 @@ class LateralGenerator:
         """写入 aqd_pipes 图层（先清除该地块旧毛管，避免重复生成叠加）"""
         layer = self._get_pipes_layer()
         if not layer:
-            raise RuntimeError("aqd_pipes 图层未找到，请先初始化图层")
+            raise RuntimeError(QApplication.translate("LateralGenerator", "aqd_pipes 图层未找到，请先初始化图层"))
 
         need_edit = not layer.isEditable()
         if need_edit:
@@ -382,21 +379,21 @@ class LateralGenerator:
                 feat.setAttribute("emitter_k", emitter_k)
                 feat.setAttribute("emitter_x", emitter_x)
                 if not layer.addFeature(feat):
-                    raise RuntimeError("写入毛管要素失败")
+                    raise RuntimeError(QApplication.translate("LateralGenerator", "写入毛管要素失败"))
                 count += 1
 
             if need_edit and not layer.commitChanges():
                 raise RuntimeError(
-                    f"提交失败: {'; '.join(layer.commitErrors())}")
+                    QApplication.translate("LateralGenerator", "提交失败: {0}").format('; '.join(layer.commitErrors())))
         except Exception:
             if need_edit:
                 layer.rollBack()
             raise
 
         layer.triggerRepaint()
-        msg = f"已生成 {count} 条毛管"
+        msg = QApplication.translate("LateralGenerator", "已生成 {0} 条毛管").format(count)
         if deleted:
-            msg += f"（已清除 {deleted} 条旧毛管）"
+            msg += QApplication.translate("LateralGenerator", "（已清除 {0} 条旧毛管）").format(deleted)
         self.iface.messageBar().pushMessage("aQuaDrip", msg, level=0, duration=5)
         return count
 

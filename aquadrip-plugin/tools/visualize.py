@@ -15,6 +15,7 @@ from qgis.core import (
 )
 from qgis.PyQt.QtCore import QVariant
 from qgis.PyQt.QtGui import QColor
+from qgis.PyQt.QtWidgets import QApplication
 
 # 压力单位转换：WNTR 输出 mH₂O → 显示用 MPa
 M_H2O_TO_MPa = 0.00980665
@@ -55,7 +56,7 @@ class Visualizer:
         du = record.get("du", 0)
         self.iface.messageBar().pushMessage(
             "aQuaDrip",
-            f"可视化: {ts}  CU={cu:.1f}%  DU={du:.1f}%",
+            QApplication.translate("Visualize", "可视化: {0}  CU={1:.1f}%  DU={2:.1f}%").format(ts, cu, du),
             level=0, duration=5)
 
     def _create_node_layer(self, record: dict, crs_id: str,

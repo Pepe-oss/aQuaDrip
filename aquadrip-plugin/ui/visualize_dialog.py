@@ -11,6 +11,7 @@ from qgis.PyQt.QtWidgets import (
 from qgis.PyQt.QtCore import Qt, pyqtSignal
 
 from ..tools.sim_history import SimHistory
+from qgis.PyQt.QtWidgets import QApplication
 
 
 class VisualizeDialog(QDialog):
@@ -24,7 +25,7 @@ class VisualizeDialog(QDialog):
         self.history = None
         self.records = []
 
-        self.setWindowTitle("aQuaDrip 模拟历史")
+        self.setWindowTitle(QApplication.translate("VisualizeDialog", "aQuaDrip 模拟历史"))
         self.setMinimumWidth(420)
         self.setMinimumHeight(360)
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
@@ -36,7 +37,7 @@ class VisualizeDialog(QDialog):
         layout = QVBoxLayout(self)
 
         # 说明
-        hint = QLabel("选择一条记录进行可视化（结果保存为临时图层）")
+        hint = QLabel(QApplication.translate("VisualizeDialog", "选择一条记录进行可视化（结果保存为临时图层）"))
         hint.setStyleSheet("color: gray; font-size: 11px;")
         layout.addWidget(hint)
 
@@ -47,15 +48,15 @@ class VisualizeDialog(QDialog):
 
         # 着色模式选择
         mode_layout = QHBoxLayout()
-        mode_layout.addWidget(QLabel("节点着色:"))
+        mode_layout.addWidget(QLabel(QApplication.translate("VisualizeDialog", "节点着色:")))
         self.mode_combo = QComboBox()
-        self.mode_combo.addItem("压力（蓝→红）", "pressure")
-        self.mode_combo.addItem("滴头流量（蓝→红）", "emitter")
+        self.mode_combo.addItem(QApplication.translate("VisualizeDialog", "压力（蓝→红）"), "pressure")
+        self.mode_combo.addItem(QApplication.translate("VisualizeDialog", "滴头流量（蓝→红）"), "emitter")
         mode_layout.addWidget(self.mode_combo)
         mode_layout.addStretch()
 
         # 轮灌轮次过滤器
-        self._shift_label = QLabel("轮次:")
+        self._shift_label = QLabel(QApplication.translate("VisualizeDialog", "轮次:"))
         self._shift_combo = QComboBox()
         self._shift_combo.currentIndexChanged.connect(self._on_filter_changed)
         mode_layout.addWidget(self._shift_label)
@@ -66,22 +67,22 @@ class VisualizeDialog(QDialog):
 
         # 按钮
         btn_layout = QHBoxLayout()
-        self.btn_visualize = QPushButton("📊 可视化")
+        self.btn_visualize = QPushButton(QApplication.translate("VisualizeDialog", "📊 可视化"))
         self.btn_visualize.setStyleSheet("font-weight: bold;")
         self.btn_visualize.clicked.connect(self._on_visualize)
         btn_layout.addWidget(self.btn_visualize)
 
-        self.btn_delete = QPushButton("🗑 删除")
+        self.btn_delete = QPushButton(QApplication.translate("VisualizeDialog", "🗑 删除"))
         self.btn_delete.clicked.connect(self._on_delete)
         btn_layout.addWidget(self.btn_delete)
 
-        self.btn_close = QPushButton("关闭")
+        self.btn_close = QPushButton(QApplication.translate("VisualizeDialog", "关闭"))
         self.btn_close.clicked.connect(self.reject)
         btn_layout.addWidget(self.btn_close)
         layout.addLayout(btn_layout)
 
         # 空状态提示
-        self.empty_label = QLabel("暂无模拟记录\n\n请先运行模拟")
+        self.empty_label = QLabel(QApplication.translate("VisualizeDialog", "暂无模拟记录\n\n请先运行模拟"))
         self.empty_label.setAlignment(Qt.AlignCenter)
         self.empty_label.setStyleSheet("color: gray; font-size: 14px;")
         self.empty_label.hide()
@@ -96,7 +97,7 @@ class VisualizeDialog(QDialog):
             self._refresh_list()
             return
         # 没找到 GPKG
-        self.empty_label.setText("未找到 aQuaDrip 项目\n请先加载或创建项目")
+        self.empty_label.setText(QApplication.translate("VisualizeDialog", "未找到 aQuaDrip 项目\n请先加载或创建项目"))
         self.empty_label.show()
         self.list_widget.hide()
 
@@ -124,9 +125,9 @@ class VisualizeDialog(QDialog):
 
         self._shift_combo.blockSignals(True)
         self._shift_combo.clear()
-        self._shift_combo.addItem("全部记录", "")
+        self._shift_combo.addItem(QApplication.translate("VisualizeDialog", "全部记录"), "")
         for rid in sorted(rotation_ids):
-            self._shift_combo.addItem(f"轮灌 {rid}", rid)
+            self._shift_combo.addItem(QApplication.translate("VisualizeDialog", "轮灌 {0}").format(rid), rid)
         has_rotation = len(rotation_ids) > 0
         self._shift_combo.setVisible(has_rotation)
         self._shift_label.setVisible(has_rotation)
@@ -155,7 +156,7 @@ class VisualizeDialog(QDialog):
         """可视化选中的记录"""
         item = self.list_widget.currentItem()
         if item is None:
-            QMessageBox.information(self, "aQuaDrip", "请先选择一条记录")
+            QMessageBox.information(self, "aQuaDrip", QApplication.translate("VisualizeDialog", "请先选择一条记录"))
             return
         record = self.records[item.data(Qt.UserRole)]
         mode = self.mode_combo.currentData()
@@ -165,11 +166,11 @@ class VisualizeDialog(QDialog):
         """删除选中的记录"""
         item = self.list_widget.currentItem()
         if item is None:
-            QMessageBox.information(self, "aQuaDrip", "请先选择一条记录")
+            QMessageBox.information(self, "aQuaDrip", QApplication.translate("VisualizeDialog", "请先选择一条记录"))
             return
 
         reply = QMessageBox.question(
-            self, "aQuaDrip", "确定删除该记录？",
+            self, "aQuaDrip", QApplication.translate("VisualizeDialog", "确定删除该记录？"),
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         if reply != QMessageBox.Yes:
             return
@@ -177,4 +178,4 @@ class VisualizeDialog(QDialog):
         if self.history.delete(item.data(Qt.UserRole)):
             self._refresh_list()
             self.iface.messageBar().pushMessage(
-                "aQuaDrip", "记录已删除", level=0, duration=3)
+                "aQuaDrip", QApplication.translate("VisualizeDialog", "记录已删除"), level=0, duration=3)

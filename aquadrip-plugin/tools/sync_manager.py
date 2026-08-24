@@ -19,6 +19,7 @@ from qgis.core import (
     QgsProject, QgsVectorLayer, QgsRasterLayer, QgsGeometry, QgsPointXY, QgsFeature,
     QgsCoordinateReferenceSystem, QgsCoordinateTransform,
 )
+from qgis.PyQt.QtWidgets import QApplication
 
 if TYPE_CHECKING:
     from wdrip.network import DripNetwork
@@ -76,13 +77,13 @@ class SyncManager:
             expand_lateral,
         )
 
-        net = DripNetwork(name="aQuaDrip 项目")
+        net = DripNetwork(name=QApplication.translate("SyncManager", "aQuaDrip 项目"))
 
         pipe_layer = self._get_layer("aqd_pipes")
         pump_layer = self._get_layer("aqd_pumps")
         valve_layer = self._get_layer("aqd_valves")
         if self._is_geographic():
-            self.log("⚠️ 图层为经纬度坐标，长度/面积按度计算，建议投影到米制坐标系")
+            self.log(QApplication.translate("SyncManager", "⚠️ 图层为经纬度坐标，长度/面积按度计算，建议投影到米制坐标系"))
 
         # 1. 读取农田
         # FieldInfo 是单数模型：多田块项目把面积累加，农艺参数取第一个
@@ -98,8 +99,7 @@ class SyncManager:
                 for f in feats)
             if len(feats) > 1:
                 self.log(
-                    f"⚠️ 检测到 {len(feats)} 个田块，FieldInfo 仅支持单一农艺参数："
-                    f"面积已累加({total_area:.1f})，其余参数取第一个田块")
+                    QApplication.translate("SyncManager", "⚠️ 检测到 {0} 个田块，FieldInfo 仅支持单一农艺参数：面积已累加({1:.1f})，其余参数取第一个田块").format(len(feats), total_area))
             net.field_info = FieldInfo(
                 area=total_area,
                 crop_type=str(self._attr(feat, "crop_type") or ""),
@@ -173,8 +173,7 @@ class SyncManager:
 
         # 诊断
         lat_count = len([s for s in segments if s["pipe_type"] == "lateral"])
-        self.log(f"拓扑构建: {len(segments)} 段（毛管 {lat_count}）"
-                 f" 节点 {len(net.nodes)}")
+        self.log(QApplication.translate("SyncManager", "拓扑构建: {0} 段（毛管 {1}） 节点 {2}").format(len(segments), lat_count, len(net.nodes)))
 
         # 4. 从 segments 建 link + 收集毛管
         laterals: List[dict] = []
@@ -281,7 +280,7 @@ class SyncManager:
             else:
                 if need_edit and not layer.commitChanges():
                     layer.rollBack()
-                    self.log(f"⚠️ 图层 {layer.name()} 提交失败")
+                    self.log(QApplication.translate("SyncManager", "⚠️ 图层 {0} 提交失败").format(layer.name()))
 
         # 5. 毛管展开为 EmitterNode 滴头链
         #    关键：emitter_spacing 是米单位，必须投影到米制 CRS（UTM）后再展开，
@@ -299,7 +298,7 @@ class SyncManager:
                                            emitter_k=lat.get("k"),
                                            emitter_x=lat.get("x"))
                         except Exception as e:
-                            self.log(f"⚠️ 毛管 {lat['lid']} 展开失败: {e}")
+                            self.log(QApplication.translate("SyncManager", "⚠️ 毛管 {0} 展开失败: {1}").format(lat['lid'], e))
                 finally:
                     self._reproject_net(net, src_crs, to_utm=False)
             else:
@@ -309,7 +308,7 @@ class SyncManager:
                                        emitter_k=lat.get("k"),
                                        emitter_x=lat.get("x"))
                     except Exception as e:
-                        self.log(f"⚠️ 毛管 {lat['lid']} 展开失败: {e}")
+                        self.log(QApplication.translate("SyncManager", "⚠️ 毛管 {0} 展开失败: {1}").format(lat['lid'], e))
 
         # expand 后补全 link 几何
         for lid, link in net.links.items():
@@ -386,10 +385,9 @@ class SyncManager:
                         old_head = node.head
                         node.head = required
                         self.log(
-                            f"🔧 水源 {node.id} 水头修正: "
-                            f"{old_head:.1f} → {required:.1f}m")
+                            QApplication.translate("SyncManager", "🔧 水源 {0} 水头修正: {1:.1f} → {2:.1f}m").format(node.id, old_head, required))
 
-            self.log(f"🌐 DEM 高程已应用于 {updated}/{total} 个节点")
+            self.log(QApplication.translate("SyncManager", "🌐 DEM 高程已应用于 {0}/{1} 个节点").format(updated, total))
 
     def _detect_crs(self) -> Optional[QgsCoordinateReferenceSystem]:
         """检测项目 CRS（用于判定地理/投影坐标系）。"""
@@ -411,10 +409,10 @@ class SyncManager:
         for _lid, layer in self.project.mapLayers().items():
             if not isinstance(layer, QgsRasterLayer):
                 continue
-            if layer.name() == "DEM 高程":
+            if layer.name() == "DEM 高程":  # 图层名是数据标识,不翻译
                 return layer
             rasters.append(layer)
-        dem_keywords = ("dem", "elevation", "高程", "altitude", "dtm", "srtm")
+        dem_keywords = ("dem", "elevation", QApplication.translate("SyncManager", "高程"), "altitude", "dtm", "srtm")
         for layer in rasters:
             name_lower = layer.name().lower()
             if any(kw in name_lower for kw in dem_keywords):
@@ -496,7 +494,7 @@ class SyncManager:
             else:
                 if need_edit and not layer.commitChanges():
                     layer.rollBack()
-                    self.log(f"⚠️ 图层 {layer.name()} 提交失败")
+                    self.log(QApplication.translate("SyncManager", "⚠️ 图层 {0} 提交失败").format(layer.name()))
             layer.triggerRepaint()
 
         # 写入节点结果（压力）
@@ -520,7 +518,7 @@ class SyncManager:
             else:
                 if need_edit and not node_layer.commitChanges():
                     node_layer.rollBack()
-                    self.log(f"⚠️ 图层 {node_layer.name()} 提交失败")
+                    self.log(QApplication.translate("SyncManager", "⚠️ 图层 {0} 提交失败").format(node_layer.name()))
             node_layer.triggerRepaint()
 
     # ── 顶点切段（INP 导出用）──

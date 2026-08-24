@@ -12,6 +12,7 @@ from collections import deque
 from typing import Dict, Optional
 
 from qgis.core import QgsProject, QgsVectorLayer
+from qgis.PyQt.QtWidgets import QApplication
 
 
 class DirectionFixer:
@@ -45,7 +46,7 @@ class DirectionFixer:
 
         if not sources:
             self.iface.messageBar().pushWarning(
-                "aQuaDrip", "未找到水源节点，无法矫正方向")
+                "aQuaDrip", QApplication.translate("DirectionFixer", "未找到水源节点，无法矫正方向"))
             return {"valves_fixed": 0, "pumps_fixed": 0}
 
         # 管道 → 无向边
@@ -101,11 +102,11 @@ class DirectionFixer:
 
         msg_parts = []
         if valves_fixed:
-            msg_parts.append(f"{valves_fixed} 个阀门方向已矫正")
+            msg_parts.append(QApplication.translate("DirectionFixer", "{0} 个阀门方向已矫正").format(valves_fixed))
         if pumps_fixed:
-            msg_parts.append(f"{pumps_fixed} 个水泵方向已矫正")
+            msg_parts.append(QApplication.translate("DirectionFixer", "{0} 个水泵方向已矫正").format(pumps_fixed))
         if not msg_parts:
-            msg_parts.append("所有方向正确，无需矫正")
+            msg_parts.append(QApplication.translate("DirectionFixer", "所有方向正确，无需矫正"))
 
         self.iface.messageBar().pushMessage(
             "aQuaDrip", "，".join(msg_parts), level=0, duration=5)

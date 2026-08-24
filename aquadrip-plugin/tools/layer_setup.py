@@ -17,6 +17,7 @@ from qgis.core import (
 from qgis.PyQt.QtCore import QMetaType
 from datetime import datetime
 from typing import Optional
+from qgis.PyQt.QtWidgets import QApplication
 
 # ── 字段创建辅助 ──
 
@@ -306,11 +307,11 @@ class LayerSetupAction:
         if os.path.exists(gpkg_path):
             try:
                 os.remove(gpkg_path)
-                self._log("  已删除旧 GPKG")
+                self._log(QApplication.translate("LayerSetup", "  已删除旧 GPKG"))
             except OSError as e:
-                self._log(f"  ⚠️ 无法删除: {e}")
+                self._log(QApplication.translate("LayerSetup", "  ⚠️ 无法删除: {0}").format(e))
 
-        self._log(f"创建 GeoPackage: {gpkg_path}")
+        self._log(QApplication.translate("LayerSetup", "创建 GeoPackage: {0}").format(gpkg_path))
 
         # 确定 SRS：target_crs > 项目 CRS > WGS 84
         if target_crs is not None and target_crs.isValid():
@@ -332,7 +333,7 @@ class LayerSetupAction:
         self._project_srs_id = srs_id
         # 保留 CRS 对象，供 _add_to_project 使用
         self._project_crs = crs
-        self._log(f"  目标 CRS: {authid} (srs_id={srs_id})")
+        self._log(QApplication.translate("LayerSetup", "  目标 CRS: {0} (srs_id={1})").format(authid, srs_id))
 
         created_layers = []
 
@@ -345,7 +346,7 @@ class LayerSetupAction:
                 layer = QgsVectorLayer(uri, defn["name"], "ogr")
 
                 if not layer.isValid():
-                    self._log(f"  ❌ {defn['name']} 打开失败")
+                    self._log(QApplication.translate("LayerSetup", "  ❌ {0} 打开失败").format(defn['name']))
                     continue
 
                 self._setup_editor_widgets(layer, defn)
@@ -354,13 +355,13 @@ class LayerSetupAction:
                 self._log(f"  ✅ {defn['name']} ({key})")
 
             except Exception as e:
-                self._log(f"  ❌ {defn['name']} 失败: {e}")
+                self._log(QApplication.translate("LayerSetup", "  ❌ {0} 失败: {1}").format(defn['name'], e))
 
         if not created_layers:
             return False
 
         self._setup_snapping()
-        self._log(f"完成: {len(created_layers)}/{len(FIELD_DEFS)} 个图层")
+        self._log(QApplication.translate("LayerSetup", "完成: {0}/{1} 个图层").format(len(created_layers), len(FIELD_DEFS)))
         return True
 
     def _create_gpkg_layer(self, gpkg_path: str, key: str,
@@ -474,7 +475,7 @@ class LayerSetupAction:
             config.setIntersectionSnapping(True)
             QgsProject.instance().setSnappingConfig(config)
         except Exception as e:
-            self._log(f"  捕捉配置跳过: {e}")
+            self._log(QApplication.translate("LayerSetup", "  捕捉配置跳过: {0}").format(e))
 
     def _setup_editor_widgets(self, layer, defn: dict):
         """配置编辑器控件（ValueMap + 默认值 + 中文别名）"""

@@ -21,6 +21,7 @@ from qgis.core import (
     QgsProject, QgsVectorLayer, QgsGeometry, QgsPointXY,
     QgsFeature, QgsWkbTypes,
 )
+from qgis.PyQt.QtWidgets import QApplication
 
 
 class CrossingNodeGenerator:
@@ -48,15 +49,15 @@ class CrossingNodeGenerator:
         """
         sel_geom = selected_feature.geometry()
         if not sel_geom or sel_geom.isEmpty():
-            raise RuntimeError("选中管道的几何为空")
+            raise RuntimeError(QApplication.translate("CrossingNodeTool", "选中管道的几何为空"))
 
         nodes = self._find_nodes_layer()
         if nodes is None:
-            raise RuntimeError("未找到 aqd_nodes 图层，请先初始化图层")
+            raise RuntimeError(QApplication.translate("CrossingNodeTool", "未找到 aqd_nodes 图层，请先初始化图层"))
 
         all_link_layers = self._all_link_layers()
         if not all_link_layers:
-            raise RuntimeError("未找到 aqd_pipes/aqd_pumps/aqd_valves 图层，请先初始化图层")
+            raise RuntimeError(QApplication.translate("CrossingNodeTool", "未找到 aqd_pipes/aqd_pumps/aqd_valves 图层，请先初始化图层"))
 
         # 阀门/水泵图层没有 pipe_type 字段，用图层名推断
         # 默认为 pipe（aqd_pipes），仅当来自 pump/valve 图层时才覆盖
@@ -103,7 +104,7 @@ class CrossingNodeGenerator:
         if not crossing_points:
             self.iface.messageBar().pushMessage(
                 "aQuaDrip",
-                f"未检测到 {sel_type} 与其他类型管道的交叉点",
+                QApplication.translate("CrossingNodeTool", "未检测到 {0} 与其他类型管道的交叉点").format(sel_type),
                 level=1, duration=4)
             return 0
 
@@ -120,7 +121,7 @@ class CrossingNodeGenerator:
 
         if not crossing_points:
             self.iface.messageBar().pushMessage(
-                "aQuaDrip", "连接节点均已存在，未生成新节点",
+                "aQuaDrip", QApplication.translate("CrossingNodeTool", "连接节点均已存在，未生成新节点"),
                 level=1, duration=4)
             return 0
 
@@ -128,7 +129,7 @@ class CrossingNodeGenerator:
         written = self._write_nodes(nodes, crossing_points, sel_ptype)
         nodes.triggerRepaint()
         self.iface.messageBar().pushMessage(
-            "aQuaDrip", f"已生成 {written} 个连接节点", level=0, duration=4)
+            "aQuaDrip", QApplication.translate("CrossingNodeTool", "已生成 {0} 个连接节点").format(written), level=0, duration=4)
         return written
 
     # ── 几何辅助 ──
@@ -257,13 +258,13 @@ class CrossingNodeGenerator:
                 feat.setAttribute("node_type", node_type)
                 if not nodes.addFeature(feat):
                     self.iface.messageBar().pushWarning(
-                        "aQuaDrip", "添加连接节点失败")
+                        "aQuaDrip", QApplication.translate("CrossingNodeTool", "添加连接节点失败"))
                     nodes.rollBack()
                     return count
                 count += 1
             if not nodes.commitChanges():
                 self.iface.messageBar().pushWarning(
-                    "aQuaDrip", "连接节点图层提交失败")
+                    "aQuaDrip", QApplication.translate("CrossingNodeTool", "连接节点图层提交失败"))
                 nodes.rollBack()
         except Exception:
             nodes.rollBack()

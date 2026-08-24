@@ -9,6 +9,7 @@ from qgis.PyQt.QtWidgets import (
     QPushButton, QFileDialog, QMessageBox, QGroupBox,
 )
 from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtWidgets import QApplication
 
 
 class NewProjectDialog(QDialog):
@@ -33,7 +34,7 @@ class NewProjectDialog(QDialog):
         super().__init__(parent or iface.mainWindow())
         self.iface = iface
 
-        self.setWindowTitle("aQuaDrip 新建项目")
+        self.setWindowTitle(QApplication.translate("NewProjectDialog", "aQuaDrip 新建项目"))
         self.setMinimumWidth(480)
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
 
@@ -49,48 +50,48 @@ class NewProjectDialog(QDialog):
 
         # ── 项目名称 ──
         name_layout = QHBoxLayout()
-        name_layout.addWidget(QLabel("项目名称:"))
+        name_layout.addWidget(QLabel(QApplication.translate("NewProjectDialog", "项目名称:")))
         self.edit_name = QLineEdit()
-        self.edit_name.setPlaceholderText("输入项目名称")
+        self.edit_name.setPlaceholderText(QApplication.translate("NewProjectDialog", "输入项目名称"))
         name_layout.addWidget(self.edit_name)
         layout.addLayout(name_layout)
 
         # ── 保存位置 ──
         dir_layout = QHBoxLayout()
-        dir_layout.addWidget(QLabel("保存位置:"))
+        dir_layout.addWidget(QLabel(QApplication.translate("NewProjectDialog", "保存位置:")))
         self.edit_dir = QLineEdit()
-        self.edit_dir.setPlaceholderText("选择保存目录")
+        self.edit_dir.setPlaceholderText(QApplication.translate("NewProjectDialog", "选择保存目录"))
         self.edit_dir.setReadOnly(True)
         dir_layout.addWidget(self.edit_dir)
-        self.btn_browse_dir = QPushButton("浏览...")
+        self.btn_browse_dir = QPushButton(QApplication.translate("NewProjectDialog", "浏览..."))
         self.btn_browse_dir.clicked.connect(self._on_browse_dir)
         dir_layout.addWidget(self.btn_browse_dir)
         layout.addLayout(dir_layout)
 
         # ── 可选栅格 ──
-        raster_group = QGroupBox("可选栅格数据")
+        raster_group = QGroupBox(QApplication.translate("NewProjectDialog", "可选栅格数据"))
         raster_layout = QVBoxLayout(raster_group)
 
         # 正射影像
         ortho_layout = QHBoxLayout()
-        ortho_layout.addWidget(QLabel("正射影像:"))
+        ortho_layout.addWidget(QLabel(QApplication.translate("NewProjectDialog", "正射影像:")))
         self.edit_ortho = QLineEdit()
-        self.edit_ortho.setPlaceholderText("选择 GeoTIFF / 影像文件（可选）")
+        self.edit_ortho.setPlaceholderText(QApplication.translate("NewProjectDialog", "选择 GeoTIFF / 影像文件（可选）"))
         self.edit_ortho.setReadOnly(True)
         ortho_layout.addWidget(self.edit_ortho)
-        self.btn_browse_ortho = QPushButton("浏览...")
+        self.btn_browse_ortho = QPushButton(QApplication.translate("NewProjectDialog", "浏览..."))
         self.btn_browse_ortho.clicked.connect(self._on_browse_ortho)
         ortho_layout.addWidget(self.btn_browse_ortho)
         raster_layout.addLayout(ortho_layout)
 
         # DEM
         dem_layout = QHBoxLayout()
-        dem_layout.addWidget(QLabel("DEM 高程:"))
+        dem_layout.addWidget(QLabel(QApplication.translate("NewProjectDialog", "DEM 高程:")))
         self.edit_dem = QLineEdit()
-        self.edit_dem.setPlaceholderText("选择 DEM GeoTIFF 文件（可选）")
+        self.edit_dem.setPlaceholderText(QApplication.translate("NewProjectDialog", "选择 DEM GeoTIFF 文件（可选）"))
         self.edit_dem.setReadOnly(True)
         dem_layout.addWidget(self.edit_dem)
-        self.btn_browse_dem = QPushButton("浏览...")
+        self.btn_browse_dem = QPushButton(QApplication.translate("NewProjectDialog", "浏览..."))
         self.btn_browse_dem.clicked.connect(self._on_browse_dem)
         dem_layout.addWidget(self.btn_browse_dem)
         raster_layout.addLayout(dem_layout)
@@ -105,10 +106,10 @@ class NewProjectDialog(QDialog):
         # ── 按钮 ──
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
-        self.btn_cancel = QPushButton("取消")
+        self.btn_cancel = QPushButton(QApplication.translate("NewProjectDialog", "取消"))
         self.btn_cancel.clicked.connect(self.reject)
         btn_layout.addWidget(self.btn_cancel)
-        self.btn_ok = QPushButton("确定")
+        self.btn_ok = QPushButton(QApplication.translate("NewProjectDialog", "确定"))
         self.btn_ok.setStyleSheet("font-weight: bold;")
         self.btn_ok.clicked.connect(self._on_accept)
         btn_layout.addWidget(self.btn_ok)
@@ -158,38 +159,36 @@ class NewProjectDialog(QDialog):
         d = self.save_directory()
         if name and d:
             preview = (
-                f"将创建:\n"
-                f"  📁 {os.path.join(d, name + '.gpkg')}\n"
-                f"  📁 {os.path.join(d, name + '.qgz')}"
+                QApplication.translate("NewProjectDialog", "将创建:\n  📁 {0}\n  📁 {1}").format(os.path.join(d, name + '.gpkg'), os.path.join(d, name + '.qgz'))
             )
         elif name:
-            preview = "请选择保存位置"
+            preview = QApplication.translate("NewProjectDialog", "请选择保存位置")
         else:
-            preview = "请输入项目名称并选择保存位置"
+            preview = QApplication.translate("NewProjectDialog", "请输入项目名称并选择保存位置")
         self.label_preview.setText(preview)
 
     # ── 文件浏览 ──
 
     def _on_browse_dir(self):
         d = QFileDialog.getExistingDirectory(
-            self, "选择保存目录",
+            self, QApplication.translate("NewProjectDialog", "选择保存目录"),
             self.edit_dir.text() or os.path.expanduser("~"))
         if d:
             self.edit_dir.setText(d)
 
     def _on_browse_ortho(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, "选择正射影像",
+            self, QApplication.translate("NewProjectDialog", "选择正射影像"),
             self.edit_dir.text() or os.path.expanduser("~"),
-            "影像文件 (*.tif *.tiff *.img *.png *.jpg);;所有文件 (*)")
+            QApplication.translate("NewProjectDialog", "影像文件 (*.tif *.tiff *.img *.png *.jpg);;所有文件 (*)"))
         if path:
             self.edit_ortho.setText(path)
 
     def _on_browse_dem(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, "选择 DEM 高程文件",
+            self, QApplication.translate("NewProjectDialog", "选择 DEM 高程文件"),
             self.edit_dir.text() or os.path.expanduser("~"),
-            "GeoTIFF (*.tif *.tiff);;所有文件 (*)")
+            QApplication.translate("NewProjectDialog", "GeoTIFF (*.tif *.tiff);;所有文件 (*)"))
         if path:
             self.edit_dem.setText(path)
 
@@ -199,18 +198,18 @@ class NewProjectDialog(QDialog):
         """校验输入 → 检查文件冲突 → accept"""
         # 校验项目名称
         if not self.project_name():
-            QMessageBox.warning(self, "aQuaDrip", "请输入项目名称")
+            QMessageBox.warning(self, "aQuaDrip", QApplication.translate("NewProjectDialog", "请输入项目名称"))
             self.edit_name.setFocus()
             return
 
         # 校验保存位置
         if not self.save_directory():
-            QMessageBox.warning(self, "aQuaDrip", "请选择保存目录")
+            QMessageBox.warning(self, "aQuaDrip", QApplication.translate("NewProjectDialog", "请选择保存目录"))
             return
         if not os.path.isdir(self.save_directory()):
             QMessageBox.warning(
                 self, "aQuaDrip",
-                f"保存目录不存在:\n{self.save_directory()}")
+                QApplication.translate("NewProjectDialog", "保存目录不存在:\n{0}").format(self.save_directory()))
             return
 
         # 校验项目名称不含非法字符
@@ -218,7 +217,7 @@ class NewProjectDialog(QDialog):
         if any(c in self.project_name() for c in illegal):
             QMessageBox.warning(
                 self, "aQuaDrip",
-                "项目名称不能包含以下字符: \\ / : * ? \" < > |")
+                QApplication.translate("NewProjectDialog", "项目名称不能包含以下字符: \\ / : * ? \" < > |"))
             self.edit_name.setFocus()
             return
 
@@ -227,7 +226,7 @@ class NewProjectDialog(QDialog):
         if os.path.exists(gpkg):
             reply = QMessageBox.question(
                 self, "aQuaDrip",
-                f"项目文件已存在:\n{gpkg}\n\n是否覆盖？",
+                QApplication.translate("NewProjectDialog", "项目文件已存在:\n{0}\n\n是否覆盖？").format(gpkg),
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
             if reply != QMessageBox.Yes:
                 return

@@ -7,6 +7,7 @@ from qgis.core import (
 )
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QColor
+from qgis.PyQt.QtWidgets import QApplication
 
 
 class TrimTool(QgsMapTool):
@@ -37,15 +38,15 @@ class TrimTool(QgsMapTool):
     def activate(self):
         super().activate()
         self.canvas.setCursor(Qt.CrossCursor)
-        type_names = {"mainline": "干管", "submain": "支管", "lateral": "毛管"}
+        type_names = {"mainline": QApplication.translate("TrimTool", "干管"), "submain": QApplication.translate("TrimTool", "支管"), "lateral": QApplication.translate("TrimTool", "毛管")}
         types_str = "/".join(type_names.get(t, t) for t in self.pipe_types)
 
         if self.mode == "line":
-            msg = f"按住拖动画线，批量切割相交{types_str}"
+            msg = QApplication.translate("TrimTool", "按住拖动画线，批量切割相交{0}").format(types_str)
         else:
-            msg = f"点击{types_str}进行切割"
+            msg = QApplication.translate("TrimTool", "点击{0}进行切割").format(types_str)
         if self.cut_length > 0:
-            msg += f"（切除{self.cut_length:.2f}m）"
+            msg += QApplication.translate("TrimTool", "（切除{0:.2f}m）").format(self.cut_length)
         self.iface.messageBar().pushMessage("aQuaDrip", msg, level=0, duration=5)
 
     def deactivate(self):
@@ -123,7 +124,7 @@ class TrimTool(QgsMapTool):
         """点选模式：在点击位置切割最近管道"""
         layer = self._find_pipe_layer()
         if not layer:
-            self.iface.messageBar().pushWarning("aQuaDrip", "aqd_pipes 未找到")
+            self.iface.messageBar().pushWarning("aQuaDrip", QApplication.translate("TrimTool", "aqd_pipes 未找到"))
             return
 
         if tolerance is None:
@@ -143,7 +144,7 @@ class TrimTool(QgsMapTool):
                 best_dist, best_feat, best_pos = pos
 
         if not best_feat:
-            self.iface.messageBar().pushWarning("aQuaDrip", "未选中有效管道")
+            self.iface.messageBar().pushWarning("aQuaDrip", QApplication.translate("TrimTool", "未选中有效管道"))
             return
 
         need_edit = not layer.isEditable()
@@ -152,15 +153,15 @@ class TrimTool(QgsMapTool):
         try:
             self._do_split(layer, best_feat, [best_pos])
             if need_edit and not layer.commitChanges():
-                raise RuntimeError(f"提交失败: {'; '.join(layer.commitErrors())}")
+                raise RuntimeError(QApplication.translate("TrimTool", "提交失败: {0}").format('; '.join(layer.commitErrors())))
         except Exception as e:
             if need_edit:
                 layer.rollBack()
-            self.iface.messageBar().pushWarning("aQuaDrip", f"切割失败: {e}")
+            self.iface.messageBar().pushWarning("aQuaDrip", QApplication.translate("TrimTool", "切割失败: {0}").format(e))
             return
         layer.triggerRepaint()
         self.iface.messageBar().pushMessage(
-            "aQuaDrip", "管道已切割", level=0, duration=3)
+            "aQuaDrip", QApplication.translate("TrimTool", "管道已切割"), level=0, duration=3)
 
     # ── 画线批量切割 ──
 
@@ -168,7 +169,7 @@ class TrimTool(QgsMapTool):
         """画线模式：查找所有相交管道并批量切割"""
         layer = self._find_pipe_layer()
         if not layer:
-            self.iface.messageBar().pushWarning("aQuaDrip", "aqd_pipes 未找到")
+            self.iface.messageBar().pushWarning("aQuaDrip", QApplication.translate("TrimTool", "aqd_pipes 未找到"))
             return
 
         # 先收集所有切割任务（不能在遍历 features 时修改 layer）
@@ -183,7 +184,7 @@ class TrimTool(QgsMapTool):
 
         if not tasks:
             self.iface.messageBar().pushWarning(
-                "aQuaDrip", "画线与选中管道无交点")
+                "aQuaDrip", QApplication.translate("TrimTool", "画线与选中管道无交点"))
             return
 
         total_cut = 0
@@ -209,16 +210,16 @@ class TrimTool(QgsMapTool):
                     total_cut += 1
 
             if need_edit and not layer.commitChanges():
-                raise RuntimeError(f"提交失败: {'; '.join(layer.commitErrors())}")
+                raise RuntimeError(QApplication.translate("TrimTool", "提交失败: {0}").format('; '.join(layer.commitErrors())))
         except Exception as e:
             if need_edit:
                 layer.rollBack()
-            self.iface.messageBar().pushWarning("aQuaDrip", f"批量切割失败: {e}")
+            self.iface.messageBar().pushWarning("aQuaDrip", QApplication.translate("TrimTool", "批量切割失败: {0}").format(e))
             return
 
         layer.triggerRepaint()
         self.iface.messageBar().pushMessage(
-            "aQuaDrip", f"已切割 {total_cut} 根管道", level=0, duration=4)
+            "aQuaDrip", QApplication.translate("TrimTool", "已切割 {0} 根管道").format(total_cut), level=0, duration=4)
 
     def _do_split(self, layer, feat, positions) -> int:
         """在管道指定位置(0~1)处分割并写入图层，返回生成段数
@@ -298,7 +299,7 @@ class TrimTool(QgsMapTool):
                     except TypeError:
                         pass
             if not layer.addFeature(f):
-                raise RuntimeError("添加切割段失败")
+                raise RuntimeError(QApplication.translate("TrimTool", "添加切割段失败"))
         layer.deleteFeature(feat.id())
 
         return len(segments)

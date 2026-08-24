@@ -12,6 +12,7 @@ from qgis.core import (
     QgsPointXY, QgsCoordinateReferenceSystem, QgsCoordinateTransform,
 )
 from qgis.PyQt.QtWidgets import QProgressBar
+from qgis.PyQt.QtWidgets import QApplication
 
 
 class ElevationExtractor:
@@ -33,20 +34,20 @@ class ElevationExtractor:
         if dem_layer is None:
             self.iface.messageBar().pushWarning(
                 "aQuaDrip",
-                "未找到 DEM 图层。请先在「新建项目」中导入 DEM 栅格文件。")
+                QApplication.translate("ElevationExtractor", "未找到 DEM 图层。请先在「新建项目」中导入 DEM 栅格文件。"))
             return {"updated": 0, "skipped": 0, "total": 0}
 
         provider = dem_layer.dataProvider()
         if provider is None:
             self.iface.messageBar().pushWarning(
-                "aQuaDrip", "无法读取 DEM 数据")
+                "aQuaDrip", QApplication.translate("ElevationExtractor", "无法读取 DEM 数据"))
             return {"updated": 0, "skipped": 0, "total": 0}
 
         # 2. 查找 aqd_nodes 图层
         node_layer = self._find_node_layer()
         if node_layer is None:
             self.iface.messageBar().pushWarning(
-                "aQuaDrip", "未找到 aqd_nodes 图层")
+                "aQuaDrip", QApplication.translate("ElevationExtractor", "未找到 aqd_nodes 图层"))
             return {"updated": 0, "skipped": 0, "total": 0}
 
         # 3. 构造 CRS 变换：节点 CRS → DEM CRS
@@ -61,14 +62,14 @@ class ElevationExtractor:
         total = len(features)
         if total == 0:
             self.iface.messageBar().pushWarning(
-                "aQuaDrip", "aqd_nodes 图层中没有节点")
+                "aQuaDrip", QApplication.translate("ElevationExtractor", "aqd_nodes 图层中没有节点"))
             return {"updated": 0, "skipped": 0, "total": 0}
 
         # 4. 创建进度条
         bar = QProgressBar()
         bar.setMaximum(total)
         bar_msg = self.iface.messageBar().createMessage(
-            "aQuaDrip", f"正在提取 {total} 个节点的高程...")
+            "aQuaDrip", QApplication.translate("ElevationExtractor", "正在提取 {0} 个节点的高程...").format(total))
         bar_msg.layout().addWidget(bar)
         self.iface.messageBar().pushWidget(bar_msg, level=0)
 
@@ -138,11 +139,9 @@ class ElevationExtractor:
             }
 
         msg = (
-            f"高程提取完成: {updated}/{total} 个节点已更新 "
-            f"（范围 {stats['min']:.1f}~{stats['max']:.1f} m，"
-            f"均值 {stats['mean']:.1f} m）")
+            QApplication.translate("ElevationExtractor", "高程提取完成: {0}/{1} 个节点已更新 （范围 {2:.1f}~{3:.1f} m，均值 {4:.1f} m）").format(updated, total, stats['min'], stats['max'], stats['mean']))
         if source_fixed:
-            msg += f"  🔧 水源水头已自动修正"
+            msg += QApplication.translate("ElevationExtractor", "  🔧 水源水头已自动修正").format()
         self.iface.messageBar().pushMessage(
             "aQuaDrip", msg, level=0, duration=8)
         return stats
@@ -201,7 +200,7 @@ class ElevationExtractor:
         for _lid, layer in self.project.mapLayers().items():
             if not isinstance(layer, QgsRasterLayer):
                 continue
-            if layer.name() == "DEM 高程":
+            if layer.name() == "DEM 高程":  # 图层名是数据标识,不翻译
                 return layer
             rasters.append(layer)
 

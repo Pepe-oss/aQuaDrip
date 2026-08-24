@@ -10,6 +10,7 @@ from qgis.PyQt.QtWidgets import (
     QLabel, QHeaderView,
 )
 from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtWidgets import QApplication
 
 
 class AQuaDripDockWidget(QDockWidget):
@@ -33,19 +34,19 @@ class AQuaDripDockWidget(QDockWidget):
         log_layout.setContentsMargins(4, 4, 4, 4)
         log_layout.setSpacing(4)
 
-        hint = QLabel("功能入口在顶部 aQuaDrip 工具栏")
+        hint = QLabel(QApplication.translate("Dockwidget", "功能入口在顶部 aQuaDrip 工具栏"))
         hint.setStyleSheet("color: gray;")
         log_layout.addWidget(hint)
 
         self.log = QTextEdit()
         self.log.setReadOnly(True)
-        self.log.setPlaceholderText("操作日志...")
+        self.log.setPlaceholderText(QApplication.translate("Dockwidget", "操作日志..."))
         from qgis.PyQt.QtGui import QFontDatabase
         # 系统等宽字体——Menlo 仅 macOS 自带，Windows/Linux 下会静默回退
         self.log.setFont(QFontDatabase.systemFont(QFontDatabase.FixedFont))
         log_layout.addWidget(self.log, stretch=1)
 
-        self._tabs.addTab(self._log_tab, "日志")
+        self._tabs.addTab(self._log_tab, QApplication.translate("Dockwidget", "日志"))
 
         # ── Tab 2: 校准 ──
         self._calib_tab = QWidget()
@@ -56,8 +57,8 @@ class AQuaDripDockWidget(QDockWidget):
         # 观测点表格（7列：观测点 | 实测P | 模拟P | ΔP | 实测Q | 模拟Q | ΔQ）
         self._obs_table = QTableWidget(0, 7)
         self._obs_table.setHorizontalHeaderLabels(
-            ["观测点", "实测P(m)", "模拟P(m)", "ΔP(m)",
-             "实测Q(L/h)", "模拟Q(L/h)", "ΔQ(L/h)"])
+            [QApplication.translate("Dockwidget", "观测点"), QApplication.translate("Dockwidget", "实测P(m)"), QApplication.translate("Dockwidget", "模拟P(m)"), "ΔP(m)",
+             QApplication.translate("Dockwidget", "实测Q(L/h)"), QApplication.translate("Dockwidget", "模拟Q(L/h)"), "ΔQ(L/h)"])
         self._obs_table.horizontalHeader().setSectionResizeMode(
             0, QHeaderView.Stretch)
         for col in range(1, 7):
@@ -70,27 +71,27 @@ class AQuaDripDockWidget(QDockWidget):
         calib_layout.addWidget(self._obs_table)
 
         # 统计行
-        self._calib_stats = QLabel("点击「刷新模拟值」获取模拟压力...")
+        self._calib_stats = QLabel(QApplication.translate("Dockwidget", "点击「刷新模拟值」获取模拟压力..."))
         self._calib_stats.setStyleSheet("color: gray; font-size: 11px;")
         calib_layout.addWidget(self._calib_stats)
 
         # 按钮
         btn_layout = QHBoxLayout()
-        self._btn_refresh = QPushButton("🔄 刷新模拟值")
-        self._btn_refresh.setToolTip("读取最新模拟历史并回填到观测点（不重新模拟）")
+        self._btn_refresh = QPushButton(QApplication.translate("Dockwidget", "🔄 刷新模拟值"))
+        self._btn_refresh.setToolTip(QApplication.translate("Dockwidget", "读取最新模拟历史并回填到观测点（不重新模拟）"))
         btn_layout.addWidget(self._btn_refresh)
 
-        self._btn_resim = QPushButton("▶ 重新模拟")
-        self._btn_resim.setToolTip("运行完整水力模拟并更新模拟值")
+        self._btn_resim = QPushButton(QApplication.translate("Dockwidget", "▶ 重新模拟"))
+        self._btn_resim.setToolTip(QApplication.translate("Dockwidget", "运行完整水力模拟并更新模拟值"))
         btn_layout.addWidget(self._btn_resim)
 
-        self._btn_calibrate = QPushButton("🎯 开始校准")
-        self._btn_calibrate.setToolTip("根据实测-模拟误差调整管道粗糙系数")
+        self._btn_calibrate = QPushButton(QApplication.translate("Dockwidget", "🎯 开始校准"))
+        self._btn_calibrate.setToolTip(QApplication.translate("Dockwidget", "根据实测-模拟误差调整管道粗糙系数"))
         self._btn_calibrate.setStyleSheet("font-weight: bold;")
         btn_layout.addWidget(self._btn_calibrate)
         calib_layout.addLayout(btn_layout)
 
-        self._tabs.addTab(self._calib_tab, "校准")
+        self._tabs.addTab(self._calib_tab, QApplication.translate("Dockwidget", "校准"))
 
         # 校准迭代计数器
         self._calib_iteration = 0
@@ -104,7 +105,7 @@ class AQuaDripDockWidget(QDockWidget):
         # 轮灌结果表（分区、阀门、灌溉量、均P、最大P、CU%、DU%、时长）
         self._rot_table = QTableWidget(0, 8)
         self._rot_table.setHorizontalHeaderLabels(
-            ["分区", "阀门", "灌溉量", "均P(m)", "最大P(m)", "CU%", "DU%", "时长(min)"])
+            [QApplication.translate("Dockwidget", "分区"), QApplication.translate("Dockwidget", "阀门"), QApplication.translate("Dockwidget", "灌溉量"), QApplication.translate("Dockwidget", "均P(m)"), QApplication.translate("Dockwidget", "最大P(m)"), "CU%", "DU%", QApplication.translate("Dockwidget", "时长(min)")])
         self._rot_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self._rot_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         for col in range(2, 8):
@@ -112,18 +113,18 @@ class AQuaDripDockWidget(QDockWidget):
                 col, QHeaderView.ResizeToContents)
         rot_layout.addWidget(self._rot_table)
 
-        self._rot_stats = QLabel("点击「轮灌管理」工具栏按钮配置并运行轮灌")
+        self._rot_stats = QLabel(QApplication.translate("Dockwidget", "点击「轮灌管理」工具栏按钮配置并运行轮灌"))
         self._rot_stats.setStyleSheet("color: gray; font-size: 11px;")
         rot_layout.addWidget(self._rot_stats)
 
         rot_btn = QHBoxLayout()
         rot_btn.addStretch()
-        self._btn_rot_visualize = QPushButton("📊 可视化轮次")
+        self._btn_rot_visualize = QPushButton(QApplication.translate("Dockwidget", "📊 可视化轮次"))
         self._btn_rot_visualize.setEnabled(False)
         rot_btn.addWidget(self._btn_rot_visualize)
         rot_layout.addLayout(rot_btn)
 
-        self._tabs.addTab(self._rotation_tab, "轮灌")
+        self._tabs.addTab(self._rotation_tab, QApplication.translate("Dockwidget", "轮灌"))
 
         self._rotation_results = []  # 缓存最新轮灌结果
 
@@ -193,7 +194,7 @@ class AQuaDripDockWidget(QDockWidget):
     def reset_calibration(self):
         """重置校准迭代计数和按钮状态"""
         self._calib_iteration = 0
-        self._calib_stats.setText("校准已重置")
+        self._calib_stats.setText(QApplication.translate("Dockwidget", "校准已重置"))
         self._btn_calibrate.setEnabled(True)
         self._btn_refresh.setEnabled(True)
 
@@ -206,8 +207,7 @@ class AQuaDripDockWidget(QDockWidget):
         """记录一次校准迭代"""
         self._calib_iteration += 1
         self._calib_stats.setText(
-            f"校准迭代 {self._calib_iteration} 次  "
-            f"RMSE = {rmse:.2f} m")
+            QApplication.translate("Dockwidget", "校准迭代 {0} 次  RMSE = {1:.2f} m").format(self._calib_iteration, rmse))
 
     def get_measured_values(self) -> dict:
         """从表格读取用户输入的实测值。
@@ -359,7 +359,7 @@ class AQuaDripDockWidget(QDockWidget):
                 f"RMSE = {rmse:.2f} m  (MAE = {mae:.2f} m)  "
                 f"n = {len(errors)}")
         else:
-            self._calib_stats.setText("点击「刷新模拟值」获取模拟压力...")
+            self._calib_stats.setText(QApplication.translate("Dockwidget", "点击「刷新模拟值」获取模拟压力..."))
 
     @staticmethod
     def _load_latest_network_coords():
@@ -536,13 +536,12 @@ class AQuaDripDockWidget(QDockWidget):
 
         success_count = sum(1 for r in results if "error" not in r or not r.get("error"))
         self._rot_stats.setText(
-            f"轮灌 {rotation_id}  共 {len(results)} 分区  "
-            f"成功 {success_count} 个")
+            QApplication.translate("Dockwidget", "轮灌 {0}  共 {1} 分区  成功 {2} 个").format(rotation_id, len(results), success_count))
         self._btn_rot_visualize.setEnabled(success_count > 0)
 
     def clear_rotation(self):
         """清空轮灌结果"""
         self._rotation_results = []
         self._rot_table.setRowCount(0)
-        self._rot_stats.setText("点击「轮灌管理」工具栏按钮配置并运行轮灌")
+        self._rot_stats.setText(QApplication.translate("Dockwidget", "点击「轮灌管理」工具栏按钮配置并运行轮灌"))
         self._btn_rot_visualize.setEnabled(False)

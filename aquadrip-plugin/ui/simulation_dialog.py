@@ -5,6 +5,7 @@ from qgis.PyQt.QtWidgets import (
     QButtonGroup, QCheckBox, QPushButton, QHBoxLayout,
 )
 from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtWidgets import QApplication
 
 
 # 精度预设（与 DripSimulation.presets 一致）
@@ -22,7 +23,7 @@ class SimulationDialog(QDialog):
         super().__init__(parent or iface.mainWindow())
         self.iface = iface
 
-        self.setWindowTitle("aQuaDrip 模拟设置")
+        self.setWindowTitle(QApplication.translate("SimulationDialog", "aQuaDrip 模拟设置"))
         self.setMinimumWidth(360)
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
 
@@ -31,15 +32,14 @@ class SimulationDialog(QDialog):
     def _build_ui(self):
         layout = QVBoxLayout(self)
 
-        layout.addWidget(QLabel("选择模拟精度："))
+        layout.addWidget(QLabel(QApplication.translate("SimulationDialog", "选择模拟精度：")))
 
         self._btn_group = QButtonGroup(self)
         self._radios = {}
 
         for idx, (key, preset) in enumerate(PRESETS.items()):
             radio = QRadioButton(
-                f"{preset['label']}  "
-                f"({preset['max_iter']} 次迭代)")
+                QApplication.translate("SimulationDialog", "{0}  ({1} 次迭代)").format(preset['label'], preset['max_iter']))
             radio.setToolTip(preset["desc"])
             if idx == 0:
                 radio.setChecked(True)
@@ -47,16 +47,16 @@ class SimulationDialog(QDialog):
             self._radios[radio] = key
             layout.addWidget(radio)
 
-        self._check_history = QCheckBox("模拟完成后自动保存历史记录")
+        self._check_history = QCheckBox(QApplication.translate("SimulationDialog", "模拟完成后自动保存历史记录"))
         self._check_history.setChecked(True)
         layout.addWidget(self._check_history)
 
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
-        btn_cancel = QPushButton("取消")
+        btn_cancel = QPushButton(QApplication.translate("SimulationDialog", "取消"))
         btn_cancel.clicked.connect(self.reject)
         btn_layout.addWidget(btn_cancel)
-        btn_ok = QPushButton("开始模拟")
+        btn_ok = QPushButton(QApplication.translate("SimulationDialog", "开始模拟"))
         btn_ok.setStyleSheet("font-weight: bold;")
         btn_ok.clicked.connect(self.accept)
         btn_layout.addWidget(btn_ok)

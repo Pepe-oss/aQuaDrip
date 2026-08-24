@@ -5,6 +5,7 @@
 """
 
 from qgis.PyQt.QtCore import QObject, pyqtSignal
+from qgis.PyQt.QtWidgets import QApplication
 
 
 class SimulationWorker(QObject):
@@ -28,7 +29,7 @@ class SimulationWorker(QObject):
         """后台执行模拟（由 QThread.started 信号触发）"""
         try:
             # 1. 构建 WNTR 模型
-            self.progress_changed.emit(2, "构建 WNTR 模型...")
+            self.progress_changed.emit(2, QApplication.translate("SimulationWorker", "构建 WNTR 模型..."))
             from wdrip.simulation import DripSimulation
             sim = DripSimulation(self._net, precision=self._precision)
 

@@ -2,6 +2,26 @@
 
 基于 QGIS + WNTR 的智能滴灌设计与水肥一体化分析平台。
 
+An intelligent drip irrigation design & fertigation analysis platform built on QGIS + WNTR.
+
+## 界面语言 / UI Language
+
+插件内置**简体中文**与 **English** 双语界面(单一安装包):
+
+- 默认跟随 QGIS 界面语言 / Follows the QGIS UI language by default
+- 手动切换:QGIS 菜单 `插件 → aQuaDrip → 语言 Language`,选择后**重启 QGIS** 生效
+- Switch manually via `Plugins → aQuaDrip → 语言 Language`, then restart QGIS
+
+翻译源文件位于 `aquadrip-plugin/i18n/`(`.ts` 为源,`.qm` 为编译产物,二者均随插件分发)。更新翻译流程:
+
+```bash
+# 1. 重新提取字符串(改了 UI 文案后)
+python -m PyQt5.pylupdate_main <插件 py 文件...> -ts aquadrip-plugin/i18n/aquadrip_en_US.ts
+# 2. 编辑 .ts 中的 <translation>
+# 3. 编译
+lrelease aquadrip-plugin/i18n/aquadrip_en_US.ts
+```
+
 ## 项目结构
 
 ```

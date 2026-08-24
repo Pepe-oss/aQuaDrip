@@ -5,6 +5,7 @@ from qgis.gui import QgsMapTool, QgsMapMouseEvent, QgsRubberBand
 from qgis.core import QgsWkbTypes, QgsGeometry, QgsPointXY, QgsProject
 from qgis.PyQt.QtCore import Qt, pyqtSignal
 from qgis.PyQt.QtGui import QColor
+from qgis.PyQt.QtWidgets import QApplication
 
 
 class EdgeSelectTool(QgsMapTool):
@@ -24,7 +25,7 @@ class EdgeSelectTool(QgsMapTool):
         super().activate()
         self.canvas.setCursor(Qt.CrossCursor)
         self.iface.messageBar().pushMessage(
-            "aQuaDrip", "点击田块的一条边确定滴灌带方向", level=0, duration=0)
+            "aQuaDrip", QApplication.translate("EdgeSelectTool", "点击田块的一条边确定滴灌带方向"), level=0, duration=0)
 
     def deactivate(self):
         self.rb.reset()
@@ -38,10 +39,10 @@ class EdgeSelectTool(QgsMapTool):
                 self.rb.reset()
                 self.angle_selected.emit(angle)
                 self.iface.messageBar().pushMessage(
-                    "aQuaDrip", f"方向已选择: {angle:.1f}°", level=0, duration=3)
+                    "aQuaDrip", QApplication.translate("EdgeSelectTool", "方向已选择: {0:.1f}°").format(angle), level=0, duration=3)
             else:
                 self.iface.messageBar().pushWarning(
-                    "aQuaDrip", "未选中有效边，请点击田块边界附近")
+                    "aQuaDrip", QApplication.translate("EdgeSelectTool", "未选中有效边，请点击田块边界附近"))
         elif event.button() == Qt.RightButton:
             self._cancel()
 
@@ -94,7 +95,7 @@ class EdgeSelectTool(QgsMapTool):
     def _cancel(self):
         self.rb.reset()
         self.iface.messageBar().pushMessage(
-            "aQuaDrip", "已取消边选择", level=0, duration=2)
+            "aQuaDrip", QApplication.translate("EdgeSelectTool", "已取消边选择"), level=0, duration=2)
         self.canvas.unsetMapTool(self)
 
     def _find_field_layer(self):

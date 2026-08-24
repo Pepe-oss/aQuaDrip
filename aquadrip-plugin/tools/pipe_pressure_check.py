@@ -26,6 +26,7 @@ from qgis.core import (
 )
 from qgis.PyQt.QtCore import QVariant
 from qgis.PyQt.QtGui import QColor
+from qgis.PyQt.QtWidgets import QApplication
 
 LAYER_NAME = "承压分析"
 
@@ -43,14 +44,14 @@ class PipePressureChecker:
         pipe_layer = self._find_layer("aqd_pipes")
         if pipe_layer is None:
             self.iface.messageBar().pushWarning(
-                "aQuaDrip", "未找到 aqd_pipes 图层")
+                "aQuaDrip", QApplication.translate("PipePressureCheck", "未找到 aqd_pipes 图层"))
             return
 
         node_pressure, record_info = self._load_node_pressure()
         if not node_pressure:
             self.iface.messageBar().pushWarning(
                 "aQuaDrip",
-                "未找到模拟结果，请先运行水力模拟并保存历史记录")
+                QApplication.translate("PipePressureCheck", "未找到模拟结果，请先运行水力模拟并保存历史记录"))
             return
 
         # 轮灌模拟只含单分区节点压力，其余分区管道查不到压力 → 误判安全
@@ -58,8 +59,7 @@ class PipePressureChecker:
             zone_name = record_info.get("zone", "?")
             self.iface.messageBar().pushWarning(
                 "aQuaDrip",
-                f"最新记录是轮灌分区 {zone_name} 的结果，仅含该分区压力。"
-                f"建议先运行完整模拟（非轮灌）再做承压分析")
+                QApplication.translate("PipePressureCheck", "最新记录是轮灌分区 {0} 的结果，仅含该分区压力。建议先运行完整模拟（非轮灌）再做承压分析").format(zone_name))
             return
 
         # 逐管道判定
@@ -105,7 +105,7 @@ class PipePressureChecker:
 
         if not results:
             self.iface.messageBar().pushWarning(
-                "aQuaDrip", "管道图层中没有有效管道")
+                "aQuaDrip", QApplication.translate("PipePressureCheck", "管道图层中没有有效管道"))
             return
 
         # 生成临时图层
@@ -114,9 +114,7 @@ class PipePressureChecker:
         total = sum(stats.values())
         self.iface.messageBar().pushMessage(
             "aQuaDrip",
-            f"承压分析: {stats['leak']}红/{stats['warning']}黄/{stats['safe']}绿"
-            f"/{stats['unknown']}蓝(压力未知)/{stats['unset']}灰"
-            f"（共{total}条）",
+            QApplication.translate("PipePressureCheck", "承压分析: {0}红/{1}黄/{2}绿/{3}蓝(压力未知)/{4}灰（共{5}条）").format(stats['leak'], stats['warning'], stats['safe'], stats['unknown'], stats['unset'], total),
             level=0, duration=6)
 
     # ── 临时图层 ──
@@ -162,11 +160,11 @@ class PipePressureChecker:
     def _apply_renderer(self, layer: QgsVectorLayer):
         geom_type = layer.geometryType()
         categories = [
-            ("leak", "超压泄漏风险", QColor(220, 50, 50), 1.8),
-            ("warning", "接近承压极限", QColor(255, 170, 0), 1.4),
-            ("safe", "安全", QColor(50, 180, 60), 0.8),
-            ("unknown", "压力未知(未回写端点)", QColor(100, 149, 237), 0.6),
-            ("unset", "未设置承压", QColor(180, 180, 180), 0.6),
+            ("leak", QApplication.translate("PipePressureCheck", "超压泄漏风险"), QColor(220, 50, 50), 1.8),
+            ("warning", QApplication.translate("PipePressureCheck", "接近承压极限"), QColor(255, 170, 0), 1.4),
+            ("safe", QApplication.translate("PipePressureCheck", "安全"), QColor(50, 180, 60), 0.8),
+            ("unknown", QApplication.translate("PipePressureCheck", "压力未知(未回写端点)"), QColor(100, 149, 237), 0.6),
+            ("unset", QApplication.translate("PipePressureCheck", "未设置承压"), QColor(180, 180, 180), 0.6),
         ]
         cats = []
         for status, label, color, width in categories:

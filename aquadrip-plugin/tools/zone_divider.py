@@ -12,6 +12,7 @@ from collections import deque
 from typing import Dict, List, Optional, Set, Tuple
 
 from qgis.core import QgsProject, QgsVectorLayer
+from qgis.PyQt.QtWidgets import QApplication
 
 
 class ZoneDivider:
@@ -38,7 +39,7 @@ class ZoneDivider:
 
         if not net.links:
             self.iface.messageBar().pushWarning(
-                "aQuaDrip", "管网中没有管道")
+                "aQuaDrip", QApplication.translate("ZoneDivider", "管网中没有管道"))
             return {"valves": 0, "zones": 0, "pipes": 0}
 
         # 2. 构建有向邻接表 + 收集阀门和水源
@@ -74,7 +75,7 @@ class ZoneDivider:
 
         if not sources:
             self.iface.messageBar().pushWarning(
-                "aQuaDrip", "管网中没有水源节点")
+                "aQuaDrip", QApplication.translate("ZoneDivider", "管网中没有水源节点"))
             return {"valves": len(all_valves), "zones": 0, "pipes": 0}
 
         # 3. 层级 BFS 分区
@@ -89,7 +90,7 @@ class ZoneDivider:
         # 4. 写回图层
         if not zone_map:
             self.iface.messageBar().pushMessage(
-                "aQuaDrip", "未检测到阀门，全部管道为公共区", level=0, duration=4)
+                "aQuaDrip", QApplication.translate("ZoneDivider", "未检测到阀门，全部管道为公共区"), level=0, duration=4)
             return {"valves": len(all_valves), "zones": 0, "pipes": len(zone_map)}
 
         written = self._write_zones(zone_map)
@@ -97,8 +98,7 @@ class ZoneDivider:
 
         self.iface.messageBar().pushMessage(
             "aQuaDrip",
-            f"分区完成: {len(all_valves)} 个阀门 → {zones} 个分区, "
-            f"{written} 条管道已标记",
+            QApplication.translate("ZoneDivider", "分区完成: {0} 个阀门 → {1} 个分区, {2} 条管道已标记").format(len(all_valves), zones, written),
             level=0, duration=6)
 
         # 5. 对 aqd_pipes 应用分类着色
@@ -264,13 +264,13 @@ class ZoneDivider:
             symbol = QgsSymbol.defaultSymbol(pipe_layer.geometryType())
             symbol.setColor(QColor(220, 220, 220))
             symbol.setWidth(0.8)
-            categories.append(QgsRendererCategory("", symbol, "公共区"))
+            categories.append(QgsRendererCategory("", symbol, QApplication.translate("ZoneDivider", "公共区")))
 
             for i, z in enumerate(sorted_zones):
                 symbol = QgsSymbol.defaultSymbol(pipe_layer.geometryType())
                 symbol.setColor(colors[i % len(colors)])
                 symbol.setWidth(1.2)
-                label = f"分区 {z}"
+                label = QApplication.translate("ZoneDivider", "分区 {0}").format(z)
                 categories.append(QgsRendererCategory(z, symbol, label))
 
             renderer = QgsCategorizedSymbolRenderer("zone", categories)
@@ -278,7 +278,7 @@ class ZoneDivider:
             pipe_layer.triggerRepaint()
         except Exception as e:
             self.iface.messageBar().pushWarning(
-                "aQuaDrip", f"分区着色失败: {e}")
+                "aQuaDrip", QApplication.translate("ZoneDivider", "分区着色失败: {0}").format(e))
 
     # ── 图层查找 ──
 

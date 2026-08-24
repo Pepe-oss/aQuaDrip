@@ -6,6 +6,7 @@ from qgis.PyQt.QtWidgets import (
     QRadioButton, QButtonGroup, QGroupBox,
 )
 from qgis.PyQt.QtCore import Qt, pyqtSignal
+from qgis.PyQt.QtWidgets import QApplication
 
 
 class TrimDialog(QDialog):
@@ -15,7 +16,7 @@ class TrimDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("管道切割")
+        self.setWindowTitle(QApplication.translate("TrimDialog", "管道切割"))
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         self.setFixedWidth(260)
         self._build_ui()
@@ -24,16 +25,16 @@ class TrimDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
 
-        title = QLabel("📐 管道切割参数")
+        title = QLabel(QApplication.translate("TrimDialog", "📐 管道切割参数"))
         title.setStyleSheet("font-weight: bold; font-size: 14px;")
         layout.addWidget(title)
 
         # ── 切割模式 ──
-        mode_group = QGroupBox("切割模式")
+        mode_group = QGroupBox(QApplication.translate("TrimDialog", "切割模式"))
         mode_layout = QVBoxLayout(mode_group)
         self._mode_group = QButtonGroup(self)
-        self._radio_click = QRadioButton("点选切割（逐根点击）")
-        self._radio_line = QRadioButton("画线切割（批量交叉）")
+        self._radio_click = QRadioButton(QApplication.translate("TrimDialog", "点选切割（逐根点击）"))
+        self._radio_line = QRadioButton(QApplication.translate("TrimDialog", "画线切割（批量交叉）"))
         self._mode_group.addButton(self._radio_click, 0)
         self._mode_group.addButton(self._radio_line, 1)
         self._radio_click.setChecked(True)
@@ -41,16 +42,16 @@ class TrimDialog(QDialog):
         mode_layout.addWidget(self._radio_line)
         layout.addWidget(mode_group)
 
-        layout.addWidget(QLabel("管道类型:"))
-        self.chk_lateral = QCheckBox("毛管 (lateral)")
+        layout.addWidget(QLabel(QApplication.translate("TrimDialog", "管道类型:")))
+        self.chk_lateral = QCheckBox(QApplication.translate("TrimDialog", "毛管 (lateral)"))
         self.chk_lateral.setChecked(True)
-        self.chk_submain = QCheckBox("支管 (submain)")
-        self.chk_mainline = QCheckBox("干管 (mainline)")
+        self.chk_submain = QCheckBox(QApplication.translate("TrimDialog", "支管 (submain)"))
+        self.chk_mainline = QCheckBox(QApplication.translate("TrimDialog", "干管 (mainline)"))
         layout.addWidget(self.chk_lateral)
         layout.addWidget(self.chk_submain)
         layout.addWidget(self.chk_mainline)
 
-        layout.addWidget(QLabel("切割长度 (m):"))
+        layout.addWidget(QLabel(QApplication.translate("TrimDialog", "切割长度 (m):")))
         self.spin_length = QDoubleSpinBox()
         self.spin_length.setRange(0, 100)
         self.spin_length.setSingleStep(0.1)
@@ -58,11 +59,11 @@ class TrimDialog(QDialog):
         self.spin_length.setSuffix(" m")
         layout.addWidget(self.spin_length)
 
-        hint = QLabel("0 = 仅分割\n>0 = 切除指定长度")
+        hint = QLabel(QApplication.translate("TrimDialog", "0 = 仅分割\n>0 = 切除指定长度"))
         hint.setStyleSheet("color: gray; font-size: 10px;")
         layout.addWidget(hint)
 
-        btn = QPushButton("✂️ 开始切割")
+        btn = QPushButton(QApplication.translate("TrimDialog", "✂️ 开始切割"))
         btn.setStyleSheet("padding: 6px;")
         btn.clicked.connect(self._on_apply)
         layout.addWidget(btn)

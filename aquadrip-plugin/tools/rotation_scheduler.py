@@ -14,6 +14,7 @@ from typing import Callable, Dict, List, Optional
 
 from qgis.core import QgsProject, QgsVectorLayer, QgsFeature
 from qgis.PyQt.QtCore import QObject, pyqtSignal
+from qgis.PyQt.QtWidgets import QApplication
 
 
 class RotationScheduler:
@@ -146,7 +147,7 @@ class RotationScheduler:
 
             if progress_callback:
                 pct = int(idx / max(total, 1) * 100)
-                progress_callback(pct, f"分区 {zone_name} ({idx+1}/{total})")
+                progress_callback(pct, QApplication.translate("RotationScheduler", "分区 {0} ({1}/{2})").format(zone_name, idx+1, total))
 
             # 构建子网：保留公共管道 + 该分区管道
             sub = self._build_zone_subnet(full_net, zone_name, link_zone)
@@ -222,7 +223,7 @@ class RotationScheduler:
                 })
 
         if progress_callback:
-            progress_callback(100, f"完成 ({total} 分区)")
+            progress_callback(100, QApplication.translate("RotationScheduler", "完成 ({0} 分区)").format(total))
 
         return all_results
 
@@ -326,7 +327,7 @@ class RotationScheduler:
             node_pressure=node_pressure, link_flow=link_flow,
             link_velocity=link_velocity, emitter_flow=emitter_flow,
             node_coords=node_coords,
-            message=f"轮灌 R{self._rotation_id} 分区{zone_name}",
+            message=QApplication.translate("RotationScheduler", "轮灌 R{0} 分区{1}").format(self._rotation_id, zone_name),
             link_endpoints=link_endpoints, link_geometry=link_geometry,
             rotation_id=self._rotation_id, shift_index=shift_idx,
         )

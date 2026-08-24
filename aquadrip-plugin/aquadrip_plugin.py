@@ -9,6 +9,7 @@ from qgis.core import QgsApplication, QgsRasterLayer, QgsLayerTreeLayer
 from qgis.gui import QgisInterface
 from qgis.PyQt.QtWidgets import QAction, QMessageBox
 from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtWidgets import QApplication
 
 
 class AQuaDripPlugin:
@@ -37,7 +38,7 @@ class AQuaDripPlugin:
             self._wdrip_ok = True
         except ImportError as e:
             self.iface.messageBar().pushWarning(
-                "aQuaDrip", f"wdrip-core 加载失败: {e}")
+                "aQuaDrip", QApplication.translate("AquadripPlugin", "wdrip-core 加载失败: {0}").format(e))
             self._wdrip_ok = False
             return
 
@@ -52,7 +53,7 @@ class AQuaDripPlugin:
         from .ui.dockwidget import AQuaDripDockWidget
         self.dockwidget = AQuaDripDockWidget(self.iface)
         self.iface.addDockWidget(Qt.RightDockWidgetArea, self.dockwidget)
-        self.dockwidget.log_message("aQuaDrip 已加载")
+        self.dockwidget.log_message(QApplication.translate("AquadripPlugin", "aQuaDrip 已加载"))
 
         # 校准 tab 按钮连接
         self.dockwidget._btn_refresh.clicked.connect(self._on_calib_refresh)
@@ -68,30 +69,30 @@ class AQuaDripPlugin:
 
         # 功能列表：(图标文件, 名称, handler, tooltip)
         entries = [
-            ("generate_layers.svg", "生成图层", self.on_setup_layers,
-             "创建 aQuaDrip 标准 GeoPackage 图层"),
-            ("open_project.svg", "打开项目", self.on_open_project,
-             "打开已有的 aQuaDrip GeoPackage 项目"),
-            ("generate_laterals.svg", "毛管生成", self.on_generate_lateral,
-             "选中农田地块后，设置农艺参数并生成毛管"),
-            ("trim_pipe.svg", "切割管道", self.on_trim_lateral,
-             "点击管道在任意位置将其分割为两段"),
-            ("crossing_nodes.svg", "生成交叉节点", self.on_generate_crossing_nodes,
-             "选中一条管道后，为其与所有不同类型管道的交叉点生成连接节点"),
-            ("edit_properties.svg", "编辑属性", self.on_edit_property,
-             "选中地块/管道/节点后，修改其内部参数"),
-            ("run_simulation.svg", "运行模拟", self.on_run_simulation,
-             "同步图层→构建管网→WNTR 水力模拟→结果回写"),
-            ("visualize.svg", "可视化", self.on_visualize,
-             "查看历史模拟记录，生成结果可视化图层"),
-            ("zone_divide.svg", "分区划分", self.on_zone_divide,
-             "根据阀门位置自动划分管网分区"),
-            ("rotation.svg", "轮灌管理", self.on_rotation,
-             "配置轮灌调度方案并逐轮次运行水力模拟"),
-            ("pipe_pressure.svg", "管道承压", self.on_pipe_pressure_check,
-             "根据模拟结果检测管道超压泄漏风险"),
-            ("inp_tools.svg", "INP 处理", None,
-             "导出当前管网为 EPANET INP 文件，或从 INP 文件导入为临时图层"),
+            ("generate_layers.svg", QApplication.translate("AquadripPlugin", "生成图层"), self.on_setup_layers,
+             QApplication.translate("AquadripPlugin", "创建 aQuaDrip 标准 GeoPackage 图层")),
+            ("open_project.svg", QApplication.translate("AquadripPlugin", "打开项目"), self.on_open_project,
+             QApplication.translate("AquadripPlugin", "打开已有的 aQuaDrip GeoPackage 项目")),
+            ("generate_laterals.svg", QApplication.translate("AquadripPlugin", "毛管生成"), self.on_generate_lateral,
+             QApplication.translate("AquadripPlugin", "选中农田地块后，设置农艺参数并生成毛管")),
+            ("trim_pipe.svg", QApplication.translate("AquadripPlugin", "切割管道"), self.on_trim_lateral,
+             QApplication.translate("AquadripPlugin", "点击管道在任意位置将其分割为两段")),
+            ("crossing_nodes.svg", QApplication.translate("AquadripPlugin", "生成交叉节点"), self.on_generate_crossing_nodes,
+             QApplication.translate("AquadripPlugin", "选中一条管道后，为其与所有不同类型管道的交叉点生成连接节点")),
+            ("edit_properties.svg", QApplication.translate("AquadripPlugin", "编辑属性"), self.on_edit_property,
+             QApplication.translate("AquadripPlugin", "选中地块/管道/节点后，修改其内部参数")),
+            ("run_simulation.svg", QApplication.translate("AquadripPlugin", "运行模拟"), self.on_run_simulation,
+             QApplication.translate("AquadripPlugin", "同步图层→构建管网→WNTR 水力模拟→结果回写")),
+            ("visualize.svg", QApplication.translate("AquadripPlugin", "可视化"), self.on_visualize,
+             QApplication.translate("AquadripPlugin", "查看历史模拟记录，生成结果可视化图层")),
+            ("zone_divide.svg", QApplication.translate("AquadripPlugin", "分区划分"), self.on_zone_divide,
+             QApplication.translate("AquadripPlugin", "根据阀门位置自动划分管网分区")),
+            ("rotation.svg", QApplication.translate("AquadripPlugin", "轮灌管理"), self.on_rotation,
+             QApplication.translate("AquadripPlugin", "配置轮灌调度方案并逐轮次运行水力模拟")),
+            ("pipe_pressure.svg", QApplication.translate("AquadripPlugin", "管道承压"), self.on_pipe_pressure_check,
+             QApplication.translate("AquadripPlugin", "根据模拟结果检测管道超压泄漏风险")),
+            ("inp_tools.svg", QApplication.translate("AquadripPlugin", "INP 处理"), None,
+             QApplication.translate("AquadripPlugin", "导出当前管网为 EPANET INP 文件，或从 INP 文件导入为临时图层")),
         ]
         for filename, name, handler, tip in entries:
             action = QAction(_icon(filename),
@@ -107,8 +108,8 @@ class AQuaDripPlugin:
         from qgis.PyQt.QtWidgets import QMenu, QToolButton
         inp_action = self.actions[-1]
         inp_menu = QMenu(self.iface.mainWindow())
-        export_act = inp_menu.addAction("导出 INP...")
-        import_act = inp_menu.addAction("导入 INP...")
+        export_act = inp_menu.addAction(QApplication.translate("AquadripPlugin", "导出 INP..."))
+        import_act = inp_menu.addAction(QApplication.translate("AquadripPlugin", "导入 INP..."))
         export_act.triggered.connect(self.on_export_inp)
         import_act.triggered.connect(self.on_import_inp)
         inp_action.setMenu(inp_menu)
@@ -183,12 +184,12 @@ class AQuaDripPlugin:
         from qgis.PyQt.QtCore import QSettings
         from .tools.i18n import LANGUAGES, SETTING_KEY
 
-        lang_menu = QMenu("语言 Language", parent_menu)
+        lang_menu = QMenu(QApplication.translate("AquadripPlugin", "语言 Language"), parent_menu)
         current = QSettings().value(SETTING_KEY, "auto", type=str) or "auto"
         # 元 UI:标签双语硬写,不经过 tr()(用户可能尚未选择语言)
         labels = {
-            "auto": "自动(跟随 QGIS) Auto (follow QGIS)",
-            "zh_CN": "简体中文",
+            "auto": QApplication.translate("AquadripPlugin", "自动(跟随 QGIS) Auto (follow QGIS)"),
+            "zh_CN": QApplication.translate("AquadripPlugin", "简体中文"),
             "en_US": "English",
         }
         for key in LANGUAGES:
@@ -294,7 +295,7 @@ class AQuaDripPlugin:
 
         # 1. 创建 GPKG 图层（用 target_crs 统一坐标系）
         self.iface.messageBar().pushMessage(
-            "aQuaDrip", "正在创建图层...", level=0, duration=3)
+            "aQuaDrip", QApplication.translate("AquadripPlugin", "正在创建图层..."), level=0, duration=3)
 
         try:
             from .tools.layer_setup import LayerSetupAction
@@ -306,28 +307,28 @@ class AQuaDripPlugin:
                 QMessageBox.warning(
                     self.iface.mainWindow(),
                     "aQuaDrip",
-                    "图层创建失败，请查看 Python 日志")
+                    QApplication.translate("AquadripPlugin", "图层创建失败，请查看 Python 日志"))
                 return
 
             used_crs = setup._project_crs
             if self.dockwidget:
                 self.dockwidget.log_message(
-                    f"图层已创建: {gpkg_path} (CRS: {used_crs.authid()})")
+                    QApplication.translate("AquadripPlugin", "图层已创建: {0} (CRS: {1})").format(gpkg_path, used_crs.authid()))
 
         except Exception as e:
             import traceback
             traceback.print_exc()
             self.iface.messageBar().pushWarning(
-                "aQuaDrip", f"创建失败: {e}")
+                "aQuaDrip", QApplication.translate("AquadripPlugin", "创建失败: {0}").format(e))
             return
 
         # 2. 导入正射影像（可选）
         ortho_layer = self._add_raster_to_group(
-            ortho_path, "正射影像") if ortho_path else None
+            ortho_path, QApplication.translate("AquadripPlugin", "正射影像")) if ortho_path else None
 
         # 3. 导入 DEM（可选）
         dem_layer = self._add_raster_to_group(
-            dem_path, "DEM 高程") if dem_path else None
+            dem_path, "DEM 高程") if dem_path else None  # 图层名是数据标识,不翻译(与查找逻辑耦合)
 
         # 4. 保存 QGZ 项目文件
         try:
@@ -337,34 +338,30 @@ class AQuaDripPlugin:
                 QgsProject.instance().setCrs(target_crs)
             QgsProject.instance().write(qgz_path)
             if self.dockwidget:
-                self.dockwidget.log_message(f"项目已保存: {qgz_path}")
+                self.dockwidget.log_message(QApplication.translate("AquadripPlugin", "项目已保存: {0}").format(qgz_path))
         except Exception as e:
             import traceback
             traceback.print_exc()
             self.iface.messageBar().pushWarning(
-                "aQuaDrip", f"保存 QGZ 失败: {e}")
+                "aQuaDrip", QApplication.translate("AquadripPlugin", "保存 QGZ 失败: {0}").format(e))
             # 不阻断：GPKG 已创建，用户可手动保存
 
         # 5. 成功提示
         parts = [f"📁 GPKG: {gpkg_path}", f"📁 QGZ:  {qgz_path}"]
         if target_crs is not None:
             parts.append(f"🌐 CRS:  {target_crs.authid()}")
-        loaded = ["农田地块 (aqd_fields)", "管道 (aqd_pipes)",
-                  "节点 (aqd_nodes)", "观测点 (aqd_obs_points)"]
+        loaded = [QApplication.translate("AquadripPlugin", "农田地块 (aqd_fields)"), QApplication.translate("AquadripPlugin", "管道 (aqd_pipes)"),
+                  QApplication.translate("AquadripPlugin", "节点 (aqd_nodes)"), QApplication.translate("AquadripPlugin", "观测点 (aqd_obs_points)")]
         if ortho_layer:
-            loaded.append("正射影像")
+            loaded.append(QApplication.translate("AquadripPlugin", "正射影像"))
         if dem_layer:
-            loaded.append("DEM 高程")
+            loaded.append(QApplication.translate("AquadripPlugin", "DEM 高程"))
 
         QMessageBox.information(
             self.iface.mainWindow(),
             "aQuaDrip",
-            f"项目创建完成\n\n"
-            f"{os.linesep.join(parts)}\n\n"
-            f"已加载图层:\n"
-            + "\n".join(f"  • {s}" for s in loaded) + "\n\n"
-            f"下次可直接用 QGIS 打开 .qgz 文件，\n"
-            f"或通过「打开项目」加载 .gpkg。")
+            QApplication.translate("AquadripPlugin", "项目创建完成\n\n{0}\n\n已加载图层:\n").format(os.linesep.join(parts))
+            + "\n".join(f"  • {s}" for s in loaded) + QApplication.translate("AquadripPlugin", "\n\n下次可直接用 QGIS 打开 .qgz 文件，\n或通过「打开项目」加载 .gpkg。").format())
 
     def _add_raster_to_group(self, path: str, layer_name: str,
                              group_name: str = "aQuaDrip"):
@@ -384,7 +381,7 @@ class AQuaDripPlugin:
         layer = QgsRasterLayer(path, layer_name)
         if not layer.isValid():
             self.iface.messageBar().pushWarning(
-                "aQuaDrip", f"无法加载栅格图层: {layer_name}")
+                "aQuaDrip", QApplication.translate("AquadripPlugin", "无法加载栅格图层: {0}").format(layer_name))
             return None
 
         from qgis.core import QgsProject
@@ -422,7 +419,7 @@ class AQuaDripPlugin:
         layer = self.iface.activeLayer()
         if layer is None:
             self.iface.messageBar().pushWarning(
-                "aQuaDrip", "请先在图层面板选中 aqd_pipes 图层")
+                "aQuaDrip", QApplication.translate("AquadripPlugin", "请先在图层面板选中 aqd_pipes 图层"))
             return
 
         source = layer.source() if hasattr(layer, "source") else ""
@@ -431,21 +428,21 @@ class AQuaDripPlugin:
                            for k in ("aqd_pipes", "aqd_pumps", "aqd_valves"))
         if not is_link_layer:
             self.iface.messageBar().pushWarning(
-                "aQuaDrip", "当前活动图层不是 aqd_pipes / aqd_pumps / aqd_valves")
+                "aQuaDrip", QApplication.translate("AquadripPlugin", "当前活动图层不是 aqd_pipes / aqd_pumps / aqd_valves"))
             return
 
         selected = layer.selectedFeatures()
         selected = list(selected)
         if len(selected) != 1:
             self.iface.messageBar().pushWarning(
-                "aQuaDrip", "请恰好选中 1 条管道")
+                "aQuaDrip", QApplication.translate("AquadripPlugin", "请恰好选中 1 条管道"))
             return
 
         feat = selected[0]
         ptype = str(feat.attribute("pipe_type") or "")
         if not ptype:
             self.iface.messageBar().pushWarning(
-                "aQuaDrip", "选中要素的 pipe_type 为空，请先设置管道类型")
+                "aQuaDrip", QApplication.translate("AquadripPlugin", "选中要素的 pipe_type 为空，请先设置管道类型"))
             return
 
         try:
@@ -455,7 +452,7 @@ class AQuaDripPlugin:
             import traceback
             traceback.print_exc()
             self.iface.messageBar().pushWarning(
-                "aQuaDrip", f"生成连接节点失败: {e}")
+                "aQuaDrip", QApplication.translate("AquadripPlugin", "生成连接节点失败: {0}").format(e))
 
     def on_generate_lateral(self):
         """毛管生成：选中农田地块 → 参数浮动窗（含生成按钮）"""
@@ -496,20 +493,20 @@ class AQuaDripPlugin:
         layer = self.iface.activeLayer()
         if layer is None or not hasattr(layer, "selectedFeatures"):
             self.iface.messageBar().pushWarning(
-                "aQuaDrip", "请先在图层面板选中相应图层和要素")
+                "aQuaDrip", QApplication.translate("AquadripPlugin", "请先在图层面板选中相应图层和要素"))
             return None, None
 
         from .ui.property_dialog import PropertyDialog
         mode = PropertyDialog._mode_of_layer(layer)
         if mode is None:
             self.iface.messageBar().pushWarning(
-                "aQuaDrip", "当前图层不是 aQuaDrip 图层（地块/管道/节点）")
+                "aQuaDrip", QApplication.translate("AquadripPlugin", "当前图层不是 aQuaDrip 图层（地块/管道/节点）"))
             return None, None
 
         selected = list(layer.selectedFeatures())
         if not selected:
             self.iface.messageBar().pushWarning(
-                "aQuaDrip", "请至少选中 1 个要素")
+                "aQuaDrip", QApplication.translate("AquadripPlugin", "请至少选中 1 个要素"))
             return None, None
 
         # 多选时校验同类型
@@ -518,16 +515,14 @@ class AQuaDripPlugin:
             if len(ptypes) > 1:
                 self.iface.messageBar().pushWarning(
                     "aQuaDrip",
-                    f"选中的要素包含多种管道类型（{', '.join(ptypes)}），"
-                    f"请仅选择同一类型")
+                    QApplication.translate("AquadripPlugin", "选中的要素包含多种管道类型（{0}），请仅选择同一类型").format(', '.join(ptypes)))
                 return None, None
         elif mode == "aqd_nodes" and len(selected) > 1:
             ntypes = {str(f.attribute("node_type") or "junction") for f in selected}
             if len(ntypes) > 1:
                 self.iface.messageBar().pushWarning(
                     "aQuaDrip",
-                    f"选中的要素包含多种节点类型（{', '.join(ntypes)}），"
-                    f"请仅选择同一类型")
+                    QApplication.translate("AquadripPlugin", "选中的要素包含多种节点类型（{0}），请仅选择同一类型").format(', '.join(ntypes)))
                 return None, None
 
         return selected, layer
@@ -546,26 +541,26 @@ class AQuaDripPlugin:
         layer = self.iface.activeLayer()
         if layer is None or not hasattr(layer, "selectedFeatures"):
             self.iface.messageBar().pushWarning(
-                "aQuaDrip", "请先在图层面板选中相应图层和要素")
+                "aQuaDrip", QApplication.translate("AquadripPlugin", "请先在图层面板选中相应图层和要素"))
             return None, None
 
         if required_layer_key:
             src = layer.source() or ""
             if layer.name() != required_layer_key and required_layer_key not in src:
                 self.iface.messageBar().pushWarning(
-                    "aQuaDrip", f"当前活动图层不是 {required_layer_key}")
+                    "aQuaDrip", QApplication.translate("AquadripPlugin", "当前活动图层不是 {0}").format(required_layer_key))
                 return None, None
         else:
             from .ui.property_dialog import PropertyDialog
             if PropertyDialog._mode_of_layer(layer) is None:
                 self.iface.messageBar().pushWarning(
-                    "aQuaDrip", "当前图层不是 aQuaDrip 图层（地块/管道/节点）")
+                    "aQuaDrip", QApplication.translate("AquadripPlugin", "当前图层不是 aQuaDrip 图层（地块/管道/节点）"))
                 return None, None
 
         selected = list(layer.selectedFeatures())
         if len(selected) != 1:
             self.iface.messageBar().pushWarning(
-                "aQuaDrip", "请恰好选中 1 个要素")
+                "aQuaDrip", QApplication.translate("AquadripPlugin", "请恰好选中 1 个要素"))
             return None, None
         return selected[0], layer
 
@@ -584,19 +579,19 @@ class AQuaDripPlugin:
             if not sources:
                 QMessageBox.warning(
                     self.iface.mainWindow(), "aQuaDrip",
-                    "管网中没有水源节点。\n\n"
-                    "请先用「添加水源」在地图上放置水源。")
+                    QApplication.translate("AquadripPlugin", "管网中没有水源节点。\n\n"
+                    "请先用「添加水源」在地图上放置水源。"))
                 return
             if not net.links:
                 QMessageBox.warning(
                     self.iface.mainWindow(), "aQuaDrip",
-                    "管网中没有管道。")
+                    QApplication.translate("AquadripPlugin", "管网中没有管道。"))
                 return
 
             errors = net.validate()
             if errors and self.dockwidget:
                 for e in errors[:5]:
-                    self.dockwidget.log_message(f"⚠️ 校验: {e}")
+                    self.dockwidget.log_message(QApplication.translate("AquadripPlugin", "⚠️ 校验: {0}").format(e))
 
             # 2. 弹出精度选择对话框
             from .ui.simulation_dialog import SimulationDialog
@@ -624,7 +619,7 @@ class AQuaDripPlugin:
             bar = QProgressBar()
             bar.setValue(0)
             bar_msg = self.iface.messageBar().createMessage(
-                "aQuaDrip", "正在模拟...")
+                "aQuaDrip", QApplication.translate("AquadripPlugin", "正在模拟..."))
             bar_msg.layout().addWidget(bar)
             self.iface.messageBar().pushWidget(bar_msg, level=0)
 
@@ -648,7 +643,7 @@ class AQuaDripPlugin:
             import traceback
             traceback.print_exc()
             self.iface.messageBar().pushWarning(
-                "aQuaDrip", f"模拟启动失败: {e}")
+                "aQuaDrip", QApplication.translate("AquadripPlugin", "模拟启动失败: {0}").format(e))
 
     def _on_sim_finished(self, net, sync, result, bar_msg, save_history):
         """模拟完成回调（主线程，安全访问 QGIS 图层）"""
@@ -657,7 +652,7 @@ class AQuaDripPlugin:
         if not result.success:
             QMessageBox.critical(
                 self.iface.mainWindow(), "aQuaDrip",
-                f"模拟失败：\n{result.message}")
+                QApplication.translate("AquadripPlugin", "模拟失败：\n{0}").format(result.message))
             return
 
         # 结果回写图层
@@ -680,19 +675,19 @@ class AQuaDripPlugin:
 
         stats = [
             f"✅ {result.message}",
-            f"节点 {len(net.nodes)} / 管道 {len(net.links)} / 滴头 {len(flows)}",
+            QApplication.translate("AquadripPlugin", "节点 {0} / 管道 {1} / 滴头 {2}").format(len(net.nodes), len(net.links), len(flows)),
         ]
         if flows:
             stats.append(
-                f"滴头流量 {min(flows):.2f}~{max(flows):.2f} L/h")
+                QApplication.translate("AquadripPlugin", "滴头流量 {0:.2f}~{1:.2f} L/h").format(min(flows), max(flows)))
             stats.append(f"CU = {cu:.1f}%   DU = {du:.1f}%")
-        stats.append("结果已保存，可点击「可视化」工具查看")
+        stats.append(QApplication.translate("AquadripPlugin", "结果已保存，可点击「可视化」工具查看"))
 
         if self.dockwidget:
             for line in stats:
                 self.dockwidget.log_message(line)
         QMessageBox.information(
-            self.iface.mainWindow(), "aQuaDrip 模拟完成",
+            self.iface.mainWindow(), QApplication.translate("AquadripPlugin", "aQuaDrip 模拟完成"),
             "\n".join(stats))
 
     def _on_sim_error(self, err, bar_msg):
@@ -701,8 +696,8 @@ class AQuaDripPlugin:
         import traceback
         traceback.print_exc()
         if self.dockwidget:
-            self.dockwidget.log_message(f"❌ 模拟运行失败: {err}")
-        self.iface.messageBar().pushWarning("aQuaDrip", f"模拟失败: {err}")
+            self.dockwidget.log_message(QApplication.translate("AquadripPlugin", "❌ 模拟运行失败: {0}").format(err))
+        self.iface.messageBar().pushWarning("aQuaDrip", QApplication.translate("AquadripPlugin", "模拟失败: {0}").format(err))
 
     def _save_sim_history(self, net, result, cu: float, du: float):
         """将模拟结果保存到 sidecar 历史文件"""
@@ -758,7 +753,7 @@ class AQuaDripPlugin:
             import traceback
             traceback.print_exc()
             if self.dockwidget:
-                self.dockwidget.log_message(f"⚠️ 模拟历史保存失败: {e}")
+                self.dockwidget.log_message(QApplication.translate("AquadripPlugin", "⚠️ 模拟历史保存失败: {0}").format(e))
 
     def on_visualize(self):
         """打开可视化对话框，选择历史记录进行可视化"""
@@ -786,7 +781,7 @@ class AQuaDripPlugin:
             import traceback
             traceback.print_exc()
             self.iface.messageBar().pushWarning(
-                "aQuaDrip", f"分区划分失败: {e}")
+                "aQuaDrip", QApplication.translate("AquadripPlugin", "分区划分失败: {0}").format(e))
 
     def on_pipe_pressure_check(self):
         """检查管道承压：对比模拟压力与最大承压"""
@@ -797,7 +792,7 @@ class AQuaDripPlugin:
             import traceback
             traceback.print_exc()
             self.iface.messageBar().pushWarning(
-                "aQuaDrip", f"承压分析失败: {e}")
+                "aQuaDrip", QApplication.translate("AquadripPlugin", "承压分析失败: {0}").format(e))
 
     # ── 轮灌管理 ──
 
@@ -813,7 +808,7 @@ class AQuaDripPlugin:
         fields = scheduler.get_field_features()
         if not fields:
             self.iface.messageBar().pushWarning(
-                "aQuaDrip", "未找到农田地块 (aqd_fields) 图层")
+                "aQuaDrip", QApplication.translate("AquadripPlugin", "未找到农田地块 (aqd_fields) 图层"))
             return
 
         selected_id = -1
@@ -844,7 +839,7 @@ class AQuaDripPlugin:
 
         zones = config.get("zones", [])
         if not zones:
-            self.iface.messageBar().pushWarning("aQuaDrip", "未配置有效的轮灌分区")
+            self.iface.messageBar().pushWarning("aQuaDrip", QApplication.translate("AquadripPlugin", "未配置有效的轮灌分区"))
             dlg._on_stop()
             return
 
@@ -855,11 +850,11 @@ class AQuaDripPlugin:
             snapshot = scheduler.prepare_snapshot()
         except Exception as e:
             import traceback
-            dlg.on_progress(0, f"错误: {e}\n{traceback.format_exc()}")
+            dlg.on_progress(0, QApplication.translate("AquadripPlugin", "错误: {0}\n{1}").format(e, traceback.format_exc()))
             dlg._on_stop()
             return
         if not snapshot["full_net"].links:
-            self.iface.messageBar().pushWarning("aQuaDrip", "管网为空，无法轮灌模拟")
+            self.iface.messageBar().pushWarning("aQuaDrip", QApplication.translate("AquadripPlugin", "管网为空，无法轮灌模拟"))
             dlg._on_stop()
             return
 
@@ -873,7 +868,7 @@ class AQuaDripPlugin:
             self._show_rot_results(results, scheduler)
         ))
         worker.error_occurred.connect(
-            lambda e: (dlg.on_progress(0, f"错误: {e}"), dlg._on_stop()))
+            lambda e: (dlg.on_progress(0, QApplication.translate("AquadripPlugin", "错误: {0}").format(e)), dlg._on_stop()))
         thread.started.connect(worker.run)
         worker.finished.connect(thread.quit)
         worker.error_occurred.connect(thread.quit)
@@ -920,7 +915,7 @@ class AQuaDripPlugin:
 
         bar = QProgressBar()
         bar.setValue(0)
-        bar_msg = self.iface.messageBar().createMessage("aQuaDrip", "正在重新模拟...")
+        bar_msg = self.iface.messageBar().createMessage("aQuaDrip", QApplication.translate("AquadripPlugin", "正在重新模拟..."))
         bar_msg.layout().addWidget(bar)
         self.iface.messageBar().pushWidget(bar_msg, level=0)
 
@@ -938,7 +933,7 @@ class AQuaDripPlugin:
         self.iface.messageBar().clearWidgets()
         if not result.success:
             if self.dockwidget:
-                self.dockwidget.log_message(f"⚠️ 模拟失败: {result.message}")
+                self.dockwidget.log_message(QApplication.translate("AquadripPlugin", "⚠️ 模拟失败: {0}").format(result.message))
             return
         sync.sync_from_network(net, result)
         from wdrip.analysis import UniformityAnalyzer
@@ -948,20 +943,20 @@ class AQuaDripPlugin:
         self._save_sim_history(net, result, cu, du)
         if self.dockwidget:
             self.dockwidget.refresh_obs_points(result)
-            self.dockwidget.log_message("✅ 模拟完成，观测值已更新")
+            self.dockwidget.log_message(QApplication.translate("AquadripPlugin", "✅ 模拟完成，观测值已更新"))
 
     def _on_silent_sim_error(self, err, bar_msg):
         """静默模拟错误回调"""
         self.iface.messageBar().clearWidgets()
         if self.dockwidget:
-            self.dockwidget.log_message(f"❌ 校准模拟失败: {err}")
+            self.dockwidget.log_message(QApplication.translate("AquadripPlugin", "❌ 校准模拟失败: {0}").format(err))
 
     def _on_calib_refresh(self):
         """校准 tab: 刷新模拟值 → 读取最新模拟历史（不重新模拟）"""
         from .tools.layer_utils import find_gpkg_path
         gpkg_path = find_gpkg_path(None, "aqd_fields")
         if not gpkg_path:
-            self.iface.messageBar().pushWarning("aQuaDrip", "未找到项目 GPKG")
+            self.iface.messageBar().pushWarning("aQuaDrip", QApplication.translate("AquadripPlugin", "未找到项目 GPKG"))
             return
 
         from .tools.sim_history import SimHistory
@@ -985,7 +980,7 @@ class AQuaDripPlugin:
         if self.dockwidget:
             self.dockwidget.refresh_obs_points(adapter)
             ts = record.get("timestamp", "?")
-            self.dockwidget.log_message(f"✅ 已加载最新模拟结果 ({ts})，未重新模拟")
+            self.dockwidget.log_message(QApplication.translate("AquadripPlugin", "✅ 已加载最新模拟结果 ({0})，未重新模拟").format(ts))
 
     def _on_calib_run(self):
         """校准 tab: 弹出参数对话框 + 迭代校准"""
@@ -994,21 +989,21 @@ class AQuaDripPlugin:
         measured = self.dockwidget.get_measured_values()
         if not measured:
             self.iface.messageBar().pushWarning(
-                "aQuaDrip", "请先在「校准」tab 中输入实测压力值")
+                "aQuaDrip", QApplication.translate("AquadripPlugin", "请先在「校准」tab 中输入实测压力值"))
             return
 
         # 从 simhistory 读取最新模拟值 + 观测点坐标
         from .tools.layer_utils import find_gpkg_path
         gpkg_path = find_gpkg_path(None, "aqd_fields")
         if not gpkg_path:
-            self.iface.messageBar().pushWarning("aQuaDrip", "未找到项目 GPKG")
+            self.iface.messageBar().pushWarning("aQuaDrip", QApplication.translate("AquadripPlugin", "未找到项目 GPKG"))
             return
 
         from .tools.sim_history import SimHistory
         history = SimHistory(gpkg_path)
         records = history.load()
         if not records:
-            self.iface.messageBar().pushWarning("aQuaDrip", "请先运行模拟")
+            self.iface.messageBar().pushWarning("aQuaDrip", QApplication.translate("AquadripPlugin", "请先运行模拟"))
             return
         latest = records[0]
         node_pressure = latest.get("node_pressure", {})
@@ -1086,7 +1081,7 @@ class AQuaDripPlugin:
         self._calib_worker = worker
         worker.moveToThread(thread)
         bar = QProgressBar(); bar.setValue(0)
-        bar_msg = self.iface.messageBar().createMessage("aQuaDrip", "校准模拟中...")
+        bar_msg = self.iface.messageBar().createMessage("aQuaDrip", QApplication.translate("AquadripPlugin", "校准模拟中..."))
         bar_msg.layout().addWidget(bar)
         self.iface.messageBar().pushWidget(bar_msg, level=0)
         worker.progress_changed.connect(lambda p, m: bar.setValue(p))

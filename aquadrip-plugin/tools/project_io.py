@@ -16,6 +16,7 @@ from qgis.core import (
 )
 from qgis.PyQt.QtCore import QVariant
 from qgis.PyQt.QtWidgets import QFileDialog, QMessageBox
+from qgis.PyQt.QtWidgets import QApplication
 
 # 必须是这些图层中的核心五层才算 aQuaDrip 项目
 SIGNATURE_LAYERS = ["aqd_fields", "aqd_pipes", "aqd_pumps", "aqd_valves", "aqd_nodes"]
@@ -64,7 +65,7 @@ def load_layers(iface) -> bool:
     """
     path, _ = QFileDialog.getOpenFileName(
         iface.mainWindow(),
-        "打开 aQuaDrip 项目",
+        QApplication.translate("ProjectIo", "打开 aQuaDrip 项目"),
         "",
         "GeoPackage (*.gpkg);;All Files (*)",
     )
@@ -75,8 +76,7 @@ def load_layers(iface) -> bool:
         QMessageBox.warning(
             iface.mainWindow(),
             "aQuaDrip",
-            f"该文件不是 aQuaDrip 项目 GPKG：\n{path}\n\n"
-            f"aQuaDrip 项目必须包含 {', '.join(SIGNATURE_LAYERS)} 图层。")
+            QApplication.translate("ProjectIo", "该文件不是 aQuaDrip 项目 GPKG：\n{0}\n\naQuaDrip 项目必须包含 {1} 图层。").format(path, ', '.join(SIGNATURE_LAYERS)))
         return False
 
     project = QgsProject.instance()
@@ -105,12 +105,12 @@ def load_layers(iface) -> bool:
         project.setCrs(gpkg_crs)
         iface.messageBar().pushMessage(
             "aQuaDrip",
-            f"项目 CRS 已设为 {gpkg_crs.authid()}（来自 GPKG）",
+            QApplication.translate("ProjectIo", "项目 CRS 已设为 {0}（来自 GPKG）").format(gpkg_crs.authid()),
             level=0, duration=4)
 
     iface.messageBar().pushMessage(
         "aQuaDrip",
-        f"已加载 {loaded} 个图层（{os.path.basename(path)}）",
+        QApplication.translate("ProjectIo", "已加载 {0} 个图层（{1}）").format(loaded, os.path.basename(path)),
         level=0, duration=5)
     return True
 
@@ -157,20 +157,20 @@ def export_inp(iface) -> Optional[str]:
         net = sync.sync_qgis_to_network(expand=False, split_vertices=True)
     except Exception as e:
         QMessageBox.critical(
-            iface.mainWindow(), "aQuaDrip INP 导出",
-            f"同步管网失败:\n{e}")
+            iface.mainWindow(), QApplication.translate("ProjectIo", "aQuaDrip INP 导出"),
+            QApplication.translate("ProjectIo", "同步管网失败:\n{0}").format(e))
         return None
 
     if not net.nodes or not net.links:
         QMessageBox.warning(
-            iface.mainWindow(), "aQuaDrip INP 导出",
-            "管网为空，无法导出。请先绘制管道和节点。")
+            iface.mainWindow(), QApplication.translate("ProjectIo", "aQuaDrip INP 导出"),
+            QApplication.translate("ProjectIo", "管网为空，无法导出。请先绘制管道和节点。"))
         return None
 
     # 2. 选择保存路径
     path, _ = QFileDialog.getSaveFileName(
         iface.mainWindow(),
-        "导出 EPANET INP 文件",
+        QApplication.translate("ProjectIo", "导出 EPANET INP 文件"),
         "",
         "EPANET INP (*.inp);;All Files (*)",
     )
@@ -183,8 +183,8 @@ def export_inp(iface) -> Optional[str]:
         wn = sim.build_wntr_model()
     except Exception as e:
         QMessageBox.critical(
-            iface.mainWindow(), "aQuaDrip INP 导出",
-            f"构建 WNTR 模型失败:\n{e}")
+            iface.mainWindow(), QApplication.translate("ProjectIo", "aQuaDrip INP 导出"),
+            QApplication.translate("ProjectIo", "构建 WNTR 模型失败:\n{0}").format(e))
         return None
 
     # 4. 导出
@@ -202,14 +202,13 @@ def export_inp(iface) -> Optional[str]:
             f.write("[END]\n")
     except Exception as e:
         QMessageBox.critical(
-            iface.mainWindow(), "aQuaDrip INP 导出",
-            f"写入 INP 文件失败:\n{e}")
+            iface.mainWindow(), QApplication.translate("ProjectIo", "aQuaDrip INP 导出"),
+            QApplication.translate("ProjectIo", "写入 INP 文件失败:\n{0}").format(e))
         return None
 
     iface.messageBar().pushMessage(
         "aQuaDrip",
-        f"INP 已导出: {os.path.basename(path)}"
-        f"（节点 {len(wn.junction_name_list)}，管道 {len(wn.pipe_name_list)}）",
+        QApplication.translate("ProjectIo", "INP 已导出: {0}（节点 {1}，管道 {2}）").format(os.path.basename(path), len(wn.junction_name_list), len(wn.pipe_name_list)),
         level=0, duration=6)
     return path
 
@@ -253,7 +252,7 @@ def import_inp(iface) -> bool:
     """
     inp_path, _ = QFileDialog.getOpenFileName(
         iface.mainWindow(),
-        "导入 EPANET INP 文件",
+        QApplication.translate("ProjectIo", "导入 EPANET INP 文件"),
         "",
         "EPANET INP (*.inp);;All Files (*)",
     )
@@ -266,13 +265,13 @@ def import_inp(iface) -> bool:
         wn = wntr.network.WaterNetworkModel(inp_path)
     except ImportError:
         QMessageBox.critical(
-            iface.mainWindow(), "aQuaDrip INP 导入",
-            "WNTR 未安装。请运行: pip install wntr")
+            iface.mainWindow(), QApplication.translate("ProjectIo", "aQuaDrip INP 导入"),
+            QApplication.translate("ProjectIo", "WNTR 未安装。请运行: pip install wntr"))
         return False
     except Exception as e:
         QMessageBox.critical(
-            iface.mainWindow(), "aQuaDrip INP 导入",
-            f"INP 文件解析失败:\n{e}")
+            iface.mainWindow(), QApplication.translate("ProjectIo", "aQuaDrip INP 导入"),
+            QApplication.translate("ProjectIo", "INP 文件解析失败:\n{0}").format(e))
         return False
 
     # 1.5 读取 aQuaDrip 元数据段（pipe_type 恢复）
@@ -280,8 +279,8 @@ def import_inp(iface) -> bool:
 
     if not wn.node_name_list:
         QMessageBox.warning(
-            iface.mainWindow(), "aQuaDrip INP 导入",
-            "INP 文件中没有节点数据")
+            iface.mainWindow(), QApplication.translate("ProjectIo", "aQuaDrip INP 导入"),
+            QApplication.translate("ProjectIo", "INP 文件中没有节点数据"))
         return False
 
     # 2. 选择 GPKG 输出路径
@@ -290,7 +289,7 @@ def import_inp(iface) -> bool:
         os.path.dirname(inp_path), f"{basename}.gpkg")
     gpkg_path, _ = QFileDialog.getSaveFileName(
         iface.mainWindow(),
-        "选择 aQuaDrip 项目保存位置",
+        QApplication.translate("ProjectIo", "选择 aQuaDrip 项目保存位置"),
         default_gpkg,
         "GeoPackage (*.gpkg);;All Files (*)",
     )
@@ -302,8 +301,8 @@ def import_inp(iface) -> bool:
     setup = LayerSetupAction(iface)
     if not setup.setup_layers(gpkg_path):
         QMessageBox.critical(
-            iface.mainWindow(), "aQuaDrip INP 导入",
-            f"创建 GPKG 失败: {gpkg_path}")
+            iface.mainWindow(), QApplication.translate("ProjectIo", "aQuaDrip INP 导入"),
+            QApplication.translate("ProjectIo", "创建 GPKG 失败: {0}").format(gpkg_path))
         return False
 
     # 4. 找到刚创建的图层，写入 INP 数据
@@ -355,7 +354,7 @@ def import_inp(iface) -> bool:
             if not node_layer.commitChanges():
                 node_layer.rollBack()
                 iface.messageBar().pushWarning(
-                    "aQuaDrip", "节点图层提交失败")
+                    "aQuaDrip", QApplication.translate("ProjectIo", "节点图层提交失败"))
 
     # ── 4.2 写入管道 ──
     pipe_layer = _find_project_layer(project, "aqd_pipes")
@@ -410,7 +409,7 @@ def import_inp(iface) -> bool:
             if not pipe_layer.commitChanges():
                 pipe_layer.rollBack()
                 iface.messageBar().pushWarning(
-                    "aQuaDrip", "管道图层提交失败")
+                    "aQuaDrip", QApplication.translate("ProjectIo", "管道图层提交失败"))
 
     # ── 4.3 写入水泵 ──
     pump_layer = _find_project_layer(project, "aqd_pumps")
@@ -467,7 +466,7 @@ def import_inp(iface) -> bool:
             if not pump_layer.commitChanges():
                 pump_layer.rollBack()
                 iface.messageBar().pushWarning(
-                    "aQuaDrip", "水泵图层提交失败")
+                    "aQuaDrip", QApplication.translate("ProjectIo", "水泵图层提交失败"))
 
     # ── 4.4 写入阀门 ──
     valve_layer = _find_project_layer(project, "aqd_valves")
@@ -519,12 +518,11 @@ def import_inp(iface) -> bool:
             if not valve_layer.commitChanges():
                 valve_layer.rollBack()
                 iface.messageBar().pushWarning(
-                    "aQuaDrip", "阀门图层提交失败")
+                    "aQuaDrip", QApplication.translate("ProjectIo", "阀门图层提交失败"))
 
     iface.messageBar().pushMessage(
         "aQuaDrip",
-        f"已导入 {basename}.inp（{n_added} 节点, {p_added} 管道）"
-        f" → {os.path.basename(gpkg_path)}",
+        QApplication.translate("ProjectIo", "已导入 {0}.inp（{1} 节点, {2} 管道） → {3}").format(basename, n_added, p_added, os.path.basename(gpkg_path)),
         level=0, duration=8)
     return True
 

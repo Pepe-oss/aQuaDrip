@@ -80,6 +80,6 @@ def remove_translator():
 def set_language(choice: str) -> str:
     """持久化语言选择。返回提示用户重启所需的消息(已翻译上下文)。"""
     QSettings().setValue(SETTING_KEY, choice)
-    from qgis.PyQt.QtWidgets import QApplication as _QA
-    return _QA.translate("AQuaDripPlugin",
-                         "语言设置已保存,重启 QGIS 后生效。")
+    from qgis.PyQt.QtWidgets import QApplication
+    return QApplication.translate("AQuaDripPlugin",
+                                  "语言设置已保存,重启 QGIS 后生效。")

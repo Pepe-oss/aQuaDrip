@@ -17,6 +17,7 @@ from qgis.PyQt.QtCore import Qt, QVariant
 from qgis.core import QgsVectorLayer, QgsFeature
 
 from ..tools.layer_setup import FIELD_DEFS
+from qgis.PyQt.QtWidgets import QApplication
 
 
 # 字段中文名
@@ -128,7 +129,7 @@ class PropertyDialog(QDialog):
 
         self.mode = self._mode_of_layer(layer)
         if self.mode is None:
-            raise ValueError(f"不支持的图层: {layer.name()}")
+            raise ValueError(QApplication.translate("PropertyDialog", "不支持的图层: {0}").format(layer.name()))
 
         self._widgets = {}   # {field_name: widget}
         self._rows = {}      # {field_name: (label_widget, field_widget)}
@@ -138,11 +139,11 @@ class PropertyDialog(QDialog):
 
         # 标题：编辑属性入口的田块模式显示"管道批量设置"
         if not show_generate and self.mode == "aqd_fields":
-            title = "管道批量设置"
+            title = QApplication.translate("PropertyDialog", "管道批量设置")
         else:
             title = MODE_TITLES[self.mode]
         if len(self._feats) > 1:
-            title += f"（{len(self._feats)} 个要素）"
+            title += QApplication.translate("PropertyDialog", "（{0} 个要素）").format(len(self._feats))
         self.setWindowTitle(title)
         self.setMinimumWidth(340)
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
@@ -180,7 +181,7 @@ class PropertyDialog(QDialog):
 
         # 方向"选择边"按钮（仅毛管生成入口的农田模式）
         if show_generate and self.mode == "aqd_fields":
-            self.btn_pick_edge = QPushButton("在地图上选择边…")
+            self.btn_pick_edge = QPushButton(QApplication.translate("PropertyDialog", "在地图上选择边…"))
             self.btn_pick_edge.clicked.connect(self._on_pick_edge)
             layout.addWidget(self.btn_pick_edge)
 
@@ -190,7 +191,7 @@ class PropertyDialog(QDialog):
 
         # 生成毛管按钮
         if show_generate and self.mode == "aqd_fields":
-            self.btn_gen = QPushButton("🌱 保存并生成毛管")
+            self.btn_gen = QPushButton(QApplication.translate("PropertyDialog", "🌱 保存并生成毛管"))
             self.btn_gen.setStyleSheet("font-weight: bold;")
             self.btn_gen.clicked.connect(self._on_generate)
             layout.addWidget(self.btn_gen)
@@ -199,15 +200,15 @@ class PropertyDialog(QDialog):
         if show_field_params:
             buttons = QDialogButtonBox(
                 QDialogButtonBox.Save | QDialogButtonBox.Close)
-            buttons.button(QDialogButtonBox.Save).setText("保存")
-            buttons.button(QDialogButtonBox.Close).setText("关闭")
+            buttons.button(QDialogButtonBox.Save).setText(QApplication.translate("PropertyDialog", "保存"))
+            buttons.button(QDialogButtonBox.Close).setText(QApplication.translate("PropertyDialog", "关闭"))
             buttons.accepted.connect(self._on_save)
             buttons.rejected.connect(self.reject)
             layout.addWidget(buttons)
         else:
             # 仅管道批量设置模式：只需要"关闭"按钮
             buttons = QDialogButtonBox(QDialogButtonBox.Close)
-            buttons.button(QDialogButtonBox.Close).setText("关闭")
+            buttons.button(QDialogButtonBox.Close).setText(QApplication.translate("PropertyDialog", "关闭"))
             buttons.rejected.connect(self.reject)
             layout.addWidget(buttons)
 
@@ -215,7 +216,7 @@ class PropertyDialog(QDialog):
         """从内置滴头库构建型号下拉（含"自定义"选项）"""
         from wdrip.network.emitter import BUILTIN_EMITTERS
         w = QComboBox()
-        w.addItem("自定义", "")
+        w.addItem(QApplication.translate("PropertyDialog", "自定义"), "")
         for key, spec in BUILTIN_EMITTERS.items():
             label = f"{spec.manufacturer} {spec.name}"
             w.addItem(label, key)
@@ -235,7 +236,7 @@ class PropertyDialog(QDialog):
                 w.addItem(label, val)
             # "选择边"是 UI 临时态（非存储值），value_map 里没有，需手动补
             if fname == "direction_type":
-                w.addItem("选择边…", "pick_edge")
+                w.addItem(QApplication.translate("PropertyDialog", "选择边…"), "pick_edge")
             return w
 
         layer = source_layer or self.layer
@@ -310,11 +311,11 @@ class PropertyDialog(QDialog):
         try:
             self._save()
             n = len(self._feats)
-            msg = f"{n} 个要素属性已保存" if n > 1 else "属性已保存"
+            msg = QApplication.translate("PropertyDialog", "{0} 个要素属性已保存").format(n) if n > 1 else QApplication.translate("PropertyDialog", "属性已保存")
             self.iface.messageBar().pushMessage(
                 "aQuaDrip", msg, level=0, duration=3)
         except Exception as e:
-            QMessageBox.critical(self, "aQuaDrip", f"保存失败: {e}")
+            QMessageBox.critical(self, "aQuaDrip", QApplication.translate("PropertyDialog", "保存失败: {0}").format(e))
 
     def _safe_attr(self, fname):
         idx = self.feat.fields().lookupField(fname)
@@ -480,19 +481,19 @@ class PropertyDialog(QDialog):
             # 校验关键参数
             geom = feat.geometry()
             if not geom or geom.isEmpty():
-                raise ValueError("农田几何为空，请重新绘制地块")
+                raise ValueError(QApplication.translate("PropertyDialog", "农田几何为空，请重新绘制地块"))
             rs = feat.attribute("row_spacing") or 0
             ts = feat.attribute("tape_spacing") or 0
             if float(rs) <= 0 or float(ts) <= 0:
-                raise ValueError(f"间距参数无效: row_spacing={rs}, tape_spacing={ts}")
+                raise ValueError(QApplication.translate("PropertyDialog", "间距参数无效: row_spacing={0}, tape_spacing={1}").format(rs, ts))
 
             from ..tools.lateral_generator import LateralGenerator
             n = LateralGenerator(self.iface).generate(feat)
-            QMessageBox.information(self, "aQuaDrip", f"已生成 {n} 条毛管")
+            QMessageBox.information(self, "aQuaDrip", QApplication.translate("PropertyDialog", "已生成 {0} 条毛管").format(n))
         except Exception as e:
             import traceback
             traceback.print_exc()
-            QMessageBox.critical(self, "aQuaDrip", f"生成失败:\n{e}")
+            QMessageBox.critical(self, "aQuaDrip", QApplication.translate("PropertyDialog", "生成失败:\n{0}").format(e))
 
     # ── 田块内管道批量设置 ──
 
@@ -505,7 +506,7 @@ class PropertyDialog(QDialog):
         line.setFrameShape(QFrame.HLine)
         line.setFrameShadow(QFrame.Sunken)
         parent_layout.addWidget(line)
-        parent_layout.addWidget(QLabel("📋 管道批量设置"))
+        parent_layout.addWidget(QLabel(QApplication.translate("PropertyDialog", "📋 管道批量设置")))
 
         # 管道类型下拉（延迟连接信号，避免 addItem 时触发）
         batch_form = QFormLayout()
@@ -516,7 +517,7 @@ class PropertyDialog(QDialog):
             self._batch_pipe_combo.addItem(
                 BATCH_PIPE_LABELS[ptype], ptype)
         self._batch_pipe_combo.blockSignals(False)
-        batch_form.addRow("管道类型:", self._batch_pipe_combo)
+        batch_form.addRow(QApplication.translate("PropertyDialog", "管道类型:"), self._batch_pipe_combo)
 
         # 所有可能的参数字段（并集）+ 滴头型号
         all_fields = ["diameter", "roughness", "material", "minor_loss",
@@ -530,7 +531,7 @@ class PropertyDialog(QDialog):
 
         # 滴头型号下拉（仅毛管可见）
         model_combo = self._make_emitter_model_combo()
-        model_label = QLabel("滴头型号")
+        model_label = QLabel(QApplication.translate("PropertyDialog", "滴头型号"))
         batch_form.addRow(model_label, model_combo)
         self._batch_widgets["emitter_model"] = model_combo
         self._batch_rows["emitter_model"] = (model_label, model_combo)
@@ -546,7 +547,7 @@ class PropertyDialog(QDialog):
         parent_layout.addLayout(batch_form)
 
         # 应用按钮
-        self._batch_apply_btn = QPushButton("📋 应用到田块内所有毛管")
+        self._batch_apply_btn = QPushButton(QApplication.translate("PropertyDialog", "📋 应用到田块内所有毛管"))
         self._batch_apply_btn.clicked.connect(self._on_batch_apply)
         parent_layout.addWidget(self._batch_apply_btn)
 
@@ -571,8 +572,8 @@ class PropertyDialog(QDialog):
         self._set_batch_row_visible("emitter_model", is_lateral)
 
         # 更新应用按钮文案
-        label = BATCH_PIPE_LABELS.get(ptype, "管道")
-        self._batch_apply_btn.setText(f"📋 应用到田块内所有{label}")
+        label = BATCH_PIPE_LABELS.get(ptype, QApplication.translate("PropertyDialog", "管道"))
+        self._batch_apply_btn.setText(QApplication.translate("PropertyDialog", "📋 应用到田块内所有{0}").format(label))
 
     def _on_batch_emitter_model_changed(self, idx):
         """滴头型号下拉 → 自动填充 k/x"""
@@ -664,11 +665,11 @@ class PropertyDialog(QDialog):
     def _on_batch_apply(self):
         """批量更新田块内所有该类型管道的参数"""
         ptype = self._batch_pipe_combo.currentData()
-        label = BATCH_PIPE_LABELS.get(ptype, "管道")
+        label = BATCH_PIPE_LABELS.get(ptype, QApplication.translate("PropertyDialog", "管道"))
         pipes = self._find_pipes_in_field(ptype)
         if not pipes:
             QMessageBox.information(
-                self, "aQuaDrip", f"田块内未找到{label}，请先生成或绘制{label}")
+                self, "aQuaDrip", QApplication.translate("PropertyDialog", "田块内未找到{0}，请先生成或绘制{1}").format(label, label))
             return
 
         from ..tools.layer_utils import find_layer
@@ -733,7 +734,7 @@ class PropertyDialog(QDialog):
                 count += 1
             if need_edit and not pipe_layer.commitChanges():
                 pipe_layer.rollBack()
-                QMessageBox.warning(self, "aQuaDrip", "管道图层提交失败")
+                QMessageBox.warning(self, "aQuaDrip", QApplication.translate("PropertyDialog", "管道图层提交失败"))
                 return
         except Exception:
             if need_edit:
@@ -742,7 +743,7 @@ class PropertyDialog(QDialog):
 
         pipe_layer.triggerRepaint()
         self.iface.messageBar().pushMessage(
-            "aQuaDrip", f"已更新田块内 {count} 条{label}的参数",
+            "aQuaDrip", QApplication.translate("PropertyDialog", "已更新田块内 {0} 条{1}的参数").format(count, label),
             level=0, duration=4)
 
     # ── 工具 ──
