@@ -9,6 +9,6 @@ about=基于 QGIS + WNTR 的智能滴灌设计与水肥一体化分析平台。�
 tracker=
 repository=
 homepage=
-icon=icon.png
+icon=icon.svg
 experimental=True
 deprecated=False

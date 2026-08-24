@@ -30,11 +30,15 @@ class CrossingNodeGenerator:
         self.iface = iface
         self.project = QgsProject.instance()
 
-    def generate(self, selected_feature: QgsFeature) -> int:
+    def generate(self, selected_feature: QgsFeature,
+                 selected_layer: Optional[QgsVectorLayer] = None) -> int:
         """为选中的管道生成与所有其他管道（含同类型）的连接节点
 
         Args:
-            selected_feature: aqd_pipes 中选中的管道要素（任意 pipe_type）
+            selected_feature: 选中的管道要素（aqd_pipes / aqd_pumps / aqd_valves）
+            selected_layer: 要素所属图层。fid 仅图层内唯一，传入后才能
+                            可靠地区分"自身"与跨图层撞号的其他要素
+                            （未传入时回退到按 fid 反查，可能因撞号误判）
 
         Returns:
             生成的连接节点数量
@@ -46,7 +50,6 @@ class CrossingNodeGenerator:
         if not sel_geom or sel_geom.isEmpty():
             raise RuntimeError("选中管道的几何为空")
 
-        pipes = self._find_pipes_layer()
         nodes = self._find_nodes_layer()
         if nodes is None:
             raise RuntimeError("未找到 aqd_nodes 图层，请先初始化图层")
@@ -58,7 +61,8 @@ class CrossingNodeGenerator:
         # 阀门/水泵图层没有 pipe_type 字段，用图层名推断
         # 默认为 pipe（aqd_pipes），仅当来自 pump/valve 图层时才覆盖
         sel_type = "pipe"
-        sel_layer = self._find_layer_for_feature(selected_feature)
+        sel_layer = selected_layer if selected_layer is not None \
+            else self._find_layer_for_feature(selected_feature)
         if sel_layer is not None:
             src = sel_layer.source() or ""
             if "aqd_pumps" in src:
@@ -79,8 +83,9 @@ class CrossingNodeGenerator:
 
         for link_layer in all_link_layers:
             for feat in link_layer.getFeatures():
-                # 跳过自身（同图层+同 fid）
-                if feat.id() == sel_id:
+                # 跳过自身：fid 仅在图层内唯一，必须先确认是同一图层，
+                # 否则其他图层撞号的要素会被误跳过导致漏检
+                if link_layer is sel_layer and feat.id() == sel_id:
                     continue
 
                 other_geom = feat.geometry()

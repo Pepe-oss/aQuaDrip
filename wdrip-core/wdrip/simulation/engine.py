@@ -13,6 +13,36 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# EPANET toolkit 子进程探测结果缓存（None=未探测）
+_EPANET_TOOLKIT_OK: Optional[bool] = None
+
+
+def _epanet_toolkit_works() -> bool:
+    """在子进程中探测 EPANET toolkit 是否可用
+
+    EPANET 库的二进制崩溃（如 macOS 系统升级后 wntr 自带 libepanet
+    的兼容性段错误）以 SIGKILL/SIGSEGV 信号而非异常的形式发生，
+    进程内 try/except 无法拦截——主进程会被直接杀死。必须用子进程
+    探测，崩溃只损失探测本身。结果进程级缓存，只探测一次。
+    """
+    global _EPANET_TOOLKIT_OK
+    if _EPANET_TOOLKIT_OK is not None:
+        return _EPANET_TOOLKIT_OK
+    import subprocess
+    import sys
+    code = "from wntr.epanet.toolkit import ENepanet; ENepanet()"
+    try:
+        r = subprocess.run([sys.executable, "-c", code],
+                           capture_output=True, timeout=60)
+        _EPANET_TOOLKIT_OK = (r.returncode == 0)
+    except Exception as e:
+        logger.info(f"EPANET toolkit 探测异常: {e}")
+        _EPANET_TOOLKIT_OK = False
+    if not _EPANET_TOOLKIT_OK:
+        logger.info("EPANET toolkit 不可用（未安装或二进制崩溃），"
+                    "回退 WNTR 迭代求解器")
+    return _EPANET_TOOLKIT_OK
+
 
 class SimulationEngine(ABC):
     """模拟引擎基类"""
@@ -177,16 +207,18 @@ def auto_detect_engine() -> SimulationEngine:
 
     检测策略：
     1. 尝试通过 WNTR 内置的 EPANET toolkit 加载库（WNTR pip 安装时自带
-       各平台的预编译 libepanet2，无需额外安装）
+       各平台的预编译 libepanet2，无需额外安装）。探测在子进程中进行
+       ——二进制崩溃以信号形式发生时主进程不受牵连。
     2. 如果 WNTR 自带库不可用，回退到迭代求解器
     """
-    try:
-        from wntr.epanet.toolkit import ENepanet
-        en = ENepanet()
-        if en.ENlib is not None:
-            logger.info("检测到 WNTR 内置 EPANET 库，使用 EpanetSimulator")
-            return EpanetSimulatorEngine()
-    except Exception:
-        pass
+    if _epanet_toolkit_works():
+        try:
+            from wntr.epanet.toolkit import ENepanet
+            en = ENepanet()
+            if en.ENlib is not None:
+                logger.info("检测到 WNTR 内置 EPANET 库，使用 EpanetSimulator")
+                return EpanetSimulatorEngine()
+        except Exception:
+            pass
     logger.info("WNTR 内置 EPANET 库不可用，使用 WNTR 迭代求解器（逼近 emitter 出水）")
     return IterativeWNTRSimulatorEngine()

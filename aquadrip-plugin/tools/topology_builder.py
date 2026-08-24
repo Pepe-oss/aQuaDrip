@@ -166,6 +166,10 @@ class TopologyBuilder:
             pt = self._safe_attr_str(feat, "pipe_type", default_pipe_type or "mainline")
             records.append({
                 "fid": fid,
+                # fid 仅在图层内唯一，管道/水泵/阀门混合检测时必须
+                # 带图层前缀才能全局判等（否则跨图层撞号会被误判为
+                # "自身"而跳过交叉检测）
+                "rec_key": (lid_prefix, fid),
                 "lid": lid,
                 "geom": geom,
                 "line": line,
@@ -192,7 +196,7 @@ class TopologyBuilder:
             # 找所有其他管道的交叉点（受层级规则约束）
             crossing_points = []
             for other in records:
-                if other["fid"] == rec["fid"]:
+                if other["rec_key"] == rec["rec_key"]:
                     continue
                 other_type = other["pipe_type"]
                 if not other_type:

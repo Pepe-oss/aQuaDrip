@@ -60,14 +60,19 @@ class EdgeSelectTool(QgsMapTool):
 
         for feat in field_layer.getFeatures():
             geom = feat.geometry()
-            if geom.isMultipart():
+            ring = None
+            if geom and not geom.isEmpty() and geom.isMultipart():
                 polygon = geom.asMultiPolygon()
-                if polygon:
+                if polygon and polygon[0]:
                     ring = polygon[0][0]  # 外环
-            else:
+            elif geom and not geom.isEmpty():
                 polygon = geom.asPolygon()
                 if polygon:
                     ring = polygon[0]
+            # 几何为空/无环时跳过该要素——否则 ring 未定义
+            # 会 NameError（或沿用上一要素的边界）
+            if not ring or len(ring) < 2:
+                continue
 
             for i in range(len(ring) - 1):
                 p1 = ring[i]

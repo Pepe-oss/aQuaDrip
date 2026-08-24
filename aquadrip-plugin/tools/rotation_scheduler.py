@@ -27,6 +27,8 @@ class RotationScheduler:
         self._field_layer: Optional[QgsVectorLayer] = None
         self._gpkg_path: str = ""
         self._rotation_id: str = ""
+        # 后台线程收集、待主线程写盘的历史记录 payload
+        self._pending_history: List[dict] = []
 
     # ── 数据收集 ──
 
@@ -81,23 +83,57 @@ class RotationScheduler:
 
     # ── 轮灌模拟 ──
 
+    def prepare_snapshot(self) -> dict:
+        """在主线程预取后台轮灌所需的全部 QGIS 数据（线程安全边界）
+
+        QGIS 图层只允许在主线程访问/编辑（sync_qgis_to_network 会回写
+        from_node/to_node）。后台线程运行 run_rotation 前，必须先在主线程
+        调用本方法，把结果经 full_net / link_zone / field_area_m2 注入。
+
+        Returns:
+            {"full_net": DripNetwork, "link_zone": {lid: zone},
+             "field_area_m2": float}
+        """
+        from .sync_manager import SyncManager
+
+        full_net = SyncManager(self.iface).sync_qgis_to_network()
+        return {
+            "full_net": full_net,
+            "link_zone": self._get_link_zone_map(),
+            "field_area_m2": self.get_field_area_m2(),
+        }
+
     def run_rotation(self, zones_data: List[dict],
-                     progress_callback=None) -> List[dict]:
-        """逐分区构建子网并模拟（纯内存操作，线程安全）
+                     progress_callback=None,
+                     full_net=None,
+                     link_zone: Optional[Dict[str, str]] = None,
+                     field_area_m2: Optional[float] = None) -> List[dict]:
+        """逐分区构建子网并模拟
+
+        注入 full_net / link_zone / field_area_m2 后本方法为纯内存操作，
+        可在后台线程安全运行；任一参数缺省时将回退自行读取 QGIS 图层，
+        此时只允许在主线程调用（参见 prepare_snapshot）。
 
         Args:
             zones_data: [{zone, valves, irrigation_mm, order}, ...]
             progress_callback: (pct: int, msg: str)
+            full_net: 主线程构建的完整 DripNetwork
+            link_zone: 主线程读取的 link_id → zone 映射
+            field_area_m2: 主线程计算的田块面积 (m²)
 
         Returns:
             [{zone, valves, cu, du, avg_p_m, duration_min, flow_lph}, ...]
         """
-        from .sync_manager import SyncManager
-
-        sync = SyncManager(self.iface)
-        full_net = sync.sync_qgis_to_network()
+        if full_net is None:
+            from .sync_manager import SyncManager
+            sync = SyncManager(self.iface)
+            full_net = sync.sync_qgis_to_network()
         if not full_net.links:
             return []
+        if link_zone is None:
+            link_zone = self._get_link_zone_map()
+        if field_area_m2 is None:
+            field_area_m2 = self.get_field_area_m2()
 
         total = len(zones_data)
         all_results = []
@@ -113,7 +149,7 @@ class RotationScheduler:
                 progress_callback(pct, f"分区 {zone_name} ({idx+1}/{total})")
 
             # 构建子网：保留公共管道 + 该分区管道
-            sub = self._build_zone_subnet(full_net, zone_name)
+            sub = self._build_zone_subnet(full_net, zone_name, link_zone)
 
             # 设置阀门状态
             from wdrip.network.links import ValveStatus
@@ -145,8 +181,7 @@ class RotationScheduler:
                             total_flow_lph += abs(float(arr[0])) * 3600 * 1000
 
                     # 计算所需灌溉时长
-                    area_m2 = self.get_field_area_m2()
-                    vol_m3 = irrigation_mm / 1000.0 * area_m2
+                    vol_m3 = irrigation_mm / 1000.0 * field_area_m2
                     zone_flow_lph = sum(flows) if flows else 100.0
                     dur_h = vol_m3 / max(zone_flow_lph / 1000.0, 0.001)
                     dur_min = max(1, round(dur_h * 60, 1))
@@ -167,7 +202,9 @@ class RotationScheduler:
                     }
                     all_results.append(shift_result)
 
-                    self._save_result(sub, result, cu, du, zone_name, idx)
+                    self._pending_history.append(
+                        self._make_history_payload(sub, result, cu, du,
+                                                   zone_name, idx))
                 else:
                     all_results.append({
                         "zone": zone_name,
@@ -189,12 +226,15 @@ class RotationScheduler:
 
         return all_results
 
-    def _build_zone_subnet(self, net, zone: str):
+    def _build_zone_subnet(self, net, zone: str,
+                           link_zone: Optional[Dict[str, str]] = None):
         """构建单分区子网：保留公共管道 + 该分区管道 + 仅该分区阀门
 
-        通过从 GPKG 读取的 link→zone 映射判断每条链路所属分区。
+        通过 link→zone 映射判断每条链路所属分区
+        （主线程经 _get_link_zone_map 预取后注入，后台线程不再访问图层）。
         """
-        link_zone = self._get_link_zone_map()
+        if link_zone is None:
+            link_zone = self._get_link_zone_map()
 
         def get_link_zone(lid: str) -> str:
             """查 link 的 zone，分段管道继承原始管道的 zone
@@ -261,41 +301,57 @@ class RotationScheduler:
 
     # ── 历史保存 ──
 
-    def _save_result(self, net, result, cu: float, du: float,
-                     zone_name: str, shift_idx: int):
-        try:
-            if not self._gpkg_path:
-                self._find_gpkg_path()
-            if not self._gpkg_path:
-                return
-            from .sim_history import SimHistory
-            history = SimHistory(self._gpkg_path)
+    def _make_history_payload(self, net, result, cu: float, du: float,
+                              zone_name: str, shift_idx: int) -> dict:
+        """收集单分区结果的 simhistory 参数（纯内存，线程安全）
 
-            node_pressure = {nid: float(arr[0])
-                             for nid, arr in result.node_pressure.items() if len(arr) > 0}
-            link_flow = {lid: float(arr[0])
-                         for lid, arr in result.link_flow.items() if len(arr) > 0}
-            link_velocity = {lid: float(arr[0])
-                             for lid, arr in result.link_velocity.items() if len(arr) > 0}
-            emitter_flow = {eid: float(arr[0])
-                            for eid, arr in result.emitter_flow.items() if len(arr) > 0}
-            node_coords = {nid: [node.x, node.y] for nid, node in net.nodes.items()}
-            link_endpoints = {lid: [link.from_node, link.to_node]
-                              for lid, link in net.links.items()}
-            link_geometry = getattr(net, "link_geometry", None) or {}
+        实际写盘由主线程的 flush_pending_history 完成，避免后台线程
+        与主线程并发"读-改-写"同一 .simhistory JSON。
+        """
+        node_pressure = {nid: float(arr[0])
+                         for nid, arr in result.node_pressure.items() if len(arr) > 0}
+        link_flow = {lid: float(arr[0])
+                     for lid, arr in result.link_flow.items() if len(arr) > 0}
+        link_velocity = {lid: float(arr[0])
+                         for lid, arr in result.link_velocity.items() if len(arr) > 0}
+        emitter_flow = {eid: float(arr[0])
+                        for eid, arr in result.emitter_flow.items() if len(arr) > 0}
+        node_coords = {nid: [node.x, node.y] for nid, node in net.nodes.items()}
+        link_endpoints = {lid: [link.from_node, link.to_node]
+                          for lid, link in net.links.items()}
+        link_geometry = getattr(net, "link_geometry", None) or {}
 
-            history.add(
-                cu=cu, du=du,
-                node_pressure=node_pressure, link_flow=link_flow,
-                link_velocity=link_velocity, emitter_flow=emitter_flow,
-                node_coords=node_coords,
-                message=f"轮灌 R{self._rotation_id} 分区{zone_name}",
-                link_endpoints=link_endpoints, link_geometry=link_geometry,
-                rotation_id=self._rotation_id, shift_index=shift_idx,
-            )
-        except Exception:
-            import traceback
-            traceback.print_exc()
+        return dict(
+            cu=cu, du=du,
+            node_pressure=node_pressure, link_flow=link_flow,
+            link_velocity=link_velocity, emitter_flow=emitter_flow,
+            node_coords=node_coords,
+            message=f"轮灌 R{self._rotation_id} 分区{zone_name}",
+            link_endpoints=link_endpoints, link_geometry=link_geometry,
+            rotation_id=self._rotation_id, shift_index=shift_idx,
+        )
+
+    def flush_pending_history(self) -> int:
+        """将后台线程收集的历史记录写入 .simhistory（须在主线程调用）"""
+        payloads = self._pending_history
+        self._pending_history = []
+        if not payloads:
+            return 0
+        if not self._gpkg_path:
+            self._find_gpkg_path()
+        if not self._gpkg_path:
+            return 0
+        from .sim_history import SimHistory
+        history = SimHistory(self._gpkg_path)
+        written = 0
+        for payload in payloads:
+            try:
+                history.add(**payload)
+                written += 1
+            except Exception:
+                import traceback
+                traceback.print_exc()
+        return written
 
     # ── 辅助 ──
 
@@ -305,8 +361,13 @@ class RotationScheduler:
         geom = self._field_feat.geometry()
         if geom is None:
             return 0
-        from qgis.core import QgsDistanceArea
+        from qgis.core import QgsDistanceArea, QgsProject
         da = QgsDistanceArea()
+        # 必须设置源 CRS：投影坐标系（米）下若按经纬度解释，
+        # 面积会差好几个数量级，轮灌时长随之完全错误
+        crs = self._field_layer.crs() if self._field_layer else None
+        if crs is not None and crs.isValid():
+            da.setSourceCrs(crs, QgsProject.instance().transformContext())
         da.setEllipsoid("WGS84")
         return da.measureArea(geom)
 
@@ -353,21 +414,34 @@ class RotationScheduler:
 
 
 class RotationWorker(QObject):
-    """后台轮灌 Worker"""
+    """后台轮灌 Worker
+
+    仅做纯内存计算：所有 QGIS 图层访问（网络同步 / zone 映射 / 面积）
+    已由主线程经 prepare_snapshot 预取并注入；simhistory 写盘也推迟到
+    主线程 flush_pending_history，避免跨线程编辑图层与并发写文件。
+    """
     progress_changed = pyqtSignal(int, str)
     finished = pyqtSignal(list)
     error_occurred = pyqtSignal(str)
 
-    def __init__(self, scheduler: RotationScheduler, zones_data: list, parent=None):
+    def __init__(self, scheduler: RotationScheduler, zones_data: list,
+                 full_net=None, link_zone: Optional[Dict[str, str]] = None,
+                 field_area_m2: Optional[float] = None, parent=None):
         super().__init__(parent)
         self._scheduler = scheduler
         self._zones = zones_data
+        self._full_net = full_net
+        self._link_zone = link_zone
+        self._field_area_m2 = field_area_m2
 
     def run(self):
         try:
             results = self._scheduler.run_rotation(
                 self._zones,
-                progress_callback=lambda p, m: self.progress_changed.emit(p, m))
+                progress_callback=lambda p, m: self.progress_changed.emit(p, m),
+                full_net=self._full_net,
+                link_zone=self._link_zone,
+                field_area_m2=self._field_area_m2)
             self.finished.emit(results)
         except Exception as e:
             import traceback

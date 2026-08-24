@@ -11,6 +11,8 @@
   - 0.8 ~ 1.0    → warning (接近承压极限)
   - < 0.8        → safe    (安全)
   - max_pressure = 0 → unset (未设置承压，跳过)
+  - 端点压力查不到  → unknown (未 sync 回写端点 / 历史缺该节点，
+                      显式标记而非拿 0 误判 safe)
 
 不修改原始 aqd_pipes 图层，结果写入临时内存图层「承压分析」。
 """
@@ -62,7 +64,7 @@ class PipePressureChecker:
 
         # 逐管道判定
         results: List[dict] = []
-        stats = {"leak": 0, "warning": 0, "safe": 0, "unset": 0}
+        stats = {"leak": 0, "warning": 0, "safe": 0, "unset": 0, "unknown": 0}
 
         for feat in pipe_layer.getFeatures():
             geom = feat.geometry()
@@ -70,15 +72,21 @@ class PipePressureChecker:
                 continue
 
             mp = self._safe_float(feat, "max_pressure")
-            fn = str(feat.attribute("from_node") or "")
-            tn = str(feat.attribute("to_node") or "")
-            fp = node_pressure.get(fn, 0.0)
-            tp = node_pressure.get(tn, 0.0)
-            pipe_p = max(abs(fp), abs(tp))
+            fn = self._safe_str(feat, "from_node")
+            tn = self._safe_str(feat, "to_node")
+            pipe_p = 0.0
 
             if mp <= 0:
                 status = "unset"
+            elif not fn or not tn or (
+                    fn not in node_pressure and tn not in node_pressure):
+                # 端点为空（未模拟回写 / 新增管道）或历史中查不到该节点：
+                # 显式标记 unknown——拿 0 当压力会把所有管道误判 safe
+                status = "unknown"
             else:
+                fp = node_pressure.get(fn, 0.0)
+                tp = node_pressure.get(tn, 0.0)
+                pipe_p = max(abs(fp), abs(tp))
                 ratio = pipe_p / mp
                 if ratio > 1.0:
                     status = "leak"
@@ -106,7 +114,8 @@ class PipePressureChecker:
         total = sum(stats.values())
         self.iface.messageBar().pushMessage(
             "aQuaDrip",
-            f"承压分析: {stats['leak']}红/{stats['warning']}黄/{stats['safe']}绿/{stats['unset']}灰"
+            f"承压分析: {stats['leak']}红/{stats['warning']}黄/{stats['safe']}绿"
+            f"/{stats['unknown']}蓝(压力未知)/{stats['unset']}灰"
             f"（共{total}条）",
             level=0, duration=6)
 
@@ -156,6 +165,7 @@ class PipePressureChecker:
             ("leak", "超压泄漏风险", QColor(220, 50, 50), 1.8),
             ("warning", "接近承压极限", QColor(255, 170, 0), 1.4),
             ("safe", "安全", QColor(50, 180, 60), 0.8),
+            ("unknown", "压力未知(未回写端点)", QColor(100, 149, 237), 0.6),
             ("unset", "未设置承压", QColor(180, 180, 180), 0.6),
         ]
         cats = []
@@ -195,6 +205,16 @@ class PipePressureChecker:
             return float(val)
         except (TypeError, ValueError):
             return default
+
+    @staticmethod
+    def _safe_str(feat: QgsFeature, fname: str,
+                  default: str = "") -> str:
+        """容错读取字符串字段（旧 GPKG 缺字段时返回默认值）"""
+        idx = feat.fields().lookupField(fname)
+        if idx < 0:
+            return default
+        val = feat.attribute(idx)
+        return str(val) if val is not None else default
 
     def _find_layer(self, key: str) -> Optional[QgsVectorLayer]:
         from .layer_utils import find_layer

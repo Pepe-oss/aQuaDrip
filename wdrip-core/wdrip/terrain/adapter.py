@@ -44,10 +44,22 @@ class DemReader:
                 path=self.path,
                 crs=str(self._dataset.crs) if self._dataset.crs else None,
                 resolution=abs(self._dataset.res[0]),
-                min_elevation=float(self._dataset.bounds.top),
-                max_elevation=float(self._dataset.bounds.bottom),
+                min_elevation=0.0,
+                max_elevation=0.0,
                 band_count=self._dataset.count,
             )
+            # 用掩膜 nodata 后的波段统计真实高程范围。
+            # 注意 bounds.top/bottom 是地理外包框的北/南边界坐标，
+            # 不是高程值，不能用作 min/max elevation
+            try:
+                import numpy as np
+                band = self._dataset.read(1, masked=True)
+                valid = band.compressed()
+                if valid.size > 0:
+                    self._info.min_elevation = float(np.min(valid))
+                    self._info.max_elevation = float(np.max(valid))
+            except Exception:
+                pass  # 统计失败不阻断打开（read_elevation 仍可用）
             return True
         except ImportError:
             warnings.warn("rasterio 未安装，尝试 CSV 回退模式")
@@ -71,23 +83,32 @@ class DemReader:
     
     def read_elevation(self, x: float, y: float) -> Optional[float]:
         """读取指定坐标的高程值
-        
+
         Args:
             x: 投影坐标 X (m)
             y: 投影坐标 Y (m)
-            
+
         Returns:
-            高程值 (m)，失败返回 None
+            高程值 (m)，失败或命中 nodata 像素（如 -9999）返回 None
         """
         if self._rasterio and self._dataset:
             try:
                 # 坐标转行列
                 row, col = self._dataset.index(x, y)
-                # 读取单个像素值
+                # 读取单个像素值（masked=True 让 nodata 像素可识别，
+                # 否则 -9999 之类哨兵值会直接写进节点高程）
                 value = self._dataset.read(1, window=(
                     (row, row + 1), (col, col + 1)
-                ))
-                return float(value[0][0])
+                ), masked=True)
+                v = value[0][0]
+                import numpy as np
+                if np.ma.is_masked(v):
+                    return None
+                fv = float(v)
+                nodata = self._dataset.nodata
+                if nodata is not None and fv == float(nodata):
+                    return None
+                return fv
             except Exception:
                 return None
         return None

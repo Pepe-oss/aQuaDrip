@@ -128,9 +128,19 @@ class UniformityAnalyzer:
         
         # EU（如果有压力数据）
         if node_pressures and emitter_x is not None:
-            pressures = np.array([float(v[0]) for v in node_pressures.values() if len(v) > 0])
-            if len(pressures) == len(flows):
-                eu_val = UniformityAnalyzer.eu(flows, pressures, emitter_x)
+            # 按节点 ID 对齐滴头流量与压力：node_pressures 含全部节点
+            # （junction/source 等），与 emitter_flows 键集不同，仅按
+            # 长度相等就位置配对会把流量和压力张冠李戴
+            common = [nid for nid in emitter_flows
+                      if nid in node_pressures
+                      and len(emitter_flows[nid]) > 0
+                      and len(node_pressures[nid]) > 0]
+            if common:
+                flows_p = np.array([float(emitter_flows[nid][0])
+                                    for nid in common])
+                pressures_p = np.array([float(node_pressures[nid][0])
+                                        for nid in common])
+                eu_val = UniformityAnalyzer.eu(flows_p, pressures_p, emitter_x)
                 result["EU"] = round(eu_val, 1)
         
         return result

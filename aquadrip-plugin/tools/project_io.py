@@ -439,9 +439,25 @@ def import_inp(iface) -> bool:
                 feat.setAttribute("to_node", link.end_node_name)
                 feat.setAttribute("diameter", float(link.diameter) * 1000)
                 feat.setAttribute("status", "open")
-                feat.setAttribute("pump_head", 0.0)
-                feat.setAttribute("pump_flow", 0.0)
-                feat.setAttribute("pump_power", 0.0)
+                # 提取 INP 中的泵参数：POWER 模式取功率，HEAD 模式取
+                # Q-H 曲线设计点（中间点）——原先全部清零会丢失数据
+                p_head, p_flow, p_power = 0.0, 0.0, 0.0
+                try:
+                    if str(getattr(link, 'pump_type', '')).upper() == 'POWER':
+                        p_power = float(link.power or 0.0)
+                    else:
+                        cname = getattr(link, 'pump_curve_name', None)
+                        curve = wn.get_curve(cname) if cname else None
+                        if curve is not None and len(curve.points) > 0:
+                            pts = curve.points  # [(flow m³/s, head m)]
+                            fq, fh = pts[len(pts) // 2]
+                            p_flow = float(fq) * 3600.0  # m³/s → m³/h
+                            p_head = float(fh)
+                except Exception:
+                    pass
+                feat.setAttribute("pump_head", p_head)
+                feat.setAttribute("pump_flow", p_flow)
+                feat.setAttribute("pump_power", p_power)
                 p_added += 1
                 pump_layer.addFeature(feat)
         except Exception:
@@ -484,7 +500,16 @@ def import_inp(iface) -> bool:
                     feat.setAttribute("valve_type", str(link.valve_type))
                 else:
                     feat.setAttribute("valve_type", "GATE")
-                feat.setAttribute("setting", 0.0)
+                # setting=0 会把阀门当全关处理直接阻断水流：
+                # 优先用 INP 中的 setting，缺失时回退字段默认值 10
+                setting = 10.0
+                try:
+                    s = float(getattr(link, 'setting', 0) or 0)
+                    if s > 0:
+                        setting = s
+                except (TypeError, ValueError):
+                    pass
+                feat.setAttribute("setting", setting)
                 p_added += 1
                 valve_layer.addFeature(feat)
         except Exception:

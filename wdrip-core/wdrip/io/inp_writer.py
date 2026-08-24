@@ -27,12 +27,13 @@ class InpWriter:
         self._write_reservoirs()
         self._write_pipes()
         self._write_pumps()
+        self._write_curves()
         self._write_valves()
         self._write_emitters()
         self._write_coordinates()
         self._write_options()
         self._write_end()
-        
+
         with open(path, "w", encoding="utf-8") as f:
             f.write("\n".join(self.lines))
     
@@ -44,6 +45,7 @@ class InpWriter:
         self._write_reservoirs()
         self._write_pipes()
         self._write_pumps()
+        self._write_curves()
         self._write_valves()
         self._write_emitters()
         self._write_coordinates()
@@ -70,8 +72,10 @@ class InpWriter:
             if not hasattr(node, "source_type"):
                 elev = getattr(node, "elevation", 0)
                 demand = getattr(node, "demand", 0)
-                # 转换 m³/s → LPS (EPANET 常用 LPS)
-                demand_lps = demand * 1000 if hasattr(node, "emitter_k") else 0
+                # 滴头的出流经 [EMITTERS] 段表达，Demand 留 0；
+                # 普通 Junction 的集中需水量 m³/s → LPS 原样输出
+                # （原先条件写反，非滴头节点需求被无条件清零）
+                demand_lps = 0.0 if hasattr(node, "emitter_k") else demand * 1000
                 self._add(f"  {nid:<16} {elev:<15.3f} {demand_lps:<15.6f}  ")
         self._add("")
     
@@ -102,18 +106,64 @@ class InpWriter:
         self._add("[PUMPS]")
         self._add(";ID               Node1           Node2           Parameters")
         has_pump = False
+        self._pump_curves: Dict[str, List[tuple]] = {}
         for lid, link in self.network.links.items():
             if hasattr(link, "pump_type"):
                 has_pump = True
-                # 简单泵: HEAD 模式
-                q = getattr(link, "rated_flow", 0)
-                h = getattr(link, "rated_head", 0)
-                self._add(
-                    f"  {lid:<16} {link.from_node:<15} {link.to_node:<15} "
-                    f"HEAD {h:.2f}"
-                )
+                curve = getattr(link, "curve", None)
+                h = getattr(link, "rated_head", 0) or 0
+                q = getattr(link, "rated_flow", 0) or 0
+                power = getattr(link, "rated_power", 0) or 0
+                if curve:
+                    # 有 Q-H 点集：泵引用曲线 ID，曲线写入 [CURVES]
+                    cid = f"CURVE_{lid}"
+                    self._pump_curves[cid] = list(curve)
+                    self._add(
+                        f"  {lid:<16} {link.from_node:<15} {link.to_node:<15} "
+                        f"HEAD {cid}"
+                    )
+                elif h > 0 and q > 0:
+                    # 额定点单点曲线：EPANET 对单点泵曲线自动补全
+                    # （shutoff head = 1.33×H_d，max flow = 2×Q_d）
+                    cid = f"CURVE_{lid}"
+                    self._pump_curves[cid] = [(q, h)]
+                    self._add(
+                        f"  {lid:<16} {link.from_node:<15} {link.to_node:<15} "
+                        f"HEAD {cid}"
+                    )
+                elif power > 0:
+                    # 仅有功率：POWER 模式（恒定能量加入）
+                    self._add(
+                        f"  {lid:<16} {link.from_node:<15} {link.to_node:<15} "
+                        f"POWER {power:.2f}"
+                    )
+                else:
+                    # 无任何参数：退化为常规扬程单点曲线兜底
+                    cid = f"CURVE_{lid}"
+                    self._pump_curves[cid] = [(1.0, 10.0)]
+                    self._add(
+                        f"  {lid:<16} {link.from_node:<15} {link.to_node:<15} "
+                        f"HEAD {cid}"
+                    )
         if not has_pump:
             self._add("; (无水泵)")
+        self._add("")
+
+    def _write_curves(self):
+        """输出 [CURVES] 段（泵 Q-H 曲线）。
+
+        EPANET 规定 [PUMPS] 的 HEAD/POWER 后必须是已定义的曲线 ID
+        （POWER 除外），直接写数值会引用不存在的曲线导致无法求解。
+        曲线流量单位 m³/h → LPS（与 Units LPS 一致）。
+        """
+        curves = getattr(self, "_pump_curves", None) or {}
+        self._add("[CURVES]")
+        self._add(";ID               Flow(LPS)        Head(m)")
+        if not curves:
+            self._add("; (无曲线)")
+        for cid, points in curves.items():
+            for q, h in points:
+                self._add(f"  {cid:<16} {q / 3.6:<15.4f} {h:<10.3f}")
         self._add("")
     
     def _write_valves(self):
@@ -136,17 +186,24 @@ class InpWriter:
     
     def _write_emitters(self):
         self._add("[EMITTERS]")
-        self._add(";Junction         Coefficient     Exponent")
+        self._add(";Junction         Coefficient")
         has_emitter = False
+        exp = None
         for nid, node in self.network.nodes.items():
             if hasattr(node, "emitter_k") and node.emitter_k > 0:
                 has_emitter = True
                 # EPANET 用 LPS 单位: 1 L/h = 0.0002778 LPS
                 coeff_lps = node.emitter_k / 3600
-                self._add(f"  {nid:<16} {coeff_lps:.8f}     {node.emitter_x}")
+                # INP 规范中 [EMITTERS] 每行仅 2 列（junction, coeff），
+                # 流态指数只能经 [OPTIONS] 的 Emitter Exponent 全局设置
+                self._add(f"  {nid:<16} {coeff_lps:.8f}")
+                if exp is None:
+                    exp = node.emitter_x
         if not has_emitter:
             self._add("; (无滴头)")
         self._add("")
+        # 供 _write_options 写全局 Emitter Exponent
+        self._emitter_exponent = exp
     
     def _write_coordinates(self):
         self._add("[COORDINATES]")
@@ -162,7 +219,12 @@ class InpWriter:
         headloss = "H-W"
         self._add(f"  Units       {units}")
         self._add(f"  Headloss    {headloss}")
-        self._add(f"  Pattern     1")
+        # 滴头流态指数：EPANET 的 emitter 指数是全局 OPTION（默认 0.5）
+        exp = getattr(self, "_emitter_exponent", None)
+        if exp is not None and exp > 0:
+            self._add(f"  Emitter Exponent    {exp}")
+        # 注：不写 "Pattern 1"——本项目未定义任何 [PATTERNS]，
+        # 引用未定义的 pattern 会导致 EPANET 解析报错
         self._add("")
     
     def _write_end(self):

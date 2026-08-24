@@ -114,7 +114,9 @@ class LateralGenerator:
             errors.append(f"滴灌带间距必须大于 0（当前 {tape_spacing}）")
         if tapes_per_ridge < 1:
             errors.append(f"每垄滴灌带数必须 ≥ 1（当前 {tapes_per_ridge}）")
-        if tapes_per_ridge > 1 and row_spacing <= 0:
+        # 单带模式（tapes_per_ridge==1）同样以 row_spacing 驱动 while 循环，
+        # 负值/零会导致死循环——"or 0.6" 兜底只能拦截 0/NULL，拦不住负数
+        if row_spacing <= 0:
             errors.append(f"垄间距必须大于 0（当前 {row_spacing}）")
         if planting_pattern == "ridge_count" and ridge_count <= 0:
             errors.append(f"按垄数模式必须指定垄数 > 0（当前 {ridge_count}）")

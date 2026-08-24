@@ -401,12 +401,12 @@ class DripSimulation:
             if hasattr(node, "emitter_k") and node.emitter_k > 0:
                 pressure_arr = result.node_pressure.get(nid)
                 if pressure_arr is not None and len(pressure_arr) > 0:
-                    # q (L/h) = k * P^x  （k 单位 L/h, P 单位 m）
-                    # 对于 PC 滴头 (x≈0)，流量 ≈ nominal_flow
-                    if node.emitter_x < 0.1:
-                        flow_arr = np.full_like(pressure_arr, node.emitter_k)
-                    else:
-                        flow_arr = node.emitter_k * (np.maximum(pressure_arr, 0) ** node.emitter_x)
+                    # q (L/h) = k * max(P, 0)^x  （k 单位 L/h, P 单位 m）
+                    # 统一公式，与迭代引擎(IterativeWNTRSimulatorEngine)一致：
+                    # PC 滴头(x≈0.05)在工作压力下 P^x≈1 结果近似额定值，
+                    # 压力为 0 时正确归零——原先恒报 k 会虚报无压滴头流量
+                    flow_arr = node.emitter_k * (
+                        np.maximum(pressure_arr, 0) ** node.emitter_x)
                     result.emitter_flow[nid] = flow_arr
         
         return result

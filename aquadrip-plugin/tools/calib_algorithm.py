@@ -238,16 +238,26 @@ def _apply_roughness(iface, net, new_roughness, old_vals, c_limits) -> Tuple[int
     if need_edit:
         pipe_layer.startEditing()
     try:
+        # 内存网中的切段 ID（L3_p2 交叉切断 / L4_seg003 毛管展开）属于
+        # 同一条 GPKG 管道：映射回基础 fid 取平均后写回，
+        # 而不是 int() 解析失败静默跳过（导致切段校正丢失）
+        base_updates: Dict[int, List[float]] = {}
         for lid, nc in new_roughness.items():
             if not lid.startswith("L"):
                 continue
+            base = lid[1:].split("_p")[0].split("_seg")[0]
             try:
-                fid = int(lid[1:])
+                fid = int(base)
             except ValueError:
                 continue
+            base_updates.setdefault(fid, []).append(float(nc))
+
+        for fid, cs in sorted(base_updates.items()):
             feat = fid_map.get(fid)
             if feat is None:
                 continue
+            lid = f"L{fid}"
+            nc = sum(cs) / len(cs)
             oc = old_vals.get(lid, 130.0)
             feat.setAttribute("roughness", float(nc))
             pipe_layer.updateFeature(feat)

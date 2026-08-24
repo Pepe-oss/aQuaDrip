@@ -85,12 +85,23 @@ class SyncManager:
             self.log("⚠️ 图层为经纬度坐标，长度/面积按度计算，建议投影到米制坐标系")
 
         # 1. 读取农田
+        # FieldInfo 是单数模型：多田块项目把面积累加，农艺参数取第一个
+        # 田块，并提示用户（原先静默丢弃其余田块）
         field_layer = self._get_layer("aqd_fields")
         if field_layer and field_layer.featureCount() > 0:
-            feat = next(field_layer.getFeatures())
+            feats = list(field_layer.getFeatures())
+            feat = feats[0]
             fgeom = feat.geometry()
+            total_area = sum(
+                (f.geometry().area()
+                 if f.geometry() and not f.geometry().isEmpty() else 0.0)
+                for f in feats)
+            if len(feats) > 1:
+                self.log(
+                    f"⚠️ 检测到 {len(feats)} 个田块，FieldInfo 仅支持单一农艺参数："
+                    f"面积已累加({total_area:.1f})，其余参数取第一个田块")
             net.field_info = FieldInfo(
-                area=fgeom.area() if fgeom and not fgeom.isEmpty() else 0.0,
+                area=total_area,
                 crop_type=str(self._attr(feat, "crop_type") or ""),
                 planting_pattern=str(self._attr(feat, "planting_pattern") or "uniform"),
                 row_spacings=[float(self._attr(feat, "row_spacing") or 0.5)],

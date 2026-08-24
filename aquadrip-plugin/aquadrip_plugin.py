@@ -43,6 +43,7 @@ class AQuaDripPlugin:
 
         # 创建菜单与工具栏
         menu = self.iface.pluginMenu().addMenu("&aQuaDrip")
+        self._menu = menu  # unload 时移除整个子菜单
         toolbar = self.iface.addToolBar("aQuaDrip")
         toolbar.setObjectName("aQuaDripToolBar")
         self.toolbar = toolbar
@@ -122,9 +123,21 @@ class AQuaDripPlugin:
             try:
                 self.iface.removePluginMenu("&aQuaDrip", action)
                 self.iface.removeToolBarIcon(action)
-            except:
+            except Exception:
                 pass
         self.actions.clear()
+
+        # 移除 "&aQuaDrip" 子菜单本身（removePluginMenu 只移除 action，
+        # 不移除菜单，否则空菜单残留在插件菜单里）
+        menu = getattr(self, "_menu", None)
+        if menu is not None:
+            try:
+                plugin_menu = self.iface.pluginMenu()
+                plugin_menu.removeAction(menu.menuAction())
+                menu.deleteLater()
+            except Exception:
+                pass
+            self._menu = None
 
         if getattr(self, "toolbar", None):
             try:
@@ -401,7 +414,7 @@ class AQuaDripPlugin:
 
         try:
             from .tools.crossing_node_tool import CrossingNodeGenerator
-            CrossingNodeGenerator(self.iface).generate(feat)
+            CrossingNodeGenerator(self.iface).generate(feat, layer)
         except Exception as e:
             import traceback
             traceback.print_exc()
@@ -799,7 +812,22 @@ class AQuaDripPlugin:
             dlg._on_stop()
             return
 
-        worker = RotationWorker(scheduler, zones)
+        # QGIS 图层只允许主线程访问/编辑（sync_qgis_to_network 会回写
+        # from_node/to_node）：先在主线程预取网络、zone 映射与田块面积，
+        # 后台线程仅做纯内存模拟
+        try:
+            snapshot = scheduler.prepare_snapshot()
+        except Exception as e:
+            import traceback
+            dlg.on_progress(0, f"错误: {e}\n{traceback.format_exc()}")
+            dlg._on_stop()
+            return
+        if not snapshot["full_net"].links:
+            self.iface.messageBar().pushWarning("aQuaDrip", "管网为空，无法轮灌模拟")
+            dlg._on_stop()
+            return
+
+        worker = RotationWorker(scheduler, zones, **snapshot)
         thread = QThread()
         worker.moveToThread(thread)
 
@@ -818,7 +846,15 @@ class AQuaDripPlugin:
         thread.start()
 
     def _show_rot_results(self, results: list, scheduler):
-        """直接在 dockwidget 展示轮灌结果"""
+        """直接在 dockwidget 展示轮灌结果，并写盘后台收集的历史记录"""
+        if results:
+            # 历史记录由 worker 在内存中收集，统一回到主线程写
+            # .simhistory（避免并发"读-改-写"损坏 JSON）
+            try:
+                scheduler.flush_pending_history()
+            except Exception:
+                import traceback
+                traceback.print_exc()
         if self.dockwidget and results:
             self.dockwidget.show_rotation_results(results, scheduler.rotation_id)
 
@@ -1067,8 +1103,11 @@ class AQuaDripPlugin:
                     dx,dy=bx-ax,by-ay; l2=dx*dx+dy*dy
                     t=max(0,min(1,((ox-ax)*dx+(oy-ay)*dy)/l2)) if l2>1e-20 else 0.5
                     px,py=ax+t*dx,ay+t*dy; d=((ox-px)**2+(oy-py)**2)**0.5
-                    if d<bd: bd=d; f=lfd.get(lid)
-                    sq = abs(float(f)) if isinstance(f,(int,float)) else None
+                    # 仅在找到更近管段时更新流量——赋值若放在 if 外，
+                    # 会被最后一个遍历到的管段覆盖，取到"最后一段"而非"最近一段"
+                    if d<bd:
+                        bd=d; f=lfd.get(lid)
+                        sq = abs(float(f)) if isinstance(f,(int,float)) else None
             new[lb] = (ox, oy, sp, po, sq, qo)
         return new
 

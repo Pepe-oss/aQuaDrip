@@ -40,8 +40,9 @@ class AQuaDripDockWidget(QDockWidget):
         self.log = QTextEdit()
         self.log.setReadOnly(True)
         self.log.setPlaceholderText("操作日志...")
-        from qgis.PyQt.QtGui import QFont
-        self.log.setFont(QFont("Menlo", 9))
+        from qgis.PyQt.QtGui import QFontDatabase
+        # 系统等宽字体——Menlo 仅 macOS 自带，Windows/Linux 下会静默回退
+        self.log.setFont(QFontDatabase.systemFont(QFontDatabase.FixedFont))
         log_layout.addWidget(self.log, stretch=1)
 
         self._tabs.addTab(self._log_tab, "日志")

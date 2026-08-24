@@ -141,27 +141,30 @@ class VisualizeDialog(QDialog):
         """根据过滤器更新列表显示"""
         filter_rid = self._shift_combo.currentData() if hasattr(self, '_shift_combo') else ""
         self.list_widget.clear()
-        for record in self.records:
+        for idx, record in enumerate(self.records):
             if filter_rid and record.get("rotation_id") != filter_rid:
                 continue
             summary = SimHistory.summary(record)
             item = QListWidgetItem(summary)
+            # 存全量索引：启用轮灌过滤后列表行号与 self.records
+            # 索引不再一一对应，直接用行号会可视化/删除错误的记录
+            item.setData(Qt.UserRole, idx)
             self.list_widget.addItem(item)
 
     def _on_visualize(self):
         """可视化选中的记录"""
-        row = self.list_widget.currentRow()
-        if row < 0:
+        item = self.list_widget.currentItem()
+        if item is None:
             QMessageBox.information(self, "aQuaDrip", "请先选择一条记录")
             return
-        record = self.records[row]
+        record = self.records[item.data(Qt.UserRole)]
         mode = self.mode_combo.currentData()
         self.visualize_requested.emit(record, mode)
 
     def _on_delete(self):
         """删除选中的记录"""
-        row = self.list_widget.currentRow()
-        if row < 0:
+        item = self.list_widget.currentItem()
+        if item is None:
             QMessageBox.information(self, "aQuaDrip", "请先选择一条记录")
             return
 
@@ -171,7 +174,7 @@ class VisualizeDialog(QDialog):
         if reply != QMessageBox.Yes:
             return
 
-        if self.history.delete(row):
+        if self.history.delete(item.data(Qt.UserRole)):
             self._refresh_list()
             self.iface.messageBar().pushMessage(
                 "aQuaDrip", "记录已删除", level=0, duration=3)

@@ -32,3 +32,6 @@ env/
 .zcode/plans/
 
 已有示例/
+
+# EPANET 模拟临时输出（temp.*）
+temp.inp
