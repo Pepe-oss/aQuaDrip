@@ -4,6 +4,64 @@
 
 An intelligent drip irrigation design & fertigation analysis platform built on QGIS + WNTR.
 
+## 安装 / Installation
+
+### 前置要求 / Requirements
+
+| 依赖 | 说明 |
+|---|---|
+| QGIS ≥ 3.28 | LTR 或更新版本 / LTR or newer |
+| Python 依赖 `wntr` | 水力模拟引擎 / hydraulic engine(QGIS 自带 numpy/pandas,只需补装 wntr) |
+
+### 方式一:ZIP 安装(推荐普通用户)/ Install from ZIP
+
+1. **下载**:从 GitHub `Releases` 页面下载最新的 `aquadrip-<版本>.zip`
+   (ZIP 内已包含核心库 wdrip 与中英翻译文件,无需额外下载)
+2. **安装**:QGIS 菜单 `插件 → 管理并安装插件 → 从 ZIP 安装`,
+   选择下载的 zip → `安装插件`
+3. **补装模拟依赖**:在 QGIS 自带的 Python 环境中安装 wntr——
+
+   | 平台 | 命令 |
+   |---|---|
+   | macOS | `/Applications/QGIS.app/Contents/MacOS/bin/python3 -m pip install wntr` |
+   | Windows(OSGeo4W Shell) | `python-o4w -m pip install wntr` |
+   | Linux | `python3 -m pip install wntr --user`(用 QGIS 使用的解释器) |
+
+4. **启用**:插件管理器中勾选 `aQuaDrip`,顶部工具栏出现 aQuaDrip 按钮即安装成功
+
+> 未安装 wntr 时插件仍可加载,但「运行模拟」等功能会提示缺依赖。
+
+### 方式二:源码部署(推荐开发者)/ From source
+
+```bash
+git clone https://github.com/Pepe-oss/aQuaDrip.git
+```
+
+将仓库中的 `aquadrip-plugin` 目录**软链接**到 QGIS 插件目录
+(插件会自动识别同仓库的 `wdrip-core`,且代码改动重启 QGIS 即生效):
+
+| 平台 | QGIS 插件目录(默认 profile) |
+|---|---|
+| macOS | `~/Library/Application Support/QGIS/QGIS3/profiles/default/python/plugins` |
+| Windows | `%APPDATA%\QGIS\QGIS3\profiles\default\python\plugins` |
+| Linux | `~/.local/share/QGIS/QGIS3/profiles/default/python/plugins` |
+
+```bash
+# macOS 示例
+ln -s "$(pwd)/aquadrip-plugin" \
+  "$HOME/Library/Application Support/QGIS/QGIS3/profiles/default/python/plugins/aquadrip"
+```
+
+wntr 依赖同样按方式一第 3 步安装。
+
+### 打包新版本 ZIP / Build a release ZIP
+
+维护者从仓库根目录执行(输出到 `dist/`):
+
+```bash
+python scripts/make_zip.py
+```
+
 ## 界面语言 / UI Language
 
 插件内置**简体中文**与 **English** 双语界面(单一安装包):

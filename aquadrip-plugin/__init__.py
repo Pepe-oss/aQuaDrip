@@ -6,11 +6,21 @@ aQuaDrip — 基于 QGIS + WNTR 的智能滴灌设计与水肥一体化分析平
 import os
 import sys
 
-# 将 wdrip-core 加入 Python 路径（插件与 wdrip-core 同级目录部署）
-_wdrip_core = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "wdrip-core")
-_wdrip_core = os.path.abspath(_wdrip_core)
-if os.path.isdir(os.path.join(_wdrip_core, "wdrip")) and _wdrip_core not in sys.path:
-    sys.path.insert(0, _wdrip_core)
+# 定位 wdrip 核心库,两种布局按优先级查找:
+#   1. 随插件分发的 wdrip 包(单一 ZIP 安装布局:<plugin>/wdrip)
+#   2. 开发布局:插件目录同级的 wdrip-core 仓库
+#      (<repo>/aquadrip-plugin 与 <repo>/wdrip-core,软链部署时
+#       realpath 会正确解析到仓库真实路径)
+_here = os.path.dirname(os.path.realpath(__file__))
+_wdrip_core = os.path.abspath(os.path.join(_here, "..", "wdrip-core"))
+if os.path.isdir(os.path.join(_here, "wdrip")):
+    _wdrip_root = _here
+elif os.path.isdir(os.path.join(_wdrip_core, "wdrip")):
+    _wdrip_root = _wdrip_core
+else:
+    _wdrip_root = None
+if _wdrip_root and _wdrip_root not in sys.path:
+    sys.path.insert(0, _wdrip_root)
 
 from .aquadrip_plugin import AQuaDripPlugin
 

@@ -35,3 +35,6 @@ env/
 
 # EPANET 模拟临时输出（temp.*）
 temp.inp
+
+# 打包产物
+dist/
