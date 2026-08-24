@@ -15,7 +15,10 @@ class SimHistory:
     """模拟历史记录管理（sidecar JSON 文件）
 
     存储路径：aquadrip.gpkg → aquadrip.simhistory（同目录同名）
+    自动裁剪：超过 MAX_RECORDS 条时自动保留最新记录
     """
+
+    MAX_RECORDS = 100  # 自动保留的最大记录数
 
     def __init__(self, gpkg_path: str):
         self.gpkg_path = gpkg_path
@@ -112,6 +115,10 @@ class SimHistory:
         }
         records.append(record)
 
+        # 自动裁剪：超过 MAX_RECORDS 只保留最新
+        if len(records) > self.MAX_RECORDS:
+            records = records[-self.MAX_RECORDS:]
+
         with open(self.path, "w", encoding="utf-8") as f:
             json.dump(records, f, ensure_ascii=False, indent=2)
 
@@ -151,6 +158,20 @@ class SimHistory:
         if 0 <= index < len(records):
             return records[index]
         return None
+
+    def purge_all(self) -> int:
+        """清空全部历史记录，返回删除条数"""
+        if not os.path.exists(self.path):
+            return 0
+        count = self.count
+        with open(self.path, "w", encoding="utf-8") as f:
+            json.dump([], f)
+        return count
+
+    @property
+    def count(self) -> int:
+        """当前记录总数"""
+        return len(self.load())
 
     @staticmethod
     def summary(record: dict) -> str:

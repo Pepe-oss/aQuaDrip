@@ -1488,12 +1488,12 @@ An aQuaDrip project must contain the {1} layer.</translation>
     <context>
         <name>SimHistory</name>
         <message>
-            <location filename="../tools/sim_history.py" line="165" />
+            <location filename="../tools/sim_history.py" line="186" />
             <source>{0}  [轮灌 {1} 轮次{2}]  CU={3:.1f}%  DU={4:.1f}%  滴头={5}</source>
             <translation>{0}  [rotation {1} shift {2}]  CU={3:.1f}%  DU={4:.1f}%  emitters={5}</translation>
         </message>
         <message>
-            <location filename="../tools/sim_history.py" line="166" />
+            <location filename="../tools/sim_history.py" line="187" />
             <source>{0}  CU={1:.1f}%  DU={2:.1f}%  滴头={3}</source>
             <translation>{0}  CU={1:.1f}%  DU={2:.1f}%  emitters={3}</translation>
         </message>
@@ -1751,42 +1751,42 @@ An aQuaDrip project must contain the {1} layer.</translation>
             <translation>Select a record to visualize (results as temporary layers)</translation>
         </message>
         <message>
-            <location filename="../ui/visualize_dialog.py" line="51" />
+            <location filename="../ui/visualize_dialog.py" line="56" />
             <source>节点着色:</source>
             <translation>Node coloring:</translation>
         </message>
         <message>
-            <location filename="../ui/visualize_dialog.py" line="53" />
+            <location filename="../ui/visualize_dialog.py" line="58" />
             <source>压力（蓝→红）</source>
             <translation>Pressure (blue→red)</translation>
         </message>
         <message>
-            <location filename="../ui/visualize_dialog.py" line="54" />
+            <location filename="../ui/visualize_dialog.py" line="59" />
             <source>滴头流量（蓝→红）</source>
             <translation>Emitter flow (blue→red)</translation>
         </message>
         <message>
-            <location filename="../ui/visualize_dialog.py" line="59" />
+            <location filename="../ui/visualize_dialog.py" line="64" />
             <source>轮次:</source>
             <translation>Shift:</translation>
         </message>
         <message>
-            <location filename="../ui/visualize_dialog.py" line="70" />
+            <location filename="../ui/visualize_dialog.py" line="75" />
             <source>📊 可视化</source>
             <translation>📊 Visualize</translation>
         </message>
         <message>
-            <location filename="../ui/visualize_dialog.py" line="75" />
+            <location filename="../ui/visualize_dialog.py" line="80" />
             <source>🗑 删除</source>
             <translation>🗑 Delete</translation>
         </message>
         <message>
-            <location filename="../ui/visualize_dialog.py" line="79" />
+            <location filename="../ui/visualize_dialog.py" line="89" />
             <source>关闭</source>
             <translation>Close</translation>
         </message>
         <message>
-            <location filename="../ui/visualize_dialog.py" line="85" />
+            <location filename="../ui/visualize_dialog.py" line="95" />
             <source>暂无模拟记录
 
 请先运行模拟</source>
@@ -1795,36 +1795,63 @@ An aQuaDrip project must contain the {1} layer.</translation>
 Run a simulation first</translation>
         </message>
         <message>
-            <location filename="../ui/visualize_dialog.py" line="100" />
+            <location filename="../ui/visualize_dialog.py" line="110" />
             <source>未找到 aQuaDrip 项目
 请先加载或创建项目</source>
             <translation>No aQuaDrip project found
 Load or create a project first</translation>
         </message>
         <message>
-            <location filename="../ui/visualize_dialog.py" line="128" />
+            <location filename="../ui/visualize_dialog.py" line="138" />
             <source>全部记录</source>
             <translation>All records</translation>
         </message>
         <message>
-            <location filename="../ui/visualize_dialog.py" line="130" />
+            <location filename="../ui/visualize_dialog.py" line="140" />
             <source>轮灌 {0}</source>
             <translation>Rotation {0}</translation>
         </message>
         <message>
-            <location filename="../ui/visualize_dialog.py" line="169" />
+            <location filename="../ui/visualize_dialog.py" line="184" />
             <source>请先选择一条记录</source>
             <translation>Select a record first</translation>
         </message>
         <message>
-            <location filename="../ui/visualize_dialog.py" line="172" />
+            <location filename="../ui/visualize_dialog.py" line="187" />
             <source>确定删除该记录？</source>
             <translation>Delete this record?</translation>
         </message>
         <message>
-            <location filename="../ui/visualize_dialog.py" line="180" />
+            <location filename="../ui/visualize_dialog.py" line="195" />
             <source>记录已删除</source>
             <translation>Record deleted</translation>
+        </message>
+        <message>
+            <location filename="../ui/visualize_dialog.py" line="84" />
+            <source>🗑 清空全部</source>
+            <translation>🗑 Purge All</translation>
+        </message>
+        <message>
+            <location filename="../ui/visualize_dialog.py" line="146" />
+            <source>共 {0} 条记录（上限 {1}）</source>
+            <translation>{0} records (max {1})</translation>
+        </message>
+        <message>
+            <location filename="../ui/visualize_dialog.py" line="201" />
+            <source>没有可删除的记录</source>
+            <translation>No records to delete</translation>
+        </message>
+        <message>
+            <location filename="../ui/visualize_dialog.py" line="206" />
+            <source>确定清空全部 {0} 条历史记录？
+此操作不可撤销！</source>
+            <translation>Purge all {0} history records?
+This cannot be undone!</translation>
+        </message>
+        <message>
+            <location filename="../ui/visualize_dialog.py" line="217" />
+            <source>已清空 {0} 条记录</source>
+            <translation>{0} records purged</translation>
         </message>
     </context>
     <context>
