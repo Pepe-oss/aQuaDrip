@@ -136,6 +136,11 @@ class CalibrationDialog(QDialog):
         self._iteration = 0
         self._prev_rmse = None
         self._result_text.clear()
+        self._result_text.append(
+            QApplication.translate("CalibrationDialog",
+                "提示: 每轮显示的 RMSE 为该轮校准前(上一次模拟)的误差; "
+                "校准前请确认高程/水源水头/滴头参数正确——"
+                "C 值校准只应吸收管路损失部分的误差。"))
         self._btn_start.setEnabled(False)
         self._btn_stop.setEnabled(True)
         self._btn_apply.setEnabled(False)
@@ -183,6 +188,15 @@ class CalibrationDialog(QDialog):
 
             self._result_text.append(
                 QApplication.translate("CalibrationDialog", "\n── 迭代 {0}  RMSE = {1:.2f} m  ({2} 条管道)  [{3}]").format(self._iteration, rmse, len(details), algo.label))
+
+            # 距管网过远被跳过的观测点(放错位置的观测点不参与校准)
+            for lb, dist in result.get("skipped_obs", []):
+                # 地理坐标(度)粗略换算为米显示
+                shown = f"{dist * 111000:.0f}m" if dist < 0.01 else f"{dist:.1f}m"
+                self._result_text.append(
+                    QApplication.translate("CalibrationDialog",
+                        "  ⚠️ 观测点 {0} 距管网 {1} 超过匹配半径，已跳过").format(lb, shown))
+
             for lid, pt, old_c, new_c, delta in details:
                 sign = "↑" if delta > 0 else ("↓" if delta < 0 else "→")
                 # 小变化时显示更多小数位，避免 130→130(↓0) 的迷惑显示

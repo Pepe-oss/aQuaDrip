@@ -60,6 +60,98 @@ DEFAULT_C_LIMITS = {
 }
 
 
+def match_radius(x: float, y: float, geographic: bool = None) -> float:
+    """观测点↔管网匹配半径上限(超出视为观测点放错位置,跳过)。
+
+    投影坐标系 5m;经纬度坐标约 5e-5°(≈5m)。
+
+    Args:
+        geographic: 调用方已知的 CRS 类型(图层 crs().isGeographic())。
+            None 时用启发式:|x|≤180 且 |y|≤90 视为经纬度——注意
+            局部米制坐标系(小数值)会被误判,调用方应尽量传真值。
+    """
+    if geographic is None:
+        geographic = abs(x) <= 180.0 and abs(y) <= 90.0
+    return 5e-5 if geographic else 5.0
+
+
+def nearest_sim_pressure(ox: float, oy: float,
+                         node_pressure: dict, node_coords: dict,
+                         geographic: bool = None
+                         ) -> Tuple[Optional[float], float]:
+    """观测点 → 最近节点的模拟压力(带匹配半径上限)。
+
+    Returns:
+        (压力或 None, 实际距离)——距离超过 match_radius 时返回 (None, dist)
+    """
+    r = match_radius(ox, oy, geographic)
+    bd, bp = float("inf"), None
+    for nid, p in node_pressure.items():
+        c = node_coords.get(nid)
+        if c is None or len(c) < 2:
+            continue
+        d = ((ox - c[0]) ** 2 + (oy - c[1]) ** 2) ** 0.5
+        if d < bd:
+            bd = d
+            bp = float(p) if isinstance(p, (int, float)) else None
+    if bd > r:
+        return None, bd
+    return bp, bd
+
+
+def nearest_sim_flow(ox: float, oy: float, otype: str,
+                     link_geometry: dict, link_flow: dict,
+                     emitter_flow: dict, node_coords: dict,
+                     geographic: bool = None
+                     ) -> Tuple[Optional[float], float]:
+    """观测点 → 类型感知的模拟流量(带匹配半径上限)。
+
+    - emitter 型:匹配最近**滴头**的出流量(emitter_flow,E_* 节点)。
+      观测实测流量是单滴头出流(L/h),与整管流量量级完全不同,
+      按管段匹配会产生巨大的虚假相对误差、把 C 拉向错误方向。
+    - 其他类型(junction/source):匹配最近管段流量(整管流量,
+      与实测语义一致)。
+
+    Returns:
+        (流量 L/h 或 None, 实际距离)——超匹配半径返回 (None, dist)
+    """
+    r = match_radius(ox, oy, geographic)
+    if otype == "emitter" and emitter_flow and node_coords:
+        bd, bq = float("inf"), None
+        for eid, q in emitter_flow.items():
+            c = node_coords.get(eid)
+            if c is None or len(c) < 2:
+                continue
+            d = ((ox - c[0]) ** 2 + (oy - c[1]) ** 2) ** 0.5
+            if d < bd:
+                bd = d
+                bq = abs(float(q)) if isinstance(q, (int, float)) else None
+        if bd > r:
+            return None, bd
+        return bq, bd
+
+    bd, bq = float("inf"), None
+    for lid, pts in link_geometry.items():
+        if not pts or len(pts) < 2:
+            continue
+        for i in range(len(pts) - 1):
+            ax, ay = pts[i][0], pts[i][1]
+            bx, by = pts[i + 1][0], pts[i + 1][1]
+            dx, dy = bx - ax, by - ay
+            l2 = dx * dx + dy * dy
+            t = max(0, min(1, ((ox - ax) * dx + (oy - ay) * dy) / l2)) \
+                if l2 > 1e-20 else 0.5
+            px, py = ax + t * dx, ay + t * dy
+            d = ((ox - px) ** 2 + (oy - py) ** 2) ** 0.5
+            if d < bd:
+                bd = d
+                f = link_flow.get(lid)
+                bq = abs(float(f)) if isinstance(f, (int, float)) else None
+    if bd > r:
+        return None, bd
+    return bq, bd
+
+
 def _build_downstream_graph(net) -> Dict[str, List[Tuple]]:
     """构建有向下游图（仅 from→to 方向）。
 
@@ -106,13 +198,15 @@ def _bfs_upstream_pipes(graph, sources) -> Dict[str, Set[str]]:
 
 
 def _nearest_node(net, ox, oy) -> Optional[str]:
-    """找距离 (ox, oy) 最近的节点"""
+    """找距离 (ox, oy) 最近的节点(带匹配半径上限,超出返回 None)"""
     bd, bn = float('inf'), None
     for nid, node in net.nodes.items():
         d = (node.x - ox) ** 2 + (node.y - oy) ** 2
         if d < bd:
             bd = d
             bn = nid
+    if bn is not None and bd > match_radius(ox, oy):
+        return None  # 观测点放错位置,不参与校准
     return bn
 
 
@@ -353,18 +447,24 @@ class TopologyOrderedCalibrator(CalibrationAlgorithm):
             return {"rmse": 0, "details": []}
         node_upstream = _bfs_upstream_pipes(graph, sources)
 
-        # 2. 每个观测点 → 最近节点 → 上游管道集
+        # 2. 每个观测点 → 最近节点 → 上游管道集(超匹配半径则跳过)
         obs_upstream: Dict[str, Set[str]] = {}   # {obs_label: upstream_pipe_ids}
         obs_node: Dict[str, str] = {}             # {obs_label: nearest_node_id}
+        skipped_obs: List[Tuple[str, float]] = []  # [(label, 距离)]
         for obs_label, (ox, oy, ps, po, qs, qo) in obs_data.items():
             nid = _nearest_node(self.net, ox, oy)
             if nid is None:
+                dist = min(
+                    (((node.x - ox) ** 2 + (node.y - oy) ** 2) ** 0.5)
+                    for node in self.net.nodes.values()
+                ) if self.net.nodes else float("inf")
+                skipped_obs.append((obs_label, dist))
                 continue
             obs_node[obs_label] = nid
             obs_upstream[obs_label] = node_upstream.get(nid, set()).copy()
 
         if not obs_upstream:
-            return {"rmse": 0, "details": []}
+            return {"rmse": 0, "details": [], "skipped_obs": skipped_obs}
 
         # 3. 分层：按"影响的观测点集合"分组管道
         pipe_obs: Dict[str, Set[str]] = {}  # {pipe_id: {obs_labels}}
@@ -390,6 +490,13 @@ class TopologyOrderedCalibrator(CalibrationAlgorithm):
             self._calibrate_layer(
                 obs_set, pipe_ids, obs_data, obs_node,
                 src_head, link_flow_lph, new_roughness, old_vals)
+            # 序贯反馈:该层校准结果立即回写内存网,后续层的基线 C
+            # 与 hf 灵敏度基于更新后的值——"拓扑顺序"名副其实
+            for lid in pipe_ids:
+                if lid in new_roughness:
+                    link = self.net.get_link(lid)
+                    if link is not None:
+                        link.roughness = new_roughness[lid]
 
         # 5. 应用约束 + 写回 GPKG
         adjusted, details = _apply_roughness(
@@ -430,7 +537,7 @@ class TopologyOrderedCalibrator(CalibrationAlgorithm):
                                if ts["count"] > 0 else 0.0)
 
         return {"rmse": rmse, "details": details, "adjusted": adjusted,
-                "type_stats": type_stats}
+                "type_stats": type_stats, "skipped_obs": skipped_obs}
 
     def _calibrate_layer(self, obs_set: FrozenSet[str], pipe_ids: List[str],
                          obs_data: dict, obs_node: dict,
@@ -568,7 +675,8 @@ class HazenWilliamsCalibrator(CalibrationAlgorithm):
                     errors.append(ps - po)
         rmse = (sum(e*e for e in errors)/max(len(errors),1)) ** 0.5 if errors else 0
 
-        return {"rmse": rmse, "details": details, "adjusted": adjusted}
+        return {"rmse": rmse, "details": details, "adjusted": adjusted,
+                "skipped_obs": getattr(self, "_skipped_obs", [])}
 
     # ── 上游图 + 调整 ──
 
@@ -579,9 +687,16 @@ class HazenWilliamsCalibrator(CalibrationAlgorithm):
 
         self._upstream_map = {}
         self._obs_node_map: Dict[str, str] = {}
+        self._skipped_obs: List[Tuple[str, float]] = []
         for obs_label, (ox, oy, ps, po, qs, qo) in obs_data.items():
             near_nid = _nearest_node(self.net, ox, oy)
-            if near_nid is None: continue
+            if near_nid is None:
+                dist = min(
+                    (((n.x - ox) ** 2 + (n.y - oy) ** 2) ** 0.5)
+                    for n in self.net.nodes.values()
+                ) if self.net.nodes else float("inf")
+                self._skipped_obs.append((obs_label, dist))
+                continue
             self._obs_node_map[obs_label] = near_nid
             for lid in node_upstream.get(near_nid, set()):
                 link = self.net.get_link(lid)

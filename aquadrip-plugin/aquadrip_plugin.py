@@ -996,12 +996,21 @@ class AQuaDripPlugin:
         node_coords = latest.get("node_coords", {})
         lg = latest.get("link_geometry", {})
         lf = latest.get("link_flow", {})
+        ef = latest.get("emitter_flow", {})
+
+        # 类型感知匹配(emitter→滴头出流,其他→管段流量)+ 匹配半径
+        from .tools.calib_algorithm import nearest_sim_pressure, nearest_sim_flow
 
         # 构建 obs_data
         obs_data = {}
         obs_layer = self._find_obs_layer()
         if obs_layer is None:
             return
+        # CRS 真值:避免启发式把局部米制坐标系误判为经纬度
+        try:
+            is_geo = obs_layer.crs().isGeographic()
+        except Exception:
+            is_geo = None
         for feat in obs_layer.getFeatures():
             name = str(feat.attribute("name") or f"obs_{feat.id()}")
             p_obs, q_obs = measured.get(name, (None, None))
@@ -1012,31 +1021,11 @@ class AQuaDripPlugin:
                 continue
             pt = geom.asPoint()
             ox, oy = pt.x(), pt.y()
-            # 找最近节点 → sim pressure
-            best_d, sim_p = float('inf'), None
-            for nid, p in node_pressure.items():
-                c = node_coords.get(nid)
-                if c is None or len(c) < 2: continue
-                d = (ox-c[0])**2 + (oy-c[1])**2
-                if d < best_d:
-                    best_d = d
-                    sim_p = float(p) if isinstance(p, (int, float)) else None
-            # 找最近管段 → sim flow
-            best_d, sim_q = float('inf'), None
-            for lid, pts in lg.items():
-                if not pts or len(pts) < 2: continue
-                for i in range(len(pts)-1):
-                    ax, ay = pts[i][0], pts[i][1]
-                    bx, by = pts[i+1][0], pts[i+1][1]
-                    dx, dy = bx-ax, by-ay
-                    l2 = dx*dx+dy*dy
-                    t = max(0, min(1, ((ox-ax)*dx+(oy-ay)*dy)/l2)) if l2>1e-20 else 0.5
-                    px, py = ax+t*dx, ay+t*dy
-                    d = ((ox-px)**2+(oy-py)**2)**0.5
-                    if d < best_d:
-                        best_d = d
-                        f = lf.get(lid)
-                        sim_q = abs(float(f)) if isinstance(f, (int, float)) else None
+            otype = str(feat.attribute("type") or "junction")
+            sim_p, _dp = nearest_sim_pressure(
+                ox, oy, node_pressure, node_coords, is_geo)
+            sim_q, _dq = nearest_sim_flow(
+                ox, oy, otype, lg, lf, ef, node_coords, is_geo)
             obs_data[name] = (ox, oy, sim_p, p_obs, sim_q, q_obs)
 
         # 弹出校准对话框
@@ -1090,6 +1079,15 @@ class AQuaDripPlugin:
             self._save_sim_history(net, result, cu, du)
             if self.dockwidget:
                 self.dockwidget.refresh_obs_points(result)
+        else:
+            # 模拟失败:保留旧模拟值继续迭代,但必须让用户知道
+            self.iface.messageBar().pushWarning(
+                "aQuaDrip",
+                QApplication.translate(
+                    "AquadripPlugin",
+                    "校准重模拟失败: {0}").format(
+                        getattr(result, "message", "")),
+                )
         dlg = getattr(self, '_calib_dlg', None)
         if dlg:
             dlg.on_sim_done(self._update_obs_from_sim(obs_data))
@@ -1104,27 +1102,27 @@ class AQuaDripPlugin:
         r = recs[0]
         npd, ncd = r.get("node_pressure", {}), r.get("node_coords", {})
         lfd, lgd = r.get("link_flow", {}), r.get("link_geometry", {})
+        efd = r.get("emitter_flow", {})
+
+        # 观测点类型(obs_data 的 key 是纯名称,需回图层查 type;
+        # emitter 型的模拟流量匹配滴头出流,其他匹配管段流量)
+        otype_map = {}
+        obs_layer = self._find_obs_layer()
+        if obs_layer is not None:
+            for f in obs_layer.getFeatures():
+                otype_map[str(f.attribute("name") or f"obs_{f.id()}")] = \
+                    str(f.attribute("type") or "junction")
+
+        from .tools.calib_algorithm import nearest_sim_pressure, nearest_sim_flow
+        try:
+            is_geo = obs_layer.crs().isGeographic() if obs_layer is not None else None
+        except Exception:
+            is_geo = None
         new = {}
         for lb, (ox, oy, _, po, _, qo) in obs_data.items():
-            bd, sp = float('inf'), None
-            for nid, p in npd.items():
-                c = ncd.get(nid)
-                if c is None or len(c) < 2: continue
-                d = (ox-c[0])**2+(oy-c[1])**2
-                if d < bd: bd = d; sp = float(p) if isinstance(p,(int,float)) else None
-            bd, sq = float('inf'), None
-            for lid, pts in lgd.items():
-                if not pts or len(pts) < 2: continue
-                for i in range(len(pts)-1):
-                    ax,ay=pts[i][0],pts[i][1]; bx,by=pts[i+1][0],pts[i+1][1]
-                    dx,dy=bx-ax,by-ay; l2=dx*dx+dy*dy
-                    t=max(0,min(1,((ox-ax)*dx+(oy-ay)*dy)/l2)) if l2>1e-20 else 0.5
-                    px,py=ax+t*dx,ay+t*dy; d=((ox-px)**2+(oy-py)**2)**0.5
-                    # 仅在找到更近管段时更新流量——赋值若放在 if 外，
-                    # 会被最后一个遍历到的管段覆盖，取到"最后一段"而非"最近一段"
-                    if d<bd:
-                        bd=d; f=lfd.get(lid)
-                        sq = abs(float(f)) if isinstance(f,(int,float)) else None
+            otype = otype_map.get(lb, "junction")
+            sp, _dp = nearest_sim_pressure(ox, oy, npd, ncd, is_geo)
+            sq, _dq = nearest_sim_flow(ox, oy, otype, lgd, lfd, efd, ncd, is_geo)
             new[lb] = (ox, oy, sp, po, sq, qo)
         return new
 

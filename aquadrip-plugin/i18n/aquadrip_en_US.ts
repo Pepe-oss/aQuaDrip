@@ -445,7 +445,7 @@ Place a water source on the map first.</translation>
             <translation>Run a simulation first</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="1070" />
+            <location filename="../aquadrip_plugin.py" line="1052" />
             <source>校准模拟中...</source>
             <translation>Calibration simulation running...</translation>
         </message>
@@ -458,6 +458,11 @@ Place a water source on the map first.</translation>
             <location filename="../aquadrip_plugin.py" line="94" />
             <source>导出当前管网为 EPANET INP 文件</source>
             <translation>Export the network to an EPANET INP file</translation>
+        </message>
+        <message>
+            <location filename="../aquadrip_plugin.py" line="1077" />
+            <source>校准重模拟失败: {0}</source>
+            <translation>Calibration re-simulation failed: {0}</translation>
         </message>
     </context>
     <context>
@@ -493,12 +498,12 @@ Place a water source on the map first.</translation>
             <translation>Mainline</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="198" />
+            <location filename="../ui/calibration_dialog.py" line="212" />
             <source>支管</source>
             <translation>Submain</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="199" />
+            <location filename="../ui/calibration_dialog.py" line="213" />
             <source>毛管</source>
             <translation>Lateral</translation>
         </message>
@@ -533,59 +538,69 @@ Place a water source on the map first.</translation>
             <translation>Close</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="155" />
+            <location filename="../ui/calibration_dialog.py" line="160" />
             <source>
 ── 校准{0}，共 {1} 次迭代 ──</source>
             <translation>
 ── Calibration {0}, {1} iterations in total ──</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="160" />
+            <location filename="../ui/calibration_dialog.py" line="165" />
             <source>
 ✅ 已应用校准结果</source>
             <translation>
 ✅ Calibration result applied</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="184" />
+            <location filename="../ui/calibration_dialog.py" line="189" />
             <source>
 ── 迭代 {0}  RMSE = {1:.2f} m  ({2} 条管道)  [{3}]</source>
             <translation>
 ── Iteration {0}  RMSE = {1:.2f} m  ({2} pipes)  [{3}]</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="198" />
+            <location filename="../ui/calibration_dialog.py" line="212" />
             <source>干管</source>
             <translation>Mainline</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="207" />
+            <location filename="../ui/calibration_dialog.py" line="221" />
             <source>{0} {1}条(hf²={2:.0f}% {3}{4:.1f})</source>
             <translation>{0} {1} pipes (hf²={2:.0f}% {3}{4:.1f})</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="210" />
+            <location filename="../ui/calibration_dialog.py" line="224" />
             <source>  📊 分型: </source>
             <translation>  📊 By type: </translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="217" />
+            <location filename="../ui/calibration_dialog.py" line="231" />
             <source>  ✓ 已收敛 (参数无变化)</source>
             <translation>  ✓ Converged (no parameter change)</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="221" />
+            <location filename="../ui/calibration_dialog.py" line="235" />
             <source>  ✓ 达到最大迭代次数</source>
             <translation>  ✓ Reached max iterations</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="225" />
+            <location filename="../ui/calibration_dialog.py" line="239" />
             <source>
 ❌ 迭代 {0} 失败: {1}
 {2}</source>
             <translation>
 ❌ Iteration {0} failed: {1}
 {2}</translation>
+        </message>
+        <message>
+            <location filename="../ui/calibration_dialog.py" line="139" />
+            <source>提示: 每轮显示的 RMSE 为该轮校准前(上一次模拟)的误差; 校准前请确认高程/水源水头/滴头参数正确——C 值校准只应吸收管路损失部分的误差。</source>
+            <translation>Note: the RMSE shown each round is the error before that round's calibration (from the previous simulation). Verify elevations / source head / emitter parameters before calibrating — C calibration should only absorb pipe-loss errors.</translation>
+        </message>
+        <message>
+            <location filename="../ui/calibration_dialog.py" line="196" />
+            <source>  ⚠️ 观测点 {0} 距管网 {1} 超过匹配半径，已跳过</source>
+            <translation>  ⚠️ Observation point {0} is {1} from the network (beyond match radius); skipped</translation>
         </message>
     </context>
     <context>
@@ -672,127 +687,127 @@ Place a water source on the map first.</translation>
             <translation>Log</translation>
         </message>
         <message>
-            <location filename="../ui/dockwidget.py" line="59" />
+            <location filename="../ui/dockwidget.py" line="62" />
             <source>观测点</source>
             <translation>Obs. point</translation>
         </message>
         <message>
-            <location filename="../ui/dockwidget.py" line="59" />
+            <location filename="../ui/dockwidget.py" line="62" />
             <source>实测P(m)</source>
             <translation>Meas. P (m)</translation>
         </message>
         <message>
-            <location filename="../ui/dockwidget.py" line="59" />
+            <location filename="../ui/dockwidget.py" line="62" />
             <source>模拟P(m)</source>
             <translation>Sim. P (m)</translation>
         </message>
         <message>
-            <location filename="../ui/dockwidget.py" line="59" />
+            <location filename="../ui/dockwidget.py" line="62" />
             <source>实测Q(L/h)</source>
             <translation>Meas. Q (L/h)</translation>
         </message>
         <message>
-            <location filename="../ui/dockwidget.py" line="59" />
+            <location filename="../ui/dockwidget.py" line="62" />
             <source>模拟Q(L/h)</source>
             <translation>Sim. Q (L/h)</translation>
         </message>
         <message>
-            <location filename="../ui/dockwidget.py" line="362" />
+            <location filename="../ui/dockwidget.py" line="377" />
             <source>点击「刷新模拟值」获取模拟压力...</source>
             <translation>Click Refresh Sim Values to load simulated pressures...</translation>
         </message>
         <message>
-            <location filename="../ui/dockwidget.py" line="80" />
+            <location filename="../ui/dockwidget.py" line="87" />
             <source>🔄 刷新模拟值</source>
             <translation>🔄 Refresh Sim Values</translation>
         </message>
         <message>
-            <location filename="../ui/dockwidget.py" line="81" />
+            <location filename="../ui/dockwidget.py" line="88" />
             <source>读取最新模拟历史并回填到观测点（不重新模拟）</source>
             <translation>Load the latest simulation history into observations (no re-simulation)</translation>
         </message>
         <message>
-            <location filename="../ui/dockwidget.py" line="84" />
+            <location filename="../ui/dockwidget.py" line="91" />
             <source>▶ 重新模拟</source>
             <translation>▶ Re-run Simulation</translation>
         </message>
         <message>
-            <location filename="../ui/dockwidget.py" line="85" />
+            <location filename="../ui/dockwidget.py" line="92" />
             <source>运行完整水力模拟并更新模拟值</source>
             <translation>Run a full hydraulic simulation and update simulated values</translation>
         </message>
         <message>
-            <location filename="../ui/dockwidget.py" line="88" />
+            <location filename="../ui/dockwidget.py" line="95" />
             <source>🎯 开始校准</source>
             <translation>🎯 Start Calibration</translation>
         </message>
         <message>
-            <location filename="../ui/dockwidget.py" line="89" />
+            <location filename="../ui/dockwidget.py" line="96" />
             <source>根据实测-模拟误差调整管道粗糙系数</source>
             <translation>Adjust pipe roughness from measured-vs-simulated errors</translation>
         </message>
         <message>
-            <location filename="../ui/dockwidget.py" line="94" />
+            <location filename="../ui/dockwidget.py" line="101" />
             <source>校准</source>
             <translation>Calibration</translation>
         </message>
         <message>
-            <location filename="../ui/dockwidget.py" line="107" />
+            <location filename="../ui/dockwidget.py" line="115" />
             <source>分区</source>
             <translation>Zone</translation>
         </message>
         <message>
-            <location filename="../ui/dockwidget.py" line="107" />
+            <location filename="../ui/dockwidget.py" line="115" />
             <source>阀门</source>
             <translation>Valve</translation>
         </message>
         <message>
-            <location filename="../ui/dockwidget.py" line="107" />
+            <location filename="../ui/dockwidget.py" line="115" />
             <source>灌溉量</source>
             <translation>Irrigation depth</translation>
         </message>
         <message>
-            <location filename="../ui/dockwidget.py" line="107" />
+            <location filename="../ui/dockwidget.py" line="115" />
             <source>均P(m)</source>
             <translation>Avg P (m)</translation>
         </message>
         <message>
-            <location filename="../ui/dockwidget.py" line="107" />
+            <location filename="../ui/dockwidget.py" line="115" />
             <source>最大P(m)</source>
             <translation>Max P (m)</translation>
         </message>
         <message>
-            <location filename="../ui/dockwidget.py" line="107" />
+            <location filename="../ui/dockwidget.py" line="115" />
             <source>时长(min)</source>
             <translation>Duration (min)</translation>
         </message>
         <message>
-            <location filename="../ui/dockwidget.py" line="546" />
+            <location filename="../ui/dockwidget.py" line="551" />
             <source>点击「轮灌管理」工具栏按钮配置并运行轮灌</source>
             <translation>Use the Rotation Management toolbar button to configure and run rotations</translation>
         </message>
         <message>
-            <location filename="../ui/dockwidget.py" line="122" />
+            <location filename="../ui/dockwidget.py" line="130" />
             <source>📊 可视化轮次</source>
             <translation>📊 Visualize Shift</translation>
         </message>
         <message>
-            <location filename="../ui/dockwidget.py" line="127" />
+            <location filename="../ui/dockwidget.py" line="135" />
             <source>轮灌</source>
             <translation>Rotation</translation>
         </message>
         <message>
-            <location filename="../ui/dockwidget.py" line="197" />
+            <location filename="../ui/dockwidget.py" line="212" />
             <source>校准已重置</source>
             <translation>Calibration reset</translation>
         </message>
         <message>
-            <location filename="../ui/dockwidget.py" line="209" />
+            <location filename="../ui/dockwidget.py" line="224" />
             <source>校准迭代 {0} 次  RMSE = {1:.2f} m</source>
             <translation>Calibration: {0} iterations  RMSE = {1:.2f} m</translation>
         </message>
         <message>
-            <location filename="../ui/dockwidget.py" line="538" />
+            <location filename="../ui/dockwidget.py" line="543" />
             <source>轮灌 {0}  共 {1} 分区  成功 {2} 个</source>
             <translation>Rotation {0}  {1} zones  {2} succeeded</translation>
         </message>

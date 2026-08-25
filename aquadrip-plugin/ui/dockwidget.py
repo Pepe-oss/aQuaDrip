@@ -158,8 +158,8 @@ class AQuaDripDockWidget(QDockWidget):
         if layer is None:
             return
 
-        # 从 sim_history 加载 node_coords / link_geometry / link_flow
-        nc_data, lg_data, lf_data = self._load_latest_network_coords()
+        # 从 sim_history 加载 node_coords / link_geometry / link_flow / emitter_flow
+        nc_data, lg_data, lf_data, ef_data = self._load_latest_network_coords()
 
         self._obs_table.setRowCount(0)
         self._obs_table.blockSignals(True)
@@ -183,15 +183,19 @@ class AQuaDripDockWidget(QDockWidget):
                 # ── 压力 ──
                 measured_p = feat.attribute("measured_pressure")
                 measured_p = float(measured_p) if measured_p else None
-                sim_p = self._find_nearest_pressure(feat, sim_result, nc_data) if sim_result else None
+                sim_p = self._find_nearest_pressure(
+                    feat, sim_result, nc_data,
+                    geographic=self._layer_is_geographic(layer)) if sim_result else None
                 self._set_editable_cell(row, 1, measured_p)
                 self._set_readonly_cell(row, 2, sim_p)
                 self._set_error_cell(row, 3, sim_p, measured_p)
 
-                # ── 流量 ──
+                # ── 流量(类型感知:emitter→滴头出流,其他→管段流量)──
                 measured_q = feat.attribute("measured_flow")
                 measured_q = float(measured_q) if measured_q else None
-                sim_q = self._find_nearest_flow(feat, lg_data, lf_data) if lf_data else None
+                sim_q = self._find_nearest_flow(
+                    feat, lg_data, lf_data, ef_data, nc_data,
+                    self._layer_is_geographic(layer)) if lf_data else None
                 self._set_editable_cell(row, 4, measured_q)
                 self._set_readonly_cell(row, 5, sim_q)
                 self._set_error_cell(row, 6, sim_q, measured_q)
@@ -377,69 +381,58 @@ class AQuaDripDockWidget(QDockWidget):
 
     @staticmethod
     def _load_latest_network_coords():
-        """从 simhistory 加载最新记录的 node_coords, link_geometry, link_flow"""
+        """从 simhistory 加载最新记录的 node_coords, link_geometry, link_flow, emitter_flow"""
         from ..tools.layer_utils import find_gpkg_path
         gpkg_path = find_gpkg_path(None, "aqd_fields")
         if not gpkg_path:
-            return {}, {}, {}
+            return {}, {}, {}, {}
         from ..tools.sim_history import SimHistory
         h = SimHistory(gpkg_path)
         records = h.load()
         if not records:
-            return {}, {}, {}
+            return {}, {}, {}, {}
         r = records[0]
         return (r.get("node_coords", {}),
                 r.get("link_geometry", {}),
-                r.get("link_flow", {}))
+                r.get("link_flow", {}),
+                r.get("emitter_flow", {}))
 
     @staticmethod
-    def _find_nearest_flow(feat, lg_data, lf_data):
-        """找到观测点最近管段的流量 (L/h)。
+    def _find_nearest_flow(feat, lg_data, lf_data, ef_data=None, nc_data=None,
+                           geographic=None):
+        """观测点的模拟流量 (L/h)——类型感知 + 匹配半径上限。
 
-        用 link_geometry 做点到折线最近匹配。
+        emitter 型观测点匹配最近**滴头**的出流量(实测语义一致);
+        其他类型匹配最近管段流量。超半径返回 None。
         """
-        if not lg_data or not lf_data:
-            return None
         geom = feat.geometry()
         if geom is None or geom.isEmpty():
             return None
         pt = geom.asPoint()
-
-        best_d, best_f = float('inf'), None
-        for lid, pts in lg_data.items():
-            if not pts or len(pts) < 2:
-                continue
-            for i in range(len(pts) - 1):
-                ax, ay = pts[i][0], pts[i][1]
-                bx, by = pts[i+1][0], pts[i+1][1]
-                dx, dy = bx - ax, by - ay
-                l2 = dx*dx + dy*dy
-                if l2 < 1e-20:
-                    d = ((pt.x()-ax)**2 + (pt.y()-ay)**2) ** 0.5
-                else:
-                    t = max(0, min(1, ((pt.x()-ax)*dx + (pt.y()-ay)*dy) / l2))
-                    px, py = ax + t*dx, ay + t*dy
-                    d = ((pt.x()-px)**2 + (pt.y()-py)**2) ** 0.5
-                if d < best_d:
-                    best_d = d
-                    f = lf_data.get(lid)
-                    if f is not None:
-                        best_f = abs(float(f)) if isinstance(f, (int, float)) else None
-        return best_f
+        otype = str(feat.attribute("type") or "junction")
+        from ..tools.calib_algorithm import nearest_sim_flow
+        q, _d = nearest_sim_flow(pt.x(), pt.y(), otype,
+                                 lg_data or {}, lf_data or {},
+                                 ef_data or {}, nc_data or {}, geographic)
+        return q
 
     def _write_sim_to_obs_layer(self, layer, sim_result, nc_data, lg_data):
         """回填 simulated_pressure + simulated_flow 到 aqd_obs_points"""
         if layer is None:
             return
-        # 加载 link_flow
-        _, _, lf_data = self._load_latest_network_coords()
+        # 加载 link_flow / emitter_flow(nc/lg 由调用方传入)
+        _nc, _lg, lf_data, ef_data = self._load_latest_network_coords()
         need_edit = not layer.isEditable()
         if need_edit:
             layer.startEditing()
         try:
             for feat in layer.getFeatures():
-                sp = self._find_nearest_pressure(feat, sim_result, nc_data)
-                sq = self._find_nearest_flow(feat, lg_data, lf_data)
+                sp = self._find_nearest_pressure(
+                    feat, sim_result, nc_data,
+                    geographic=self._layer_is_geographic(layer))
+                sq = self._find_nearest_flow(
+                    feat, lg_data, lf_data, ef_data, nc_data,
+                    self._layer_is_geographic(layer))
                 if sp is not None:
                     feat.setAttribute("simulated_pressure", float(sp))
                 if sq is not None:
@@ -453,7 +446,8 @@ class AQuaDripDockWidget(QDockWidget):
                 layer.rollBack()
 
     @staticmethod
-    def _find_nearest_pressure(feat, sim_result, nc_data=None, lg_data=None):
+    def _find_nearest_pressure(feat, sim_result, nc_data=None, lg_data=None,
+                               geographic=None):
         """找到观测点最近**滴头**的模拟压力。
 
         优先匹配 E_* (滴头) 和 auto_N (毛管端点)，其次 N* (节点)。
@@ -470,7 +464,10 @@ class AQuaDripDockWidget(QDockWidget):
         if not nc_data:
             return None
 
-        # 分两组搜索：滴头/毛管端点优先，连接点兜底
+        # 分两组搜索：滴头/毛管端点优先，连接点兜底(带匹配半径上限)
+        from ..tools.calib_algorithm import match_radius
+        r2 = match_radius(pt.x(), pt.y(), geographic) ** 2
+
         def _best_match(nodes):
             best_d, best_p = float('inf'), None
             for nid in nodes:
@@ -483,6 +480,9 @@ class AQuaDripDockWidget(QDockWidget):
                     p_arr = node_pressure.get(nid)
                     if p_arr is not None and len(p_arr) > 0:
                         best_p = float(p_arr[0])
+            # 观测点放错位置(超匹配半径)→ 不匹配
+            if best_d > r2:
+                return None
             return best_p
 
         # 1. 优先：E_* 滴头节点（间距 0.3m，匹配精度最高）
@@ -499,6 +499,14 @@ class AQuaDripDockWidget(QDockWidget):
 
         # 3. 兜底：所有节点（含 N* 连接点）
         return _best_match(nc_data.keys())
+
+    @staticmethod
+    def _layer_is_geographic(layer):
+        """图层 CRS 是否经纬度(取不到返回 None 走启发式)"""
+        try:
+            return layer.crs().isGeographic()
+        except Exception:
+            return None
 
     def _find_obs_layer(self):
         """查找 aqd_obs_points 图层"""
