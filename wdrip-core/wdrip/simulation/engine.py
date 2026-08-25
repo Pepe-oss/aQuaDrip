@@ -24,12 +24,26 @@ def _epanet_toolkit_works() -> bool:
     的兼容性段错误）以 SIGKILL/SIGSEGV 信号而非异常的形式发生，
     进程内 try/except 无法拦截——主进程会被直接杀死。必须用子进程
     探测，崩溃只损失探测本身。结果进程级缓存，只探测一次。
+
+    前置防御：QGIS 内嵌 Python 的 sys.executable 可能指向 QGIS
+    主程序（如 /Applications/QGIS.app/Contents/MacOS/QGIS）而非
+    Python 解释器——用它跑子进程会拉起一个**新的 QGIS GUI 窗口**
+    并阻塞等待其退出。仅当可执行文件确实是 Python 时才探测，
+    否则直接回退迭代求解器（表现为无 EPANET，功能不受影响）。
     """
     global _EPANET_TOOLKIT_OK
     if _EPANET_TOOLKIT_OK is not None:
         return _EPANET_TOOLKIT_OK
+    import os
     import subprocess
     import sys
+    exe = os.path.basename(sys.executable or "").lower()
+    if "python" not in exe:
+        logger.info(
+            f"sys.executable 不是 Python 解释器({sys.executable!r},"
+            "可能为 QGIS 主程序)——跳过子进程探测,回退迭代求解器")
+        _EPANET_TOOLKIT_OK = False
+        return _EPANET_TOOLKIT_OK
     code = "from wntr.epanet.toolkit import ENepanet; ENepanet()"
     try:
         r = subprocess.run([sys.executable, "-c", code],
