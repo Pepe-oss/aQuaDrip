@@ -66,34 +66,42 @@ def _build_downstream_graph(net) -> Dict[str, List[Tuple]]:
     调用前需先 _fix_link_directions_in_memory 确保方向正确。
     """
     graph: Dict[str, List] = {nid: [] for nid in net.nodes}
-    for lid, link in net.net_links() if hasattr(net, 'net_links') else net.links.items():
+    for lid, link in net.links.items():
         fn, tn = link.from_node, link.to_node
         graph.setdefault(fn, []).append((lid, link, tn))
     return graph
 
 
 def _bfs_upstream_pipes(graph, sources) -> Dict[str, Set[str]]:
-    """BFS 从水源出发，记录每个节点的上游管道集合。
+    """计算每个节点的上游管道集合（反向传播至不动点）。
 
-    Returns:
-        {node_id: set_of_upstream_pipe_ids}
+    原 BFS 实现中,同一 BFS 内多条路径到达同一节点会被 visited
+    拦截,节点处的 `|=` 合并是死代码——环状/汇流管网的上游集合
+    不完整。改为沿 from→to 反向迭代传播,集合单调增长必然收敛。
     """
-    node_upstream: Dict[str, Set[str]] = {}
-    for src in sources:
-        queue = deque([(src, set())])
-        visited = set()
-        while queue:
-            node, us = queue.popleft()
-            if node in visited:
-                continue
-            visited.add(node)
-            # 合并上游（一个节点可能从多条路径到达）
-            if node in node_upstream:
-                node_upstream[node] |= us
-            else:
-                node_upstream[node] = set(us)
-            for lid, link, nx in graph.get(node, []):
-                queue.append((nx, us | {lid}))
+    reverse: Dict[str, List[Tuple[str, str]]] = {}
+    for fn, edges in graph.items():
+        for lid, _link, tn in edges:
+            reverse.setdefault(tn, []).append((lid, fn))
+
+    node_upstream: Dict[str, Set[str]] = {s: set() for s in sources}
+    changed = True
+    while changed:
+        changed = False
+        for tn, edges in reverse.items():
+            acc = node_upstream.get(tn)
+            if acc is None:
+                acc = set()
+            for lid, fn in edges:
+                up_fn = node_upstream.get(fn)
+                if up_fn is None:
+                    continue  # fn 尚不可达任何水源
+                merged = up_fn | {lid}
+                if not merged <= acc:
+                    acc = acc | merged
+                    changed = True
+            if acc:
+                node_upstream[tn] = acc
     return node_upstream
 
 
@@ -183,8 +191,32 @@ def _hw_headloss(length_m: float, flow_lph: float, c: float,
         ((c ** 1.852) * (d_m ** 4.87))
 
 
+def _aggregate_segment_flow(link_flow: Dict[str, float]) -> Dict[str, float]:
+    """把切段流量聚合回基础管道 ID(纯函数,便于单测)。
+
+    模拟历史来自展开/切断后的网络,link ID 形如 L4_seg003(毛管
+    展开段)或 L3_p2(交叉切断段);校准内存网(expand=False)只有
+    基础 ID L4/L3。串联切段流量沿程递减(中途出流),取各段最大值
+    (=入口段流量)即该管道总流量。
+    """
+    agg: Dict[str, float] = {}
+    for lid, v in link_flow.items():
+        if not isinstance(v, (int, float)):
+            continue
+        base = lid.split("_p")[0].split("_seg")[0]
+        q = abs(float(v))
+        if q > agg.get(base, 0.0):
+            agg[base] = q
+    return agg
+
+
 def _load_link_flow() -> Dict[str, float]:
-    """从 sim_history 读取最新记录的 link_flow，转为 L/h"""
+    """从 sim_history 读取最新记录的 link_flow(L/h),聚合切段到基础 ID。
+
+    注意单位:SimHistory.add 保存时已做 m³/s × 3.6e6 = L/h 换算,
+    JSON 中即 L/h——此处不得再次换算(原先再乘 3.6e6 导致 hf 虚高
+    ~10¹² 倍,hf² 加权的压力校准项实际失效)。
+    """
     from .layer_utils import find_gpkg_path
     gpkg_path = find_gpkg_path(None, "aqd_fields")
     if not gpkg_path:
@@ -195,9 +227,7 @@ def _load_link_flow() -> Dict[str, float]:
         if not records:
             return {}
         lf = records[0].get("link_flow", {})
-        # sim_history 中 link_flow 单位是 m³/s，转为 L/h
-        return {lid: abs(float(v)) * 3.6e6
-                for lid, v in lf.items() if isinstance(v, (int, float))}
+        return _aggregate_segment_flow(lf)
     except Exception:
         return {}
 
@@ -225,6 +255,13 @@ def _apply_roughness(iface, net, new_roughness, old_vals, c_limits) -> Tuple[int
             c = new_roughness[lid]
             if abs(c - avg) > 20:
                 new_roughness[lid] = avg + (20 if c > avg else -20)
+
+    # 差异约束(avg±20)可能把值推出物理限值,按类型统一再 clamp 一次
+    for lid in new_roughness:
+        link = net.get_link(lid)
+        pt = getattr(link, "pipe_type", "mainline") if link else "mainline"
+        cmin, cmax = c_limits.get(pt, (80, 150))
+        new_roughness[lid] = max(cmin, min(cmax, new_roughness[lid]))
 
     from qgis.core import QgsProject
     from .layer_utils import find_layer
@@ -430,13 +467,13 @@ class TopologyOrderedCalibrator(CalibrationAlgorithm):
             cc = getattr(link, "roughness", 130.0)
             old_vals[lid] = cc
 
-            # 无流量数据时退化为均匀分配
+            # 无流量数据时压力项退化为均匀 est_hf 反演(见下)
             hf_own = pipe_hf.get(lid, 0.0)
             if total_hf2 > 0:
                 # dC ∝ hf_own：毛管（hf大）重点校准，干管（hf小）几乎不动
                 hf_factor = hf_own / total_hf2
             else:
-                hf_factor = 1.0 / (len(pipe_ids) * max(hf_own, 0.5))
+                hf_factor = 0.0
 
             td, tw = 0.0, 0.0
             for obs_label in obs_set:
@@ -454,8 +491,12 @@ class TopologyOrderedCalibrator(CalibrationAlgorithm):
                             node_elev = getattr(node, "elevation", 0.0) or 0.0
                     obs_total_head = node_elev + po
                     est_hf = max(1.0, src_head - obs_total_head)
-                    # dC = -C * dp * hf_own / (1.852 * Σ hf²)
-                    dC_phys = -cc * dp_abs * hf_factor / 1.852
+                    if total_hf2 > 0:
+                        # dC = -C * dp * hf_own / (1.852 * Σ hf²)
+                        dC_phys = -cc * dp_abs * hf_factor / 1.852
+                    else:
+                        # 无流量数据:退化为按估算总水头均匀反演
+                        dC_phys = -cc * dp_abs / (1.852 * est_hf)
                     td += self.learning_rate * dC_phys
                     tw += 1.0
 
@@ -532,23 +573,9 @@ class HazenWilliamsCalibrator(CalibrationAlgorithm):
     # ── 上游图 + 调整 ──
 
     def _build_upstream_graph(self, obs_data: dict):
-        graph: Dict[str, List] = {nid: [] for nid in self.net.nodes}
-        for lid, link in self.net.links.items():
-            fn, tn = link.from_node, link.to_node
-            graph.setdefault(fn, []).append((lid, link, tn))
-
+        graph = _build_downstream_graph(self.net)
         sources = [nid for nid, n in self.net.nodes.items() if hasattr(n, "source_type")]
-        node_upstream: Dict[str, Set[str]] = {}
-        for src in sources:
-            queue = deque([(src, set())])
-            visited = set()
-            while queue:
-                node, us = queue.popleft()
-                if node in visited: continue
-                visited.add(node)
-                node_upstream[node] = us
-                for lid, link, nx in graph.get(node, []):
-                    queue.append((nx, us | {lid}))
+        node_upstream = _bfs_upstream_pipes(graph, sources)
 
         self._upstream_map = {}
         self._obs_node_map: Dict[str, str] = {}
