@@ -56,6 +56,9 @@ class AQuaDripDockWidget(QDockWidget):
 
         # 观测点表格（7列：观测点 | 实测P | 模拟P | ΔP | 实测Q | 模拟Q | ΔQ）
         self._obs_table = QTableWidget(0, 7)
+        # 隐藏最左侧行号列(垂直表头):行号无功能意义,避免被误认为
+        # 多出的一列;行选择/highlight 用 Qt 内部行索引,不受影响
+        self._obs_table.verticalHeader().setVisible(False)
         self._obs_table.setHorizontalHeaderLabels(
             [QApplication.translate("Dockwidget", "观测点"), QApplication.translate("Dockwidget", "实测P(m)"), QApplication.translate("Dockwidget", "模拟P(m)"), "ΔP(m)",
              QApplication.translate("Dockwidget", "实测Q(L/h)"), QApplication.translate("Dockwidget", "模拟Q(L/h)"), "ΔQ(L/h)"])
@@ -104,6 +107,7 @@ class AQuaDripDockWidget(QDockWidget):
 
         # 轮灌结果表（分区、阀门、灌溉量、均P、最大P、CU%、DU%、时长）
         self._rot_table = QTableWidget(0, 8)
+        self._rot_table.verticalHeader().setVisible(False)
         self._rot_table.setHorizontalHeaderLabels(
             [QApplication.translate("Dockwidget", "分区"), QApplication.translate("Dockwidget", "阀门"), QApplication.translate("Dockwidget", "灌溉量"), QApplication.translate("Dockwidget", "均P(m)"), QApplication.translate("Dockwidget", "最大P(m)"), "CU%", "DU%", QApplication.translate("Dockwidget", "时长(min)")])
         self._rot_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
