@@ -62,11 +62,15 @@ class AQuaDripDockWidget(QDockWidget):
         self._obs_table.setHorizontalHeaderLabels(
             [QApplication.translate("Dockwidget", "观测点"), QApplication.translate("Dockwidget", "实测P(m)"), QApplication.translate("Dockwidget", "模拟P(m)"), "ΔP(m)",
              QApplication.translate("Dockwidget", "实测Q(L/h)"), QApplication.translate("Dockwidget", "模拟Q(L/h)"), "ΔQ(L/h)"])
-        self._obs_table.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.Stretch)
-        for col in range(1, 7):
+        # 列宽策略:全部按内容自适应 + 末列吸收剩余空间 + 最小宽度
+        # 兜底。原第 0 列 Stretch 在 dock 拖窄时会被优先压成一条窄缝
+        # (「观测点」三字居中裁剪后只露出「测」,被误认为多出的列),
+        # ResizeToContents 保证任何列不会被压到不可读
+        self._obs_table.horizontalHeader().setMinimumSectionSize(64)
+        for col in range(7):
             self._obs_table.horizontalHeader().setSectionResizeMode(
                 col, QHeaderView.ResizeToContents)
+        self._obs_table.horizontalHeader().setStretchLastSection(True)
         self._obs_table.setEditTriggers(
             QTableWidget.DoubleClicked | QTableWidget.EditKeyPressed)
         self._obs_table.cellChanged.connect(self._on_obs_cell_changed)
@@ -160,6 +164,12 @@ class AQuaDripDockWidget(QDockWidget):
         self._obs_table.setRowCount(0)
         self._obs_table.blockSignals(True)
         try:
+            # 重置列宽模式:用户误拖窄某列(进入 Interactive)后,
+            # 刷新时恢复按内容自适应,避免出现只露一字的窄缝列
+            hdr = self._obs_table.horizontalHeader()
+            for col in range(hdr.count() or 7):
+                hdr.setSectionResizeMode(col, QHeaderView.ResizeToContents)
+            hdr.setStretchLastSection(True)
             for feat in layer.getFeatures():
                 row = self._obs_table.rowCount()
                 self._obs_table.insertRow(row)
