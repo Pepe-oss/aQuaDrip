@@ -1,13 +1,16 @@
 # aQuaDrip 开发规划文档
 
 > 基于 QGIS + WNTR 的智能滴灌设计与水肥一体化分析平台  
-> 版本：v0.3-draft  
-> 日期：2025-07-02
+> 版本：v0.4  
+> 日期：2026-08-29  
+> 变更：v0.4 新增「0. 实施状态快照」(实际进度与计划的差异)、
+> 更新发布渠道与后续改进建议;v0.3 及以前的规划正文保留原貌作为设计依据。
 
 ---
 
 ## 目录
 
+0. [实施状态快照(2026-08)](#0-实施状态快照2026-08)
 1. [项目概述](#1-项目概述)
 2. [背景调研](#2-背景调研)
 3. [需求分析](#3-需求分析)
@@ -22,6 +25,72 @@
 12. [发布与维护](#12-发布与维护)
 13. [风险与缓解](#13-风险与缓解)
 14. [架构评审与后续改进建议](#14-架构评审与后续改进建议)
+
+---
+
+## 0. 实施状态快照(2026-08)
+
+> 本章记录截至 2026-08-29 的**实际**实施状态,以及与下文原规划
+> (v0.3)的重大差异。原规划正文保留不动,仍作为设计依据;
+> 二者冲突时以本章为准。
+
+### 0.1 版本与代码规模
+
+| 项 | 状态 |
+|---|---|
+| 主分支 | `main`(功能分支 `feat/pipe-hierarchy-connection-rules` 已合并) |
+| 插件版本 | 0.1.0(metadata.txt),QGIS ≥ 3.28 |
+| 代码规模 | 插件 ~9.5k 行(35 文件)+ wdrip-core ~4.6k 行 + 测试 1.5k 行 |
+| 测试 | wdrip-core:118 个用例全绿;**插件侧:0 测试(最大缺口)** |
+| 分发 | 单一 ZIP(`scripts/make_zip.py`,wdrip 核心随包)+ 源码软链开发部署 |
+
+### 0.2 与原规划的重大偏差(已定案)
+
+| # | 原规划 | 实际实现 | 原因 |
+|---|---|---|---|
+| 1 | 4 个管道图层(aqd_maines/submains/laterals/...) | **单一 `aqd_pipes`** + `pipe_type` 字段区分;另有 aqd_pumps/aqd_valves/aqd_nodes/aqd_fields/aqd_obs_points | 简化同步与拓扑;图层即数据源,QGIS 原生绘制 |
+| 2 | INP 导入/导出双向 | **仅导出**(wntr write_inpfile);导入功能已移除(git 历史可查) | 导入场景边缘,维护成本高 |
+| 3 | 中文单语 | **中英双语**(Qt Linguist 流程,352 条翻译,菜单内切换,重启生效) | GitHub 国际分发 |
+| 4 | 独立 .aqd 工程文件为主 | **GPKG 为唯一持久源** + sidecar `.simhistory`(JSON);.aqd/ProjectFile 未接线 | QGIS 工作流天然以 GPKG 为中心 |
+| 5 | Processing 框架集成 | 未实现(空壳目录保留) | GUI 工具栏 + dock 面板已覆盖交互;Processing 价值待评估 |
+| 6 | 自动管网布局向导(builder/rectangular 等) | **手动绘制 + 毛管自动生成**混合;builder/ 模块未接线 | 与设计哲学"领域工具+原生编辑"一致 |
+
+### 0.3 功能完成矩阵(对照第 3 章需求)
+
+| 需求 | 状态 | 说明 |
+|---|---|---|
+| F1 农田定义 | ✅ | 农艺参数 4 种耕作模式;田块内管道批量设置 |
+| F2 管网构建 | ✅ | 毛管生成 + 手动绘制混合;**管道层级连接规则**(仅相邻层级自动连接,设备豁免);交叉节点手动生成工具 |
+| F3 滴头选型 | ✅ | 内置 10 款滴头参数库(k/x 自动填充) |
+| F4 地形集成 | ✅ | 模拟时自动 DEM 采样 + 水源水头修正;高程工具(暂无菜单入口) |
+| F5 水源与灌溉制度 | ✅(部分) | 轮灌调度(分区→逐轮模拟→CU/DU/时长);施肥(Fertigation)未实现 |
+| F6 设备系统 | ✅(部分) | 水泵/阀门(PRv/FCV/PSV)图层与模拟接线;equipment/ 参数库未用于 UI |
+| F7 模拟运行 | ✅ | 三引擎策略(EPANET/WNTR/迭代)自动检测+回退;**EPANET 探测用子进程**(防二进制段错误杀死 QGIS;sys.executable 白名单防拉起新 QGIS 窗口) |
+| F8 结果分析 | ✅ | CU/DU/EU(按节点 ID 对齐)、可视化临时图层、管道承压分析(unknown 状态显式化) |
+| F9 项目管理 | ✅ | 新建项目向导/QGZ 保存/打开校验;模拟历史(上限 100 自动裁剪+清空) |
+| F10 Processing | ❌ | 未实现 |
+| F11 拓扑验证 | ✅ | validate + 方向矫正(GPKG 工具 + 校准内存网 BFS 跳数) |
+| F12 模型校准 | ✅ | 拓扑顺序校准(hf² 加权 + 层间序贯反馈)+ Hazen-Williams 备选;**类型感知观测匹配**(emitter→滴头出流)+ 匹配半径上限 |
+
+### 0.4 质量治理记录(2026-08 专项)
+
+本阶段完成三轮系统性审查与修复(细节见 git log):
+
+1. **17 项实现级 bug**:轮灌后台线程编辑图层(改为 prepare_snapshot 主线程预取)、跨图层 FID 撞号、EU 位置配对、InpWriter 泵曲线/需求、DEM 统计、EPANET 探测信号崩溃等;
+2. **校准算法专项**:流量单位双重换算(hf² 加权曾整体失效)、切段 ID 聚合、BFS 汇流丢集(不动点重写)、约束后二次限幅;
+3. **校准过程合理性**:滴头观测流量语义(相对误差 -249→-0.2)、匹配半径、序贯反馈、RMSE 语义标注。
+
+### 0.5 已知技术债与近期路线
+
+| 优先级 | 事项 |
+|---|---|
+| ★★★ | 插件侧零测试——优先为 topology_builder / calib_algorithm 建立脱离 QGIS 的纯逻辑测试 |
+| ★★★ | 拓扑交叉检测 O(n²) 且每次操作全量重建(无脏标记),千级毛管下交互卡顿;引入 QgsSpatialIndex 预筛 |
+| ★★ | 承压分析仅取管道端点压力,中间交叉点(auto_N)未参与,可能低估超压 |
+| ★★ | GPKG 字段中文别名未国际化(FIELD_DEFS 模块级数据,需延迟求值改造) |
+| ★ | 重复实现收敛:点-折线距离、UTM 计算、DEM 查找、edit_session 推广 |
+| ★ | wdrip-core 未接线模块清理(builder/、io/project.py、topology/hydraulic.py、空 optimizer/emitter_db) |
+| ★ | 水质/施肥模拟(WNTR 水质模块已有雏形,插件无入口) |
 
 ---
 
@@ -1587,6 +1656,11 @@ def optimize_topology(graph: TopologyGraph) -> TopologyGraph:
 
 #### 已完成的组件（实际开发记录）
 
+> ⚠️ 本节为 2025-07 的历史快照:所述 4 层管道图层
+> (aqd_maines/submains/laterals)等架构**已被单一 aqd_pipes 取代**,
+> FieldPropertiesPanel 已并入统一属性对话框。当前真实组件清单
+> 见「0. 实施状态快照」与 `aquadrip-plugin/tools/` 源码。
+
 | 组件 | 文件 | 说明 |
 |:----|:-----|:-----|
 | `LayerSetupAction` | `tools/layer_setup.py` | ✅ 一键创建 5 个 GeoPackage 图层（aqd_fields/aqd_laterals/aqd_submains/aqd_maines/aqd_obs_points），含 ValueMap 字段约束 + 自动捕捉配置 |
@@ -1903,12 +1977,16 @@ test/
 
 ### 12.2 发布渠道
 
-| 组件 | 渠道 |
-|------|------|
-| wdrip-core | PyPI + GitHub |
-| 插件 | QGIS 仓库 + GitHub |
-| 文档 | GitHub Pages |
-| 示例 | GitHub Release |
+| 组件 | 渠道 | 现状(2026-08) |
+|------|------|---------------|
+| 插件 + wdrip | **GitHub Releases 单一 ZIP** | ✅ 已实现:`scripts/make_zip.py` 打包(wdrip 随包),用户「从 ZIP 安装」;内置中英双语 |
+| 源码开发部署 | 软链接 `aquadrip-plugin` → QGIS 插件目录 | ✅ 自动识别同级 wdrip-core,提交即生效 |
+| wdrip-core | PyPI | ❌ 未发布(当前随插件 ZIP 分发) |
+| QGIS 官方插件仓库 | plugins.qgis.org | ❌ 未提交(待版本打磨后申请) |
+| 文档 | GitHub Pages | ❌ 未建(README 已含安装/双语/翻译维护说明) |
+
+发布操作:更新 `metadata.txt` 版本号 → `python scripts/make_zip.py` →
+GitHub 创建 Release 并上传 `dist/aquadrip-<版本>.zip`(详见 README)。
 
 ---
 
@@ -1962,11 +2040,27 @@ test/
 
 ### 14.3 后续改进建议
 
+**v0.3 遗留(2025-07):**
+
 1. **V2/V3 规划**：水肥一体化验证、多目标优化算法
 2. **算法研究**：不规则地块的 MST 优化、坡地等高线自适应算法
 3. **性能**：10000+ 节点的管网简化策略
 4. **生态**：滴头参数库社区贡献机制
-5. **国际**：英文版文档和界面
+5. ~~**国际**：英文版文档和界面~~ → ✅ 界面双语已于 2026-08 完成
+   (Qt Linguist 流程,352 条翻译;英文文档仍待补)
+
+**2026-08 评审新增:**
+
+6. **插件测试体系**(最高优先):topology_builder / calib_algorithm /
+   rotation_scheduler 的纯逻辑部分抽出为可脱离 QGIS 运行的函数并建测试
+7. **拓扑构建性能**:O(n²) 交叉检测引入 QgsSpatialIndex 预筛;
+   全量重建增加脏标记缓存
+8. **承压分析增强**:利用 link_endpoints 关联中间交叉点(auto_N)压力,
+   替代仅端点 max
+9. **代码去重**:点-折线最近距离、UTM 计算、DEM 查找统一到
+   公共模块;`layer_utils.edit_session` 推广替换 12 处手写编辑样板
+10. **wdrip-core 瘦身**:清理未接线模块(builder/、io/project.py、
+    topology/hydraulic.py、空 optimizer/emitter_db)或明确其 V2 定位
 
 ---
 
@@ -2172,6 +2266,9 @@ def initGui(self):
 
 ## 15. 实际开发进度与调整记录（2026-07-31 更新）
 
+> ⚠️ 本章为 2026-07-31 的历史快照(其中的阶段状态已过时,
+> 如"结果可视化未开始"等均已完成)。**最新状态见「0. 实施状态
+> 快照(2026-08)」**;本章保留架构调整的决策过程记录。
 > 本节记录 Phase 1 / Phase 2 的实际落地情况，以及开发过程中
 > 相对于原计划的重大调整。代码以 `main` 分支为准。
 
