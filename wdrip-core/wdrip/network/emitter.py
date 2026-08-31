@@ -40,24 +40,35 @@ class EmitterSpec:
 
     def flow_at_pressure(self, pressure: float) -> float:
         """计算在给定压力下的滴头流量（L/h）
-        
+
+        与模拟引擎口径一致(见 simulation: q = k·max(P,0)^x 及
+        迭代引擎逐节点指数),P ≤ 0 一律返回 0;PC 滴头在补偿区间
+        (≥ working_pressure_min)恒流,低于补偿下限按未补偿特性
+        平方根爬升(无制造商低压曲线时的近似,P=补偿下限处连续)。
+
         Args:
             pressure: 工作压力（m）
-            
+
         Returns:
             滴头流量（L/h）
         """
-        if self.is_pressure_compensating:
-            return self.nominal_flow
         if pressure <= 0:
             return 0.0
+        if self.is_pressure_compensating:
+            if pressure >= self.working_pressure_min:
+                return self.nominal_flow
+            # 未补偿段近似:(P/P_min)^0.5,在 P_min 处与额定流量连续
+            return self.nominal_flow * (
+                pressure / self.working_pressure_min) ** 0.5
         return self.k * (pressure ** self.x)
 
     def validate(self) -> List[str]:
         """检查参数合法性，返回错误列表"""
         errors = []
-        if self.k <= 0 and not self.is_pressure_compensating:
-            errors.append("非 PC 滴头必须指定 K 值（>0）")
+        # 模拟引擎统一按 q = k·P^x 计算(含 PC,P^0.05≈1),
+        # 因此 PC 滴头同样必须提供 k(参数库约定 k ≈ 额定流量)
+        if self.k <= 0:
+            errors.append("必须指定 K 值（>0，PC 滴头 K ≈ 额定流量）")
         if not (0 <= self.x <= 1):
             errors.append("流态指数 x 应在 0~1 之间")
         if self.working_pressure_max <= self.working_pressure_min:

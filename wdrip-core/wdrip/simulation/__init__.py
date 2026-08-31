@@ -86,7 +86,20 @@ class DripSimulation:
         # 滴灌场景中 emitter 流量由 emitter_coefficient 公式 q=k·P^x 计算，
         # base_demand 均为 0，required_pressure 数值不影响 emitter 结果
         wn.options.hydraulic.required_pressure = 0.1
-        
+
+        # 3.1 emitter 流态指数(EPANET/WNTR 的 emitter 指数是全局 option,
+        # 节点上挂的 emitter_exponent 仅供迭代引擎逐节点读取):
+        # - 全网滴头 x 一致 → 写入全局 option,EPANET 引擎路径也精确
+        # - x 混合(PC 0.05 + 普通 0.5) → 单一全局指数无法表达,挂标记,
+        #   run() 检测后把 EPANET 引擎切换为迭代引擎
+        xs = {round(n.emitter_x, 4) for n in self.network.nodes.values()
+              if getattr(n, "emitter_k", 0) > 0
+              and getattr(n, "emitter_x", None) is not None}
+        wn._aquadrip_mixed_emitter_exponent = len(xs) > 1
+        if len(xs) == 1:
+            wn.options.hydraulic.emitter_exponent = next(iter(xs))
+            logger.debug(f"全局 emitter 指数 = {next(iter(xs))}")
+
         return wn
     
     def _add_wntr_node(self, wn, nid: str, node):
@@ -249,7 +262,22 @@ class DripSimulation:
             # 注入进度回调到引擎
             if progress_callback and hasattr(self._engine, 'progress_callback'):
                 self._engine.progress_callback = progress_callback
-            
+
+            # 混合滴头流态指数(PC/非PC 并存)时,EPANET 的单一全局
+            # emitter 指数无法表达逐节点 x → 切换为逐节点指数的迭代引擎
+            if getattr(self._wn, "_aquadrip_mixed_emitter_exponent", False) \
+                    and self._engine.name == "epanet":
+                from .engine import IterativeWNTRSimulatorEngine
+                logger.info("管网混合滴头流态指数(PC/非PC),"
+                            "EPANET 全局指数无法表达,切换迭代引擎")
+                self._engine = IterativeWNTRSimulatorEngine()
+                if self._precision in self.PRESETS:
+                    params = self.PRESETS[self._precision]
+                    self._engine.max_iter = params["max_iter"]
+                    self._engine.tolerance = params["tolerance"]
+                if progress_callback:
+                    self._engine.progress_callback = progress_callback
+
             # 使用当前引擎运行
             logger.info(f"使用引擎: {self._engine.display_name}")
             wntr_results = self._engine.run(self._wn)
