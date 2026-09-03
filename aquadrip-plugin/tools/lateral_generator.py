@@ -411,9 +411,10 @@ class LateralGenerator:
         Returns:
             写入数量(0/1)
         """
-        emitter_spacing = float(self._attr(field_feat, "emitter_spacing") or 0.3)
-        emitter_k = float(self._attr(field_feat, "emitter_k") or 0.506)
-        emitter_x = float(self._attr(field_feat, "emitter_x") or 0.5)
+        # 与 generate() 相同的读取方式与默认值,保证手动/自动产物一致
+        emitter_spacing = float(field_feat.attribute("emitter_spacing") or 0.3)
+        emitter_k = float(field_feat.attribute("emitter_k") or 0.506)
+        emitter_x = float(field_feat.attribute("emitter_x") or 0.5)
         return self._write_to_pipes(
             [QgsLineString(line_pts)],
             emitter_spacing, emitter_k, emitter_x,
