@@ -445,7 +445,7 @@ Place a water source on the map first.</translation>
             <translation>Run a simulation first</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="1052" />
+            <location filename="../aquadrip_plugin.py" line="1059" />
             <source>校准模拟中...</source>
             <translation>Calibration simulation running...</translation>
         </message>
@@ -460,7 +460,7 @@ Place a water source on the map first.</translation>
             <translation>Export the network to an EPANET INP file</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="1077" />
+            <location filename="../aquadrip_plugin.py" line="1084" />
             <source>校准重模拟失败: {0}</source>
             <translation>Calibration re-simulation failed: {0}</translation>
         </message>
@@ -712,7 +712,7 @@ Place a water source on the map first.</translation>
             <translation>Sim. Q (L/h)</translation>
         </message>
         <message>
-            <location filename="../ui/dockwidget.py" line="377" />
+            <location filename="../ui/dockwidget.py" line="380" />
             <source>点击「刷新模拟值」获取模拟压力...</source>
             <translation>Click Refresh Sim Values to load simulated pressures...</translation>
         </message>
@@ -782,7 +782,7 @@ Place a water source on the map first.</translation>
             <translation>Duration (min)</translation>
         </message>
         <message>
-            <location filename="../ui/dockwidget.py" line="551" />
+            <location filename="../ui/dockwidget.py" line="568" />
             <source>点击「轮灌管理」工具栏按钮配置并运行轮灌</source>
             <translation>Use the Rotation Management toolbar button to configure and run rotations</translation>
         </message>
@@ -797,17 +797,17 @@ Place a water source on the map first.</translation>
             <translation>Rotation</translation>
         </message>
         <message>
-            <location filename="../ui/dockwidget.py" line="212" />
+            <location filename="../ui/dockwidget.py" line="215" />
             <source>校准已重置</source>
             <translation>Calibration reset</translation>
         </message>
         <message>
-            <location filename="../ui/dockwidget.py" line="224" />
+            <location filename="../ui/dockwidget.py" line="227" />
             <source>校准迭代 {0} 次  RMSE = {1:.2f} m</source>
             <translation>Calibration: {0} iterations  RMSE = {1:.2f} m</translation>
         </message>
         <message>
-            <location filename="../ui/dockwidget.py" line="543" />
+            <location filename="../ui/dockwidget.py" line="560" />
             <source>轮灌 {0}  共 {1} 分区  成功 {2} 个</source>
             <translation>Rotation {0}  {1} zones  {2} succeeded</translation>
         </message>
@@ -999,6 +999,24 @@ Place a water source on the map first.</translation>
             <location filename="../tools/layer_setup.py" line="478" />
             <source>  捕捉配置跳过: {0}</source>
             <translation>  Snapping config skipped: {0}</translation>
+        </message>
+    </context>
+    <context>
+        <name>ManualLateralTool</name>
+        <message>
+            <location filename="../tools/manual_lateral_tool.py" line="53" />
+            <source>点击田块内位置放置毛管(方向沿田块行向,自动延伸到边界);右键或 Esc 退出</source>
+            <translation>Click inside the field to place a lateral (along the field row direction, auto-extended to the boundary); right-click or Esc to exit</translation>
+        </message>
+        <message>
+            <location filename="../tools/manual_lateral_tool.py" line="124" />
+            <source>点击位置不在田块内,未放置</source>
+            <translation>Click position is outside the field; nothing placed</translation>
+        </message>
+        <message>
+            <location filename="../tools/manual_lateral_tool.py" line="137" />
+            <source>放置失败: {0}</source>
+            <translation>Placement failed: {0}</translation>
         </message>
     </context>
     <context>
@@ -1292,106 +1310,123 @@ An aQuaDrip project must contain the {1} layer.</translation>
             <translation>🌱 Save &amp; Generate Laterals</translation>
         </message>
         <message>
-            <location filename="../ui/property_dialog.py" line="203" />
+            <location filename="../ui/property_dialog.py" line="209" />
             <source>保存</source>
             <translation>Save</translation>
         </message>
         <message>
-            <location filename="../ui/property_dialog.py" line="211" />
+            <location filename="../ui/property_dialog.py" line="217" />
             <source>关闭</source>
             <translation>Close</translation>
         </message>
         <message>
-            <location filename="../ui/property_dialog.py" line="219" />
+            <location filename="../ui/property_dialog.py" line="225" />
             <source>自定义</source>
             <translation>Custom</translation>
         </message>
         <message>
-            <location filename="../ui/property_dialog.py" line="239" />
+            <location filename="../ui/property_dialog.py" line="245" />
             <source>选择边…</source>
             <translation>Select an edge…</translation>
         </message>
         <message>
-            <location filename="../ui/property_dialog.py" line="314" />
+            <location filename="../ui/property_dialog.py" line="320" />
             <source>{0} 个要素属性已保存</source>
             <translation>Attributes saved for {0} features</translation>
         </message>
         <message>
-            <location filename="../ui/property_dialog.py" line="314" />
+            <location filename="../ui/property_dialog.py" line="320" />
             <source>属性已保存</source>
             <translation>Attributes saved</translation>
         </message>
         <message>
-            <location filename="../ui/property_dialog.py" line="318" />
+            <location filename="../ui/property_dialog.py" line="324" />
             <source>保存失败: {0}</source>
             <translation>Failed to save: {0}</translation>
         </message>
         <message>
-            <location filename="../ui/property_dialog.py" line="484" />
+            <location filename="../ui/property_dialog.py" line="525" />
             <source>农田几何为空，请重新绘制地块</source>
             <translation>Field geometry is empty; redraw the field</translation>
         </message>
         <message>
-            <location filename="../ui/property_dialog.py" line="488" />
+            <location filename="../ui/property_dialog.py" line="494" />
             <source>间距参数无效: row_spacing={0}, tape_spacing={1}</source>
             <translation>Invalid spacing: row_spacing={0}, tape_spacing={1}</translation>
         </message>
         <message>
-            <location filename="../ui/property_dialog.py" line="492" />
+            <location filename="../ui/property_dialog.py" line="498" />
             <source>已生成 {0} 条毛管</source>
             <translation>{0} laterals generated</translation>
         </message>
         <message>
-            <location filename="../ui/property_dialog.py" line="496" />
+            <location filename="../ui/property_dialog.py" line="502" />
             <source>生成失败:
 {0}</source>
             <translation>Generation failed:
 {0}</translation>
         </message>
         <message>
-            <location filename="../ui/property_dialog.py" line="509" />
+            <location filename="../ui/property_dialog.py" line="556" />
             <source>📋 管道批量设置</source>
             <translation>📋 Pipe Batch Settings</translation>
         </message>
         <message>
-            <location filename="../ui/property_dialog.py" line="520" />
+            <location filename="../ui/property_dialog.py" line="567" />
             <source>管道类型:</source>
             <translation>Pipe type:</translation>
         </message>
         <message>
-            <location filename="../ui/property_dialog.py" line="534" />
+            <location filename="../ui/property_dialog.py" line="581" />
             <source>滴头型号</source>
             <translation>Emitter model</translation>
         </message>
         <message>
-            <location filename="../ui/property_dialog.py" line="550" />
+            <location filename="../ui/property_dialog.py" line="597" />
             <source>📋 应用到田块内所有毛管</source>
             <translation>📋 Apply to all laterals in the field</translation>
         </message>
         <message>
-            <location filename="../ui/property_dialog.py" line="668" />
+            <location filename="../ui/property_dialog.py" line="715" />
             <source>管道</source>
             <translation>Pipe</translation>
         </message>
         <message>
-            <location filename="../ui/property_dialog.py" line="576" />
+            <location filename="../ui/property_dialog.py" line="623" />
             <source>📋 应用到田块内所有{0}</source>
             <translation>📋 Apply to all {0} in the field</translation>
         </message>
         <message>
-            <location filename="../ui/property_dialog.py" line="671" />
+            <location filename="../ui/property_dialog.py" line="718" />
             <source>田块内未找到{0}，请先生成或绘制{1}</source>
             <translation>No {0} found in the field; generate or draw {1} first</translation>
         </message>
         <message>
-            <location filename="../ui/property_dialog.py" line="737" />
+            <location filename="../ui/property_dialog.py" line="784" />
             <source>管道图层提交失败</source>
             <translation>Pipe layer commit failed</translation>
         </message>
         <message>
-            <location filename="../ui/property_dialog.py" line="745" />
+            <location filename="../ui/property_dialog.py" line="792" />
             <source>已更新田块内 {0} 条{1}的参数</source>
             <translation>Updated parameters of {0} {1} in the field</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="201" />
+            <source>✏️ 手动放置毛管</source>
+            <translation>✏️ Place Laterals Manually</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="535" />
+            <source>进入手动放置失败:
+{0}</source>
+            <translation>Failed to enter manual placement:
+{0}</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="540" />
+            <source>手动放置完成,共 {0} 根毛管</source>
+            <translation>Manual placement done: {0} laterals placed</translation>
         </message>
     </context>
     <context>

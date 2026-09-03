@@ -196,6 +196,12 @@ class PropertyDialog(QDialog):
             self.btn_gen.clicked.connect(self._on_generate)
             layout.addWidget(self.btn_gen)
 
+            # 手动放置模式:现有农田的毛管布置不规则(间距/长短不一)时,
+            # 逐根点击放置以复刻现状;参数与本对话框一致
+            self.btn_manual = QPushButton(QApplication.translate("PropertyDialog", "✏️ 手动放置毛管"))
+            self.btn_manual.clicked.connect(self._on_manual_place)
+            layout.addWidget(self.btn_manual)
+
         # 保存/关闭按钮：有田块参数表单时才需要"保存"
         if show_field_params:
             buttons = QDialogButtonBox(
@@ -494,6 +500,47 @@ class PropertyDialog(QDialog):
             import traceback
             traceback.print_exc()
             QMessageBox.critical(self, "aQuaDrip", QApplication.translate("PropertyDialog", "生成失败:\n{0}").format(e))
+
+    def _on_manual_place(self):
+        """保存参数后进入手动放置模式:逐根点击放置毛管
+
+        适用:现有农田的毛管布置不规则,自动生成无法复刻现状。
+        参数已保存到田块字段,放置的毛管与自动生成产物属性一致;
+        方向沿用田块 direction_type/row_direction(可先用「选择边」设定)。
+        """
+        try:
+            self._save()  # 先保存参数到田块字段
+
+            # 防御:commit 后重取新鲜要素(同 _on_generate)
+            fid = self.feat.id()
+            fresh_feat = None
+            for f in self.layer.getFeatures():
+                if f.id() == fid:
+                    fresh_feat = f
+                    break
+            feat = fresh_feat if fresh_feat is not None else self.feat
+
+            geom = feat.geometry()
+            if not geom or geom.isEmpty():
+                raise ValueError(QApplication.translate("PropertyDialog", "农田几何为空，请重新绘制地块"))
+
+            from ..tools.manual_lateral_tool import ManualLateralTool
+            # 存实例属性防 GC(工具激活期间对象必须存活)
+            self._manual_tool = ManualLateralTool(self.iface, feat)
+            self._manual_tool.finished.connect(self._on_manual_done)
+            self.iface.mapCanvas().setMapTool(self._manual_tool)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            QMessageBox.critical(self, "aQuaDrip", QApplication.translate("PropertyDialog", "进入手动放置失败:\n{0}").format(e))
+
+    def _on_manual_done(self, count: int):
+        """手动放置工具退出回执"""
+        self._manual_tool = None
+        self.iface.messageBar().pushMessage(
+            "aQuaDrip",
+            QApplication.translate("PropertyDialog", "手动放置完成,共 {0} 根毛管").format(count),
+            level=0, duration=6)
 
     # ── 田块内管道批量设置 ──
 

@@ -397,6 +397,70 @@ class LateralGenerator:
         self.iface.messageBar().pushMessage("aQuaDrip", msg, level=0, duration=5)
         return count
 
+    def write_manual_lateral(self, field_feat, line_pts) -> int:
+        """手动放置单根毛管(不清除已有毛管)
+
+        参数(滴头间距/k/x)从田块字段读取,与自动生成同源——
+        用户在属性对话框保存过参数后,手动放置与批量生成的
+        毛管属性完全一致。凹形地块由调用方传最长段。
+
+        Args:
+            field_feat: 田块要素(读参数)
+            line_pts: 毛管折线点列表 [QgsPointXY, ...]
+
+        Returns:
+            写入数量(0/1)
+        """
+        emitter_spacing = float(self._attr(field_feat, "emitter_spacing") or 0.3)
+        emitter_k = float(self._attr(field_feat, "emitter_k") or 0.506)
+        emitter_x = float(self._attr(field_feat, "emitter_x") or 0.5)
+        return self._write_to_pipes(
+            [QgsLineString(line_pts)],
+            emitter_spacing, emitter_k, emitter_x,
+            field_geom=None)  # None = 不清旧,保留已有毛管
+
+    @staticmethod
+    def lateral_segment_at(point, geom, angle_rad):
+        """过点沿方向与田块求交,返回该位置的整根毛管折线(最长段)
+
+        手动放置模式的核心几何:构造过 point 的双向长线
+        (长度=田块 bbox 对角线,保证贯穿),与田块多边形求交,
+        凹形地块交出多段时取最长的一段。
+
+        Args:
+            point: QgsPointXY 点击位置(图层 CRS)
+            geom: 田块 QgsGeometry
+            angle_rad: 毛管方向角(弧度,来自 _calc_direction_angle)
+
+        Returns:
+            [QgsPointXY, ...] 或 None(点击在田块外/交为点)
+        """
+        if geom is None or geom.isEmpty() or not geom.isGeosValid():
+            return None
+        bbox = geom.boundingBox()
+        # 双向足够长:bbox 对角线长度必贯穿任意过内点的直线
+        diag = ((bbox.width() ** 2 + bbox.height() ** 2) ** 0.5) * 1.5 + 1.0
+        dx, dy = math.cos(angle_rad) * diag, math.sin(angle_rad) * diag
+        line = QgsGeometry.fromPolylineXY([
+            QgsPointXY(point.x() - dx, point.y() - dy),
+            QgsPointXY(point.x() + dx, point.y() + dy)])
+        inter = line.intersection(geom)
+        if inter is None or inter.isEmpty() or inter.isNull():
+            return None
+        # 交可能是 MultiLineString(凹形)——取最长段
+        if inter.type() == QgsWkbTypes.LineGeometry and not inter.isMultipart():
+            candidates = [inter]
+        elif inter.isMultipart():
+            candidates = [QgsGeometry(part) for part in inter.asGeometryCollection()
+                          if part.type() == QgsWkbTypes.LineGeometry]
+        else:
+            return None  # 点/其他
+        best = max(candidates, key=lambda g: g.length())
+        pts = best.asPolyline()
+        if not pts or len(pts) < 2:
+            return None
+        return pts
+
     @staticmethod
     def _delete_existing_laterals(layer: QgsVectorLayer,
                                    field_geom: QgsGeometry) -> int:
