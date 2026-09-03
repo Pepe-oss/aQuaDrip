@@ -39,10 +39,10 @@ class ManualLateralTool(QgsMapTool):
         self._angle_rad = None       # 方向角(弧度),首次点击/移动时计算
         self._placed = 0
 
-        # 预览橡皮筋(绿色半透明)
+        # 预览橡皮筋(绿色半透明虚线)
         self._rb = QgsRubberBand(self.canvas, QgsWkbTypes.LineGeometry)
-        self._rb.setStrokeColor(QColor(46, 204, 113))
-        self._rb.setStrokeWidth(2)
+        self._rb.setColor(QColor(46, 204, 113, 200))
+        self._rb.setWidth(2)
         self._rb.setLineStyle(Qt.DashLine)
 
     # ── 生命周期 ──
