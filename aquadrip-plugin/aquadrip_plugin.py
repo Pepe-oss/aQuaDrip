@@ -1033,6 +1033,8 @@ class AQuaDripPlugin:
         dlg = CalibrationDialog(obs_data, self.iface)
         self._calib_dlg = dlg
         dlg.sim_requested.connect(self._on_calib_sim_requested)
+        # 「应用校准结果」→ 用校准后 C 值完整重新模拟(精度选择/进度/结果回写)
+        dlg.apply_requested.connect(self.on_run_simulation)
         dlg.finished.connect(lambda: setattr(self, '_calib_dlg', None))
         dlg.show()
 

@@ -15,6 +15,7 @@ class CalibrationDialog(QDialog):
     """校准参数对话框"""
 
     sim_requested = pyqtSignal(dict)
+    apply_requested = pyqtSignal()  # 请求用校准后参数重新模拟(完整入口)
 
     def __init__(self, obs_data: dict, iface, parent=None):
         super().__init__(parent or iface.mainWindow())
@@ -161,17 +162,14 @@ class CalibrationDialog(QDialog):
                 QApplication.translate("CalibrationDialog", "\n── 校准{0}，共 {1} 次迭代 ──").format('完成' if not self._running else '已停止', self._iteration))
 
     def _on_apply(self):
-        """应用校准结果：刷新图层渲染并确认"""
-        self._result_text.append(QApplication.translate("CalibrationDialog", "\n✅ 已应用校准结果"))
-        layer = self._find_layer("aqd_pipes")
-        if layer:
-            layer.triggerRepaint()
+        """应用校准结果:C 值已在每轮迭代中写入 aqd_pipes.roughness,
+        此处触发完整重新模拟,让校准效果(压力/流量/均匀度)可见。
+        """
+        self._result_text.append(
+            QApplication.translate("CalibrationDialog",
+                "\n✅ 校准的 C 值已写入管道图层，正在用校准后参数重新模拟..."))
         self._btn_apply.setEnabled(False)
-
-    def _find_layer(self, key: str):
-        from qgis.core import QgsProject
-        from ..tools.layer_utils import find_layer
-        return find_layer(QgsProject.instance(), key)
+        self.apply_requested.emit()
 
     def _run_one_iteration(self):
         if not self._running:
