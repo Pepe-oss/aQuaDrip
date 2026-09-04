@@ -383,13 +383,24 @@ def _apply_roughness(iface, net, new_roughness, old_vals, c_limits) -> Tuple[int
                 continue
             base_updates.setdefault(fid, []).append(float(nc))
 
+        # old_vals 的键是内存网切段 ID(L25_p1/L4_seg003),同样按
+        # 基础 fid 聚合取均值——否则查不到恒显示默认 130,掩盖
+        # "上一轮写回已生效"的事实,误导收敛判读
+        old_base: Dict[str, List[float]] = {}
+        for lid, v in old_vals.items():
+            if not lid.startswith("L"):
+                continue
+            b = lid[1:].split("_p")[0].split("_seg")[0]
+            old_base.setdefault(b, []).append(float(v))
+
         for fid, cs in sorted(base_updates.items()):
             feat = fid_map.get(fid)
             if feat is None:
                 continue
             lid = f"L{fid}"
             nc = sum(cs) / len(cs)
-            oc = old_vals.get(lid, 130.0)
+            ocs = old_base.get(str(fid), [130.0])
+            oc = sum(ocs) / len(ocs)
             feat.setAttribute("roughness", float(nc))
             pipe_layer.updateFeature(feat)
             pt = str(feat.attribute("pipe_type") or "mainline")
