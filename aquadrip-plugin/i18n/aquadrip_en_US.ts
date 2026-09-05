@@ -872,6 +872,11 @@ Place a water source on the map first.</translation>
             <source>  🔧 水源水头已自动修正</source>
             <translation>  🔧 Source head auto-corrected</translation>
         </message>
+        <message>
+            <location filename="../tools/elevation_extractor.py" line="177" />
+            <source>水源总水头 {0:.1f}m 低于最高节点 {1:.1f}m,高处可能欠压</source>
+            <translation>Source total head {0:.1f} m is below the highest node {1:.1f} m; uphill areas may be under-pressured</translation>
+        </message>
     </context>
     <context>
         <name>LateralGenerator</name>
@@ -1617,7 +1622,7 @@ An aQuaDrip project must contain the {1} layer.</translation>
             <translation>Topology: {0} segments ({1} laterals), {2} nodes</translation>
         </message>
         <message>
-            <location filename="../tools/sync_manager.py" line="521" />
+            <location filename="../tools/sync_manager.py" line="526" />
             <source>⚠️ 图层 {0} 提交失败</source>
             <translation>⚠️ Failed to commit layer {0}</translation>
         </message>
@@ -1627,19 +1632,19 @@ An aQuaDrip project must contain the {1} layer.</translation>
             <translation>⚠️ Failed to expand lateral {0}: {1}</translation>
         </message>
         <message>
-            <location filename="../tools/sync_manager.py" line="387" />
-            <source>🔧 水源 {0} 水头修正: {1:.1f} → {2:.1f}m</source>
-            <translation>🔧 Source {0} head corrected: {1:.1f} → {2:.1f} m</translation>
-        </message>
-        <message>
-            <location filename="../tools/sync_manager.py" line="390" />
+            <location filename="../tools/sync_manager.py" line="395" />
             <source>🌐 DEM 高程已应用于 {0}/{1} 个节点</source>
             <translation>🌐 DEM elevations applied to {0}/{1} nodes</translation>
         </message>
         <message>
-            <location filename="../tools/sync_manager.py" line="415" />
+            <location filename="../tools/sync_manager.py" line="420" />
             <source>高程</source>
             <translation>Elevation</translation>
+        </message>
+        <message>
+            <location filename="../tools/sync_manager.py" line="388" />
+            <source>⚠️ 水源总水头 {0:.1f}m 低于管网最高点 {1:.1f}m,高处田块可能欠压——请增大水头或检查高程</source>
+            <translation>⚠️ Source total head {0:.1f} m is below the highest network point {1:.1f} m; uphill areas may be under-pressured — increase head or check elevations</translation>
         </message>
     </context>
     <context>

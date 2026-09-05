@@ -168,14 +168,19 @@ class ElevationExtractor:
                 ntype = self._safe_attr(feat, "node_type", "junction")
                 if ntype != "source":
                     continue
+                # head 语义 = 相对水源高程的压力水头(m),由模拟端
+                # (elevation + head)合成总水头,此处不再强制覆盖;
+                # 仅提示欠压风险(总水头低于最高下游点时)
                 old_head = float(self._safe_attr(feat, "head") or 20)
                 source_elev = float(self._safe_attr(feat, "elevation") or 0)
-                # 水源总头至少 = max(源高程, 最高下游高程) + 裕量
-                required = max(source_elev, max_elev) + min_head_margin
-                if old_head < required:
-                    feat.setAttribute("head", required)
-                    node_layer.updateFeature(feat)
-                    modified = True
+                if source_elev + old_head < max_elev:
+                    self.iface.messageBar().pushWarning(
+                        "aQuaDrip",
+                        QApplication.translate(
+                            "ElevationExtractor",
+                            "水源总水头 {0:.1f}m 低于最高节点 {1:.1f}m,"
+                            "高处可能欠压").format(
+                                source_elev + old_head, max_elev))
             if need_edit:
                 node_layer.commitChanges()
         except Exception:

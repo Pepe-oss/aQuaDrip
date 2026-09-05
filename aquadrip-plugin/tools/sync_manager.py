@@ -377,15 +377,20 @@ class SyncManager:
         #    否则 pressure = head - elevation < 0 → 负压 → 管网不出水）
         if updated > 0 and max_elev > 0:
             from wdrip.network import SourceNode
-            margin = 20.0  # 安全裕量（m）
             for node in net.nodes.values():
                 if isinstance(node, SourceNode):
-                    required = max(node.elevation, max_elev) + margin
-                    if node.head < required:
-                        old_head = node.head
-                        node.head = required
+                    # head 语义 = 相对于水源自身高程的压力水头(m):
+                    # 模拟时总水头 = elevation + head(见 simulation 的
+                    # Reservoir 构建)。此处不再强制覆盖用户设置——
+                    # 仅当总水头低于管网最高点(水送不到高处)时警告。
+                    total = node.elevation + node.head
+                    if total < max_elev:
                         self.log(
-                            QApplication.translate("SyncManager", "🔧 水源 {0} 水头修正: {1:.1f} → {2:.1f}m").format(node.id, old_head, required))
+                            QApplication.translate(
+                                "SyncManager",
+                                "⚠️ 水源总水头 {0:.1f}m 低于管网最高点 {1:.1f}m,"
+                                "高处田块可能欠压——请增大水头或检查高程").format(
+                                    total, max_elev))
 
             self.log(QApplication.translate("SyncManager", "🌐 DEM 高程已应用于 {0}/{1} 个节点").format(updated, total))
 

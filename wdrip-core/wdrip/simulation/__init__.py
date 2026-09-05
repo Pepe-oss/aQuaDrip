@@ -117,9 +117,15 @@ class DripSimulation:
                 logger.warning(
                     f"水源 {nid} 的 head={node.head}≤0，已回退为默认 {head}m，"
                     f"请在属性表修正水头值")
-            wn.add_reservoir(nid, base_head=head,
+            # head 语义 = 相对于水源自身高程的压力水头(m):
+            # WNTR Reservoir 的 base_head 是绝对总水头(高程基准),
+            # 必须加上水源高程——否则 DEM 高程会"吞掉"水头导致全网
+            # 负压。无 DEM 时 elevation=0,行为与旧版一致。
+            elev = getattr(node, "elevation", 0.0) or 0.0
+            wn.add_reservoir(nid, base_head=elev + head,
                              coordinates=(node.x, node.y))
-            logger.debug(f"  Reservoir: {nid} head={head}")
+            logger.debug(f"  Reservoir: {nid} base_head={elev + head} "
+                         f"(elev={elev} + head={head})")
 
         elif hasattr(node, "emitter_k"):
             # EmitterNode → wntr.Junction + emitter
