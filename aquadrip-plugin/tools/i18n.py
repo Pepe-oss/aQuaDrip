@@ -31,12 +31,25 @@ _translator = None  # 已安装的 QTranslator(unload 时移除)
 
 
 def resolve_locale() -> str:
-    """解析当前应使用的 locale(如 zh_CN / en_US)"""
+    """解析当前应使用的 locale(如 zh_CN / en_US)
+
+    优先级:
+      1. QSettings 中用户显式选择的语言(aQuaDrip/language)
+      2. QGIS「界面翻译语言」(Options→General→User Interface
+         Translation,键 locale/userLocale)——QGIS 3.30+ 将其与
+         区域格式(globalLocale)拆分为两个设置,界面语言才是
+         用户感知的"QGIS 是什么语言"
+      3. QgsApplication.locale()(含 globalLocale override)
+      4. 系统语言
+    """
     choice = QSettings().value(SETTING_KEY, "auto", type=str) or "auto"
     if choice == "auto":
-        # 跟随 QGIS 界面语言。QgsApplication.locale() 反映 QGIS 的
-        # 语言设置(含 override);注意 QApplication 没有 locale() 方法。
         try:
+            # ① 界面翻译语言(用户在选项里选的 UI 语言)
+            ui_locale = str(QSettings().value("locale/userLocale", "") or "").strip()
+            if ui_locale:
+                return ui_locale
+            # ② QGIS 全局 locale(格式 override → 系统)
             from qgis.core import QgsApplication
             loc = str(QgsApplication.locale() or "").strip()
             if loc:
