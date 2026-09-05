@@ -650,6 +650,17 @@ class PropertyDialog(QDialog):
             row[0].setVisible(visible)
             row[1].setVisible(visible)
 
+    @staticmethod
+    def _widget_value(w):
+        """统一读取批量控件当前值(与 _save 的读取规则一致)"""
+        if isinstance(w, QComboBox):
+            return w.currentData()
+        if isinstance(w, QDoubleSpinBox):
+            return float(w.value())
+        if isinstance(w, QSpinBox):
+            return int(w.value())
+        return w.text()
+
     def _batch_prefill(self):
         """从田块内第一条该类型管道预填充参数值"""
         ptype = self._batch_pipe_combo.currentData()
@@ -672,6 +683,12 @@ class PropertyDialog(QDialog):
                     w.setValue(0)
             else:
                 w.setText("" if val is None else str(val))
+
+        # 记录基准值:批量应用只提交用户实际修改过的字段,
+        # 避免只想改直径时把粗糙度/滴头参数等一并统一覆盖
+        self._batch_baseline = {
+            fname: self._widget_value(w)
+            for fname, w in self._batch_widgets.items()}
 
     def _find_pipes_in_field(self, pipe_type: str, limit: int = 0):
         """用质心包含判定找到田块内指定类型的管道
@@ -729,17 +746,22 @@ class PropertyDialog(QDialog):
         visible_fields = set(BATCH_PIPE_FIELDS.get(ptype, []))
         if ptype == "lateral":
             visible_fields.add("emitter_model")
+        baseline = getattr(self, "_batch_baseline", {})
         for fname, w in self._batch_widgets.items():
             if fname not in visible_fields:
                 continue
-            if isinstance(w, QComboBox):
-                updates[fname] = w.currentData()
-            elif isinstance(w, QDoubleSpinBox):
-                updates[fname] = float(w.value())
-            elif isinstance(w, QSpinBox):
-                updates[fname] = int(w.value())
-            else:
-                updates[fname] = w.text()
+            val = self._widget_value(w)
+            # 只提交相对预填充基准变化过的字段——
+            # 用户只改直径时,粗糙度/滴头参数等保持各管原值
+            if val == baseline.get(fname):
+                continue
+            updates[fname] = val
+
+        if not updates:
+            QMessageBox.information(
+                self, "aQuaDrip",
+                QApplication.translate("PropertyDialog", "未修改任何参数,未应用批量设置"))
+            return
 
         # 批量更新（自动补建旧 GPKG 中缺失的字段）
         from qgis.core import QgsField
@@ -790,7 +812,9 @@ class PropertyDialog(QDialog):
 
         pipe_layer.triggerRepaint()
         self.iface.messageBar().pushMessage(
-            "aQuaDrip", QApplication.translate("PropertyDialog", "已更新田块内 {0} 条{1}的参数").format(count, label),
+            "aQuaDrip",
+            QApplication.translate("PropertyDialog", "已更新田块内 {0} 条{1}的参数").format(count, label)
+            + f" [{', '.join(updates)}]",
             level=0, duration=4)
 
     # ── 工具 ──

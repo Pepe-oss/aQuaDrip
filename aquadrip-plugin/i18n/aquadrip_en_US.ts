@@ -498,12 +498,12 @@ Place a water source on the map first.</translation>
             <translation>Mainline</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="215" />
+            <location filename="../ui/calibration_dialog.py" line="210" />
             <source>支管</source>
             <translation>Submain</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="216" />
+            <location filename="../ui/calibration_dialog.py" line="211" />
             <source>毛管</source>
             <translation>Lateral</translation>
         </message>
@@ -545,39 +545,39 @@ Place a water source on the map first.</translation>
 ── Calibration {0}, {1} iterations in total ──</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="192" />
+            <location filename="../ui/calibration_dialog.py" line="187" />
             <source>
 ── 迭代 {0}  RMSE = {1:.2f} m  ({2} 条管道)  [{3}]</source>
             <translation>
 ── Iteration {0}  RMSE = {1:.2f} m  ({2} pipes)  [{3}]</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="215" />
+            <location filename="../ui/calibration_dialog.py" line="210" />
             <source>干管</source>
             <translation>Mainline</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="224" />
+            <location filename="../ui/calibration_dialog.py" line="219" />
             <source>{0} {1}条(hf²={2:.0f}% {3}{4:.1f})</source>
             <translation>{0} {1} pipes (hf²={2:.0f}% {3}{4:.1f})</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="227" />
+            <location filename="../ui/calibration_dialog.py" line="222" />
             <source>  📊 分型: </source>
             <translation>  📊 By type: </translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="234" />
+            <location filename="../ui/calibration_dialog.py" line="229" />
             <source>  ✓ 已收敛 (参数无变化)</source>
             <translation>  ✓ Converged (no parameter change)</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="238" />
+            <location filename="../ui/calibration_dialog.py" line="233" />
             <source>  ✓ 达到最大迭代次数</source>
             <translation>  ✓ Reached max iterations</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="242" />
+            <location filename="../ui/calibration_dialog.py" line="237" />
             <source>
 ❌ 迭代 {0} 失败: {1}
 {2}</source>
@@ -591,7 +591,7 @@ Place a water source on the map first.</translation>
             <translation>Note: the RMSE shown each round is the error before that round's calibration (from the previous simulation). Verify elevations / source head / emitter parameters before calibrating — C calibration should only absorb pipe-loss errors.</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="199" />
+            <location filename="../ui/calibration_dialog.py" line="194" />
             <source>  ⚠️ 观测点 {0} 距管网 {1} 超过匹配半径，已跳过</source>
             <translation>  ⚠️ Observation point {0} is {1} from the network (beyond match radius); skipped</translation>
         </message>
@@ -1387,7 +1387,7 @@ An aQuaDrip project must contain the {1} layer.</translation>
             <translation>📋 Apply to all laterals in the field</translation>
         </message>
         <message>
-            <location filename="../ui/property_dialog.py" line="715" />
+            <location filename="../ui/property_dialog.py" line="732" />
             <source>管道</source>
             <translation>Pipe</translation>
         </message>
@@ -1397,17 +1397,17 @@ An aQuaDrip project must contain the {1} layer.</translation>
             <translation>📋 Apply to all {0} in the field</translation>
         </message>
         <message>
-            <location filename="../ui/property_dialog.py" line="718" />
+            <location filename="../ui/property_dialog.py" line="735" />
             <source>田块内未找到{0}，请先生成或绘制{1}</source>
             <translation>No {0} found in the field; generate or draw {1} first</translation>
         </message>
         <message>
-            <location filename="../ui/property_dialog.py" line="784" />
+            <location filename="../ui/property_dialog.py" line="806" />
             <source>管道图层提交失败</source>
             <translation>Pipe layer commit failed</translation>
         </message>
         <message>
-            <location filename="../ui/property_dialog.py" line="792" />
+            <location filename="../ui/property_dialog.py" line="814" />
             <source>已更新田块内 {0} 条{1}的参数</source>
             <translation>Updated parameters of {0} {1} in the field</translation>
         </message>
@@ -1427,6 +1427,11 @@ An aQuaDrip project must contain the {1} layer.</translation>
             <location filename="../ui/property_dialog.py" line="540" />
             <source>手动放置完成,共 {0} 根毛管</source>
             <translation>Manual placement done: {0} laterals placed</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="761" />
+            <source>未修改任何参数,未应用批量设置</source>
+            <translation>No parameters modified; batch settings not applied</translation>
         </message>
     </context>
     <context>
