@@ -69,9 +69,9 @@ FIELD_DEFS = {
             _text_field("rotation_mode", 10),
         ],
         "value_maps": {
-            "planting_pattern": {"垄模式": "ridge", "按垄数": "ridge_count"},
-            "direction_type": {"与田块长边平行": "long_edge", "与田块短边平行": "short_edge", "自定义角度": "custom"},
-            "crop_type": {"玉米": "corn", "小麦": "wheat", "水稻": "rice", "蔬菜": "vegetable", "果树": "orchard", "其他": "other"},
+            "planting_pattern": { QApplication.translate("LayerSetup", "垄模式"): "ridge", QApplication.translate("LayerSetup", "按垄数"): "ridge_count"},
+            "direction_type": { QApplication.translate("LayerSetup", "与田块长边平行"): "long_edge", QApplication.translate("LayerSetup", "与田块短边平行"): "short_edge", QApplication.translate("LayerSetup", "自定义角度"): "custom"},
+            "crop_type": { QApplication.translate("LayerSetup", "玉米"): "corn", QApplication.translate("LayerSetup", "小麦"): "wheat", QApplication.translate("LayerSetup", "水稻"): "rice", QApplication.translate("LayerSetup", "蔬菜"): "vegetable", QApplication.translate("LayerSetup", "果树"): "orchard", QApplication.translate("LayerSetup", "其他"): "other"},
         },
         "defaults": {
             "planting_pattern": "'ridge'",
@@ -106,9 +106,9 @@ FIELD_DEFS = {
             _text_field("pressure_status", 12),
         ],
         "value_maps": {
-            "pipe_type": {"干管": "mainline", "支管": "submain", "毛管": "lateral"},
-            "status": {"开启": "open", "关闭": "closed"},
-            "material": {"PE": "PE", "PVC": "PVC", "不锈钢": "stainless", "镀锌钢": "galvanized"},
+            "pipe_type": { QApplication.translate("LayerSetup", "干管"): "mainline", QApplication.translate("LayerSetup", "支管"): "submain", QApplication.translate("LayerSetup", "毛管"): "lateral"},
+            "status": { QApplication.translate("LayerSetup", "开启"): "open", QApplication.translate("LayerSetup", "关闭"): "closed"},
+            "material": {"PE": "PE", "PVC": "PVC", QApplication.translate("LayerSetup", "不锈钢"): "stainless", QApplication.translate("LayerSetup", "镀锌钢"): "galvanized"},
         },
         "defaults": {
             "pipe_type": "'mainline'",
@@ -139,8 +139,8 @@ FIELD_DEFS = {
         ],
         "svg_line": "pump.svg",
         "value_maps": {
-            "pump_type": {"离心泵": "centrifugal", "潜水泵": "submersible"},
-            "status": {"开启": "open", "关闭": "closed"},
+            "pump_type": { QApplication.translate("LayerSetup", "离心泵"): "centrifugal", QApplication.translate("LayerSetup", "潜水泵"): "submersible"},
+            "status": { QApplication.translate("LayerSetup", "开启"): "open", QApplication.translate("LayerSetup", "关闭"): "closed"},
         },
         "defaults": {
             "pump_type": "'centrifugal'",
@@ -174,9 +174,8 @@ FIELD_DEFS = {
             # - PSV 持压阀：维持上游压力
             # GATE/SOLENOID/CHECK 等无需单独阀门图层
             # （全开=普通管道，关闭=管道 status=closed）
-            "valve_type": {"减压阀 PRV": "PRV", "流量控制阀 FCV": "FCV",
-                          "持压阀 PSV": "PSV"},
-            "status": {"开启": "open", "关闭": "closed"},
+            "valve_type": { QApplication.translate("LayerSetup", "减压阀 PRV"): "PRV", QApplication.translate("LayerSetup", "流量控制阀 FCV"): "FCV", QApplication.translate("LayerSetup", "持压阀 PSV"): "PSV"},
+            "status": { QApplication.translate("LayerSetup", "开启"): "open", QApplication.translate("LayerSetup", "关闭"): "closed"},
         },
         "defaults": {
             "valve_type": "'PRV'",
@@ -199,10 +198,8 @@ FIELD_DEFS = {
             _double_field("pressure"),
         ],
         "value_maps": {
-            "node_type": {"水源": "source", "施肥罐": "fertilizer",
-                          "主管节点": "main_junction", "支管节点": "sub_junction",
-                          "毛管节点": "lateral_junction", "连接点": "junction"},
-            "source_type": {"机井": "well", "蓄水池": "reservoir", "河渠": "canal", "出水口": "outlet"},
+            "node_type": { QApplication.translate("LayerSetup", "水源"): "source", QApplication.translate("LayerSetup", "施肥罐"): "fertilizer", QApplication.translate("LayerSetup", "主管节点"): "main_junction", QApplication.translate("LayerSetup", "支管节点"): "sub_junction", QApplication.translate("LayerSetup", "毛管节点"): "lateral_junction", QApplication.translate("LayerSetup", "连接点"): "junction"},
+            "source_type": { QApplication.translate("LayerSetup", "机井"): "well", QApplication.translate("LayerSetup", "蓄水池"): "reservoir", QApplication.translate("LayerSetup", "河渠"): "canal", QApplication.translate("LayerSetup", "出水口"): "outlet"},
         },
         "defaults": {
             "node_type": "'junction'",
@@ -225,7 +222,7 @@ FIELD_DEFS = {
             _double_field("simulated_flow"),
         ],
         "value_maps": {
-            "type": {"滴头": "emitter", "管道节点": "junction", "水源": "source"},
+            "type": { QApplication.translate("LayerSetup", "滴头"): "emitter", QApplication.translate("LayerSetup", "管道节点"): "junction", QApplication.translate("LayerSetup", "水源"): "source"},
         },
         "defaults": {"type": "'emitter'"},
     },

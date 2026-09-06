@@ -505,7 +505,7 @@ Place a water source on the map first.</translation>
         <message>
             <location filename="../ui/calibration_dialog.py" line="107" />
             <source>关闭</source>
-            <translation>Close</translation>
+            <translation>Closed</translation>
         </message>
         <message>
             <location filename="../ui/calibration_dialog.py" line="161" />
@@ -936,44 +936,219 @@ Place a water source on the map first.</translation>
     <context>
         <name>LayerSetup</name>
         <message>
-            <location filename="../tools/layer_setup.py" line="310" />
+            <location filename="../tools/layer_setup.py" line="307" />
             <source>  已删除旧 GPKG</source>
             <translation>  Old GPKG deleted</translation>
         </message>
         <message>
-            <location filename="../tools/layer_setup.py" line="312" />
+            <location filename="../tools/layer_setup.py" line="309" />
             <source>  ⚠️ 无法删除: {0}</source>
             <translation>  ⚠️ Cannot delete: {0}</translation>
         </message>
         <message>
-            <location filename="../tools/layer_setup.py" line="314" />
+            <location filename="../tools/layer_setup.py" line="311" />
             <source>创建 GeoPackage: {0}</source>
             <translation>Creating GeoPackage: {0}</translation>
         </message>
         <message>
-            <location filename="../tools/layer_setup.py" line="336" />
+            <location filename="../tools/layer_setup.py" line="333" />
             <source>  目标 CRS: {0} (srs_id={1})</source>
             <translation>  Target CRS: {0} (srs_id={1})</translation>
         </message>
         <message>
-            <location filename="../tools/layer_setup.py" line="349" />
+            <location filename="../tools/layer_setup.py" line="346" />
             <source>  ❌ {0} 打开失败</source>
             <translation>  ❌ Failed to open {0}</translation>
         </message>
         <message>
-            <location filename="../tools/layer_setup.py" line="358" />
+            <location filename="../tools/layer_setup.py" line="355" />
             <source>  ❌ {0} 失败: {1}</source>
             <translation>  ❌ {0} failed: {1}</translation>
         </message>
         <message>
-            <location filename="../tools/layer_setup.py" line="364" />
+            <location filename="../tools/layer_setup.py" line="361" />
             <source>完成: {0}/{1} 个图层</source>
             <translation>Done: {0}/{1} layers</translation>
         </message>
         <message>
-            <location filename="../tools/layer_setup.py" line="478" />
+            <location filename="../tools/layer_setup.py" line="475" />
             <source>  捕捉配置跳过: {0}</source>
             <translation>  Snapping config skipped: {0}</translation>
+        </message>
+        <message>
+            <location filename="../tools/layer_setup.py" line="72" />
+            <source>垄模式</source>
+            <translation>Ridge</translation>
+        </message>
+        <message>
+            <location filename="../tools/layer_setup.py" line="72" />
+            <source>按垄数</source>
+            <translation>By ridge count</translation>
+        </message>
+        <message>
+            <location filename="../tools/layer_setup.py" line="73" />
+            <source>与田块长边平行</source>
+            <translation>Parallel to long edge</translation>
+        </message>
+        <message>
+            <location filename="../tools/layer_setup.py" line="73" />
+            <source>与田块短边平行</source>
+            <translation>Parallel to short edge</translation>
+        </message>
+        <message>
+            <location filename="../tools/layer_setup.py" line="73" />
+            <source>自定义角度</source>
+            <translation>Custom angle</translation>
+        </message>
+        <message>
+            <location filename="../tools/layer_setup.py" line="74" />
+            <source>玉米</source>
+            <translation>Corn</translation>
+        </message>
+        <message>
+            <location filename="../tools/layer_setup.py" line="74" />
+            <source>小麦</source>
+            <translation>Wheat</translation>
+        </message>
+        <message>
+            <location filename="../tools/layer_setup.py" line="74" />
+            <source>水稻</source>
+            <translation>Rice</translation>
+        </message>
+        <message>
+            <location filename="../tools/layer_setup.py" line="74" />
+            <source>蔬菜</source>
+            <translation>Vegetable</translation>
+        </message>
+        <message>
+            <location filename="../tools/layer_setup.py" line="74" />
+            <source>果树</source>
+            <translation>Orchard</translation>
+        </message>
+        <message>
+            <location filename="../tools/layer_setup.py" line="74" />
+            <source>其他</source>
+            <translation>Other</translation>
+        </message>
+        <message>
+            <location filename="../tools/layer_setup.py" line="109" />
+            <source>干管</source>
+            <translation>Mainline</translation>
+        </message>
+        <message>
+            <location filename="../tools/layer_setup.py" line="109" />
+            <source>支管</source>
+            <translation>Submain</translation>
+        </message>
+        <message>
+            <location filename="../tools/layer_setup.py" line="109" />
+            <source>毛管</source>
+            <translation>Lateral</translation>
+        </message>
+        <message>
+            <location filename="../tools/layer_setup.py" line="178" />
+            <source>开启</source>
+            <translation>Open</translation>
+        </message>
+        <message>
+            <location filename="../tools/layer_setup.py" line="178" />
+            <source>关闭</source>
+            <translation>Closed</translation>
+        </message>
+        <message>
+            <location filename="../tools/layer_setup.py" line="111" />
+            <source>不锈钢</source>
+            <translation>Stainless steel</translation>
+        </message>
+        <message>
+            <location filename="../tools/layer_setup.py" line="111" />
+            <source>镀锌钢</source>
+            <translation>Galvanized steel</translation>
+        </message>
+        <message>
+            <location filename="../tools/layer_setup.py" line="142" />
+            <source>离心泵</source>
+            <translation>Centrifugal</translation>
+        </message>
+        <message>
+            <location filename="../tools/layer_setup.py" line="142" />
+            <source>潜水泵</source>
+            <translation>Submersible</translation>
+        </message>
+        <message>
+            <location filename="../tools/layer_setup.py" line="177" />
+            <source>减压阀 PRV</source>
+            <translation>Pressure-reducing (PRV)</translation>
+        </message>
+        <message>
+            <location filename="../tools/layer_setup.py" line="177" />
+            <source>流量控制阀 FCV</source>
+            <translation>Flow-control (FCV)</translation>
+        </message>
+        <message>
+            <location filename="../tools/layer_setup.py" line="177" />
+            <source>持压阀 PSV</source>
+            <translation>Pressure-sustaining (PSV)</translation>
+        </message>
+        <message>
+            <location filename="../tools/layer_setup.py" line="225" />
+            <source>水源</source>
+            <translation>Source</translation>
+        </message>
+        <message>
+            <location filename="../tools/layer_setup.py" line="201" />
+            <source>施肥罐</source>
+            <translation>Fertilizer tank</translation>
+        </message>
+        <message>
+            <location filename="../tools/layer_setup.py" line="201" />
+            <source>主管节点</source>
+            <translation>Mainline junction</translation>
+        </message>
+        <message>
+            <location filename="../tools/layer_setup.py" line="201" />
+            <source>支管节点</source>
+            <translation>Submain junction</translation>
+        </message>
+        <message>
+            <location filename="../tools/layer_setup.py" line="201" />
+            <source>毛管节点</source>
+            <translation>Lateral junction</translation>
+        </message>
+        <message>
+            <location filename="../tools/layer_setup.py" line="201" />
+            <source>连接点</source>
+            <translation>Junction</translation>
+        </message>
+        <message>
+            <location filename="../tools/layer_setup.py" line="202" />
+            <source>机井</source>
+            <translation>Well</translation>
+        </message>
+        <message>
+            <location filename="../tools/layer_setup.py" line="202" />
+            <source>蓄水池</source>
+            <translation>Reservoir</translation>
+        </message>
+        <message>
+            <location filename="../tools/layer_setup.py" line="202" />
+            <source>河渠</source>
+            <translation>Canal</translation>
+        </message>
+        <message>
+            <location filename="../tools/layer_setup.py" line="202" />
+            <source>出水口</source>
+            <translation>Outlet</translation>
+        </message>
+        <message>
+            <location filename="../tools/layer_setup.py" line="225" />
+            <source>滴头</source>
+            <translation>Emitter</translation>
+        </message>
+        <message>
+            <location filename="../tools/layer_setup.py" line="225" />
+            <source>管道节点</source>
+            <translation>Pipe junction</translation>
         </message>
     </context>
     <context>
@@ -1292,7 +1467,7 @@ An aQuaDrip project must contain the {1} layer.</translation>
         <message>
             <location filename="../ui/property_dialog.py" line="217" />
             <source>关闭</source>
-            <translation>Close</translation>
+            <translation>Closed</translation>
         </message>
         <message>
             <location filename="../ui/property_dialog.py" line="225" />
@@ -1408,6 +1583,236 @@ An aQuaDrip project must contain the {1} layer.</translation>
             <source>未修改任何参数,未应用批量设置</source>
             <translation>No parameters modified; batch settings not applied</translation>
         </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="26" />
+            <source>名称</source>
+            <translation>Name</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="26" />
+            <source>作物类型</source>
+            <translation>Crop type</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="26" />
+            <source>耕作模式</source>
+            <translation>Planting pattern</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="27" />
+            <source>滴灌带方向</source>
+            <translation>Tape direction</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="27" />
+            <source>垄中心距 (m)</source>
+            <translation>Row spacing (m)</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="28" />
+            <source>每垄滴灌带数</source>
+            <translation>Tapes per ridge</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="28" />
+            <source>滴灌带间距 (m)</source>
+            <translation>Tape spacing (m)</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="29" />
+            <source>垄数</source>
+            <translation>Ridge count</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="29" />
+            <source>自定义角度 (°)</source>
+            <translation>Custom angle (°)</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="30" />
+            <source>滴头间距 (m)</source>
+            <translation>Emitter spacing (m)</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="32" />
+            <source>管道类型</source>
+            <translation>Pipe type</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="32" />
+            <source>状态</source>
+            <translation>Status</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="32" />
+            <source>管径 (mm)</source>
+            <translation>Diameter (mm)</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="33" />
+            <source>材质</source>
+            <translation>Material</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="33" />
+            <source>糙率 C</source>
+            <translation>Roughness C</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="33" />
+            <source>局部损失系数</source>
+            <translation>Minor-loss coefficient</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="44" />
+            <source>分区号</source>
+            <translation>Zone ID</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="36" />
+            <source>水泵类型</source>
+            <translation>Pump type</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="36" />
+            <source>额定扬程 (m)</source>
+            <translation>Rated head (m)</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="37" />
+            <source>额定流量 (m³/h)</source>
+            <translation>Rated flow (m³/h)</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="37" />
+            <source>额定功率 (kW)</source>
+            <translation>Rated power (kW)</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="39" />
+            <source>阀门类型</source>
+            <translation>Valve type</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="39" />
+            <source>设定值</source>
+            <translation>Setting</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="40" />
+            <source>分区</source>
+            <translation>Zone</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="42" />
+            <source>起点节点</source>
+            <translation>From node</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="42" />
+            <source>终点节点</source>
+            <translation>To node</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="43" />
+            <source>流量 (模拟)</source>
+            <translation>Flow (sim.)</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="43" />
+            <source>流速 (模拟)</source>
+            <translation>Velocity (sim.)</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="44" />
+            <source>毛管间距 (m)</source>
+            <translation>Lateral spacing (m)</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="45" />
+            <source>最大承压 (m)</source>
+            <translation>Max pressure (m)</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="47" />
+            <source>节点类型</source>
+            <translation>Node type</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="47" />
+            <source>水源类型</source>
+            <translation>Source type</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="47" />
+            <source>水头 (m)</source>
+            <translation>Head (m)</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="48" />
+            <source>可用流量 (m³/s)</source>
+            <translation>Available flow (m³/s)</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="48" />
+            <source>施肥罐容积 (L)</source>
+            <translation>Fertilizer tank (L)</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="49" />
+            <source>肥液浓度 (%)</source>
+            <translation>Fertilizer concentration (%)</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="49" />
+            <source>高程 (m)</source>
+            <translation>Elevation (m)</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="50" />
+            <source>压力 (模拟)</source>
+            <translation>Pressure (sim.)</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="72" />
+            <source>农田参数</source>
+            <translation>Field Parameters</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="73" />
+            <source>管道属性</source>
+            <translation>Pipe Properties</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="74" />
+            <source>水泵属性</source>
+            <translation>Pump Properties</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="75" />
+            <source>阀门属性</source>
+            <translation>Valve Properties</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="76" />
+            <source>节点属性</source>
+            <translation>Node Properties</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="104" />
+            <source>干管</source>
+            <translation>Mainline</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="104" />
+            <source>支管</source>
+            <translation>Submain</translation>
+        </message>
+        <message>
+            <location filename="../ui/property_dialog.py" line="104" />
+            <source>毛管</source>
+            <translation>Lateral</translation>
+        </message>
     </context>
     <context>
         <name>RotationDialog</name>
@@ -1474,7 +1879,7 @@ An aQuaDrip project must contain the {1} layer.</translation>
         <message>
             <location filename="../ui/rotation_dialog.py" line="109" />
             <source>关闭</source>
-            <translation>Close</translation>
+            <translation>Closed</translation>
         </message>
         <message>
             <location filename="../ui/rotation_dialog.py" line="126" />
@@ -1813,7 +2218,7 @@ An aQuaDrip project must contain the {1} layer.</translation>
         <message>
             <location filename="../ui/visualize_dialog.py" line="89" />
             <source>关闭</source>
-            <translation>Close</translation>
+            <translation>Closed</translation>
         </message>
         <message>
             <location filename="../ui/visualize_dialog.py" line="95" />

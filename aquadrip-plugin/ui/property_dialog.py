@@ -23,31 +23,31 @@ from qgis.PyQt.QtWidgets import QApplication
 # 字段中文名
 FIELD_LABELS = {
     # aqd_fields
-    "name": "名称", "crop_type": "作物类型", "planting_pattern": "耕作模式",
-    "direction_type": "滴灌带方向", "row_spacing": "垄中心距 (m)",
-    "tapes_per_ridge": "每垄滴灌带数", "tape_spacing": "滴灌带间距 (m)",
-    "ridge_count": "垄数", "row_direction": "自定义角度 (°)",
-    "emitter_spacing": "滴头间距 (m)",
+    "name": QApplication.translate("PropertyDialog", "名称"), "crop_type": QApplication.translate("PropertyDialog", "作物类型"), "planting_pattern": QApplication.translate("PropertyDialog", "耕作模式"),
+    "direction_type": QApplication.translate("PropertyDialog", "滴灌带方向"), "row_spacing": QApplication.translate("PropertyDialog", "垄中心距 (m)"),
+    "tapes_per_ridge": QApplication.translate("PropertyDialog", "每垄滴灌带数"), "tape_spacing": QApplication.translate("PropertyDialog", "滴灌带间距 (m)"),
+    "ridge_count": QApplication.translate("PropertyDialog", "垄数"), "row_direction": QApplication.translate("PropertyDialog", "自定义角度 (°)"),
+    "emitter_spacing": QApplication.translate("PropertyDialog", "滴头间距 (m)"),
     # aqd_pipes
-    "pipe_type": "管道类型", "status": "状态", "diameter": "管径 (mm)",
-    "material": "材质", "roughness": "糙率 C", "minor_loss": "局部损失系数",
-    "zone_id": "分区号",
+    "pipe_type": QApplication.translate("PropertyDialog", "管道类型"), "status": QApplication.translate("PropertyDialog", "状态"), "diameter": QApplication.translate("PropertyDialog", "管径 (mm)"),
+    "material": QApplication.translate("PropertyDialog", "材质"), "roughness": QApplication.translate("PropertyDialog", "糙率 C"), "minor_loss": QApplication.translate("PropertyDialog", "局部损失系数"),
+    "zone_id": QApplication.translate("PropertyDialog", "分区号"),
     # aqd_pumps
-    "pump_type": "水泵类型", "pump_head": "额定扬程 (m)",
-    "pump_flow": "额定流量 (m³/h)", "pump_power": "额定功率 (kW)",
+    "pump_type": QApplication.translate("PropertyDialog", "水泵类型"), "pump_head": QApplication.translate("PropertyDialog", "额定扬程 (m)"),
+    "pump_flow": QApplication.translate("PropertyDialog", "额定流量 (m³/h)"), "pump_power": QApplication.translate("PropertyDialog", "额定功率 (kW)"),
     # aqd_valves
-    "valve_type": "阀门类型", "setting": "设定值",
-    "zone": "分区",
+    "valve_type": QApplication.translate("PropertyDialog", "阀门类型"), "setting": QApplication.translate("PropertyDialog", "设定值"),
+    "zone": QApplication.translate("PropertyDialog", "分区"),
     # 所有层共用字段
-    "from_node": "起点节点", "to_node": "终点节点",
-    "flow": "流量 (模拟)", "velocity": "流速 (模拟)",
-    "lateral_spacing": "毛管间距 (m)", "zone_id": "分区号",
-    "max_pressure": "最大承压 (m)",
+    "from_node": QApplication.translate("PropertyDialog", "起点节点"), "to_node": QApplication.translate("PropertyDialog", "终点节点"),
+    "flow": QApplication.translate("PropertyDialog", "流量 (模拟)"), "velocity": QApplication.translate("PropertyDialog", "流速 (模拟)"),
+    "lateral_spacing": QApplication.translate("PropertyDialog", "毛管间距 (m)"), "zone_id": QApplication.translate("PropertyDialog", "分区号"),
+    "max_pressure": QApplication.translate("PropertyDialog", "最大承压 (m)"),
     # aqd_nodes
-    "node_type": "节点类型", "source_type": "水源类型", "head": "水头 (m)",
-    "available_flow": "可用流量 (m³/s)", "fertilizer_volume": "施肥罐容积 (L)",
-    "fertilizer_concentration": "肥液浓度 (%)", "elevation": "高程 (m)",
-    "pressure": "压力 (模拟)",
+    "node_type": QApplication.translate("PropertyDialog", "节点类型"), "source_type": QApplication.translate("PropertyDialog", "水源类型"), "head": QApplication.translate("PropertyDialog", "水头 (m)"),
+    "available_flow": QApplication.translate("PropertyDialog", "可用流量 (m³/s)"), "fertilizer_volume": QApplication.translate("PropertyDialog", "施肥罐容积 (L)"),
+    "fertilizer_concentration": QApplication.translate("PropertyDialog", "肥液浓度 (%)"), "elevation": QApplication.translate("PropertyDialog", "高程 (m)"),
+    "pressure": QApplication.translate("PropertyDialog", "压力 (模拟)"),
 }
 
 # 各图层模式下可编辑字段（有序）
@@ -69,11 +69,11 @@ MODE_FIELDS = {
 }
 
 MODE_TITLES = {
-    "aqd_fields": "农田参数",
-    "aqd_pipes": "管道属性",
-    "aqd_pumps": "水泵属性",
-    "aqd_valves": "阀门属性",
-    "aqd_nodes": "节点属性",
+    "aqd_fields": QApplication.translate("PropertyDialog", "农田参数"),
+    "aqd_pipes": QApplication.translate("PropertyDialog", "管道属性"),
+    "aqd_pumps": QApplication.translate("PropertyDialog", "水泵属性"),
+    "aqd_valves": QApplication.translate("PropertyDialog", "阀门属性"),
+    "aqd_nodes": QApplication.translate("PropertyDialog", "节点属性"),
 }
 
 # 数值字段的合法范围（防止间距等被设为 0/负值导致布局死循环）
@@ -101,7 +101,7 @@ BATCH_PIPE_FIELDS = {
                 "emitter_x", "max_pressure"],
 }
 # 管道类型中文标签（用于下拉和应用按钮文案）
-BATCH_PIPE_LABELS = {"mainline": "干管", "submain": "支管", "lateral": "毛管"}
+BATCH_PIPE_LABELS = {"mainline": QApplication.translate("PropertyDialog", "干管"), "submain": QApplication.translate("PropertyDialog", "支管"), "lateral": QApplication.translate("PropertyDialog", "毛管")}
 
 
 class PropertyDialog(QDialog):
