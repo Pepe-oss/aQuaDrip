@@ -9,10 +9,18 @@ from qgis.PyQt.QtWidgets import QApplication
 
 
 # 精度预设（与 DripSimulation.presets 一致）
+# label/desc 为模块级 UI 文案,直接包裹 translate(模块在对话框触发时
+# 才 import,translator 已安装;pylupdate 可提取模块级调用)
 PRESETS = {
-    "fast":     {"max_iter": 5,  "tolerance": 1e-6, "label": "快速（推荐）",  "desc": "5 次迭代，适合日常设计"},
-    "standard": {"max_iter": 8,  "tolerance": 1e-7, "label": "标准",         "desc": "8 次迭代，平衡精度与速度"},
-    "high":     {"max_iter": 15, "tolerance": 1e-8, "label": "高精度",       "desc": "15 次迭代，用于校准分析"},
+    "fast":     {"max_iter": 5,  "tolerance": 1e-6,
+                 "label": QApplication.translate("SimulationDialog", "快速（推荐）"),
+                 "desc": QApplication.translate("SimulationDialog", "5 次迭代，适合日常设计")},
+    "standard": {"max_iter": 8,  "tolerance": 1e-7,
+                 "label": QApplication.translate("SimulationDialog", "标准"),
+                 "desc": QApplication.translate("SimulationDialog", "8 次迭代，平衡精度与速度")},
+    "high":     {"max_iter": 15, "tolerance": 1e-8,
+                 "label": QApplication.translate("SimulationDialog", "高精度"),
+                 "desc": QApplication.translate("SimulationDialog", "15 次迭代，用于校准分析")},
 }
 
 
@@ -38,8 +46,12 @@ class SimulationDialog(QDialog):
         self._radios = {}
 
         for idx, (key, preset) in enumerate(PRESETS.items()):
+            # 模板作为字面量交给 translate(查表按完整字面量匹配),
+            # 已翻译的 label/迭代数经 format 填入
             radio = QRadioButton(
-                QApplication.translate("SimulationDialog", "{0}  ({1} 次迭代)").format(preset['label'], preset['max_iter']))
+                QApplication.translate(
+                    "SimulationDialog", "{0}（{1} 次迭代）").format(
+                        preset['label'], preset['max_iter']))
             radio.setToolTip(preset["desc"])
             if idx == 0:
                 radio.setChecked(True)

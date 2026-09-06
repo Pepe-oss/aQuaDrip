@@ -1936,34 +1936,64 @@ An aQuaDrip project must contain the {1} layer.</translation>
     <context>
         <name>SimulationDialog</name>
         <message>
-            <location filename="../ui/simulation_dialog.py" line="26" />
+            <location filename="../ui/simulation_dialog.py" line="34" />
             <source>aQuaDrip 模拟设置</source>
             <translation>aQuaDrip Simulation Settings</translation>
         </message>
         <message>
-            <location filename="../ui/simulation_dialog.py" line="35" />
+            <location filename="../ui/simulation_dialog.py" line="43" />
             <source>选择模拟精度：</source>
             <translation>Simulation precision:</translation>
         </message>
         <message>
-            <location filename="../ui/simulation_dialog.py" line="41" />
-            <source>{0}  ({1} 次迭代)</source>
-            <translation>{0}  ({1} iterations)</translation>
-        </message>
-        <message>
-            <location filename="../ui/simulation_dialog.py" line="50" />
+            <location filename="../ui/simulation_dialog.py" line="62" />
             <source>模拟完成后自动保存历史记录</source>
             <translation>Save history automatically after simulation</translation>
         </message>
         <message>
-            <location filename="../ui/simulation_dialog.py" line="56" />
+            <location filename="../ui/simulation_dialog.py" line="68" />
             <source>取消</source>
             <translation>Cancel</translation>
         </message>
         <message>
-            <location filename="../ui/simulation_dialog.py" line="59" />
+            <location filename="../ui/simulation_dialog.py" line="71" />
             <source>开始模拟</source>
             <translation>Start Simulation</translation>
+        </message>
+        <message>
+            <location filename="../ui/simulation_dialog.py" line="16" />
+            <source>快速（推荐）</source>
+            <translation>Fast (recommended)</translation>
+        </message>
+        <message>
+            <location filename="../ui/simulation_dialog.py" line="17" />
+            <source>5 次迭代，适合日常设计</source>
+            <translation>5 iterations, for everyday design</translation>
+        </message>
+        <message>
+            <location filename="../ui/simulation_dialog.py" line="19" />
+            <source>标准</source>
+            <translation>Standard</translation>
+        </message>
+        <message>
+            <location filename="../ui/simulation_dialog.py" line="20" />
+            <source>8 次迭代，平衡精度与速度</source>
+            <translation>8 iterations, balance of accuracy and speed</translation>
+        </message>
+        <message>
+            <location filename="../ui/simulation_dialog.py" line="22" />
+            <source>高精度</source>
+            <translation>High accuracy</translation>
+        </message>
+        <message>
+            <location filename="../ui/simulation_dialog.py" line="23" />
+            <source>15 次迭代，用于校准分析</source>
+            <translation>15 iterations, for calibration analysis</translation>
+        </message>
+        <message>
+            <location filename="../ui/simulation_dialog.py" line="51" />
+            <source>{0}（{1} 次迭代）</source>
+            <translation>{0} ({1} iterations)</translation>
         </message>
     </context>
     <context>
