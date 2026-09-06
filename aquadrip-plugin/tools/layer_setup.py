@@ -50,7 +50,7 @@ SQL_TYPE_MAP = {
 
 FIELD_DEFS = {
     "aqd_fields": {
-        "name": "农田地块",
+        "name": "Fields",
         "geom": "Polygon",
         "fields": [
             _text_field("name"),
@@ -83,7 +83,7 @@ FIELD_DEFS = {
         },
     },
     "aqd_pipes": {
-        "name": "管道",
+        "name": "Pipes",
         "geom": "LineString",
         "fields": [
             _text_field("pipe_type", 20),
@@ -121,7 +121,7 @@ FIELD_DEFS = {
         },
     },
     "aqd_pumps": {
-        "name": "水泵",
+        "name": "Pumps",
         "geom": "LineString",
         "fields": [
             _text_field("pump_type", 20),
@@ -150,7 +150,7 @@ FIELD_DEFS = {
         },
     },
     "aqd_valves": {
-        "name": "阀门",
+        "name": "Valves",
         "geom": "LineString",
         "fields": [
             _text_field("valve_type", 20),
@@ -186,7 +186,7 @@ FIELD_DEFS = {
         },
     },
     "aqd_nodes": {
-        "name": "节点",
+        "name": "Nodes",
         "geom": "Point",
         "fields": [
             _text_field("node_type", 20),
@@ -211,7 +211,7 @@ FIELD_DEFS = {
         },
     },
     "aqd_obs_points": {
-        "name": "观测点",
+        "name": "Obs Points",
         "geom": "Point",
         "fields": [
             _text_field("name"),

@@ -310,11 +310,11 @@ class AQuaDripPlugin:
 
         # 2. 导入正射影像（可选）
         ortho_layer = self._add_raster_to_group(
-            ortho_path, QApplication.translate("AquadripPlugin", "正射影像")) if ortho_path else None
+            ortho_path, "Orthophoto") if ortho_path else None
 
         # 3. 导入 DEM（可选）
         dem_layer = self._add_raster_to_group(
-            dem_path, "DEM 高程") if dem_path else None  # 图层名是数据标识,不翻译(与查找逻辑耦合)
+            dem_path, "DEM") if dem_path else None  # 图层名是数据标识,不翻译(与查找逻辑耦合)
 
         # 4. 保存 QGZ 项目文件
         try:
@@ -336,12 +336,12 @@ class AQuaDripPlugin:
         parts = [f"📁 GPKG: {gpkg_path}", f"📁 QGZ:  {qgz_path}"]
         if target_crs is not None:
             parts.append(f"🌐 CRS:  {target_crs.authid()}")
-        loaded = [QApplication.translate("AquadripPlugin", "农田地块 (aqd_fields)"), QApplication.translate("AquadripPlugin", "管道 (aqd_pipes)"),
-                  QApplication.translate("AquadripPlugin", "节点 (aqd_nodes)"), QApplication.translate("AquadripPlugin", "观测点 (aqd_obs_points)")]
+        # 图层名已英文化(Fields/Pipes/...),完成消息直接列表名(语言无关)
+        loaded = ["aqd_fields", "aqd_pipes", "aqd_nodes", "aqd_obs_points"]
         if ortho_layer:
-            loaded.append(QApplication.translate("AquadripPlugin", "正射影像"))
+            loaded.append("Orthophoto")
         if dem_layer:
-            loaded.append(QApplication.translate("AquadripPlugin", "DEM 高程"))
+            loaded.append("DEM")
 
         QMessageBox.information(
             self.iface.mainWindow(),

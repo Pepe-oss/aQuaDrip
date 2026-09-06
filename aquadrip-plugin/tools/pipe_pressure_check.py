@@ -28,7 +28,7 @@ from qgis.PyQt.QtCore import QVariant
 from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import QApplication
 
-LAYER_NAME = "承压分析"
+LAYER_NAME = "Pressure Check"
 
 
 class PipePressureChecker:

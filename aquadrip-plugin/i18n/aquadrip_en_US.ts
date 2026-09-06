@@ -3,7 +3,7 @@
     <context>
         <name>AQuaDripPlugin</name>
         <message>
-            <location filename="../tools/i18n.py" line="90" />
+            <location filename="../tools/i18n.py" line="103" />
             <source>语言设置已保存,重启 QGIS 后生效。</source>
             <translation>Language saved. Restart QGIS to apply.</translation>
         </message>
@@ -166,11 +166,6 @@
             <translation>Creation failed: {0}</translation>
         </message>
         <message>
-            <location filename="../aquadrip_plugin.py" line="342" />
-            <source>正射影像</source>
-            <translation>Orthophoto</translation>
-        </message>
-        <message>
             <location filename="../aquadrip_plugin.py" line="327" />
             <source>项目已保存: {0}</source>
             <translation>Project saved: {0}</translation>
@@ -179,31 +174,6 @@
             <location filename="../aquadrip_plugin.py" line="331" />
             <source>保存 QGZ 失败: {0}</source>
             <translation>Failed to save QGZ: {0}</translation>
-        </message>
-        <message>
-            <location filename="../aquadrip_plugin.py" line="339" />
-            <source>农田地块 (aqd_fields)</source>
-            <translation>Fields (aqd_fields)</translation>
-        </message>
-        <message>
-            <location filename="../aquadrip_plugin.py" line="339" />
-            <source>管道 (aqd_pipes)</source>
-            <translation>Pipes (aqd_pipes)</translation>
-        </message>
-        <message>
-            <location filename="../aquadrip_plugin.py" line="340" />
-            <source>节点 (aqd_nodes)</source>
-            <translation>Nodes (aqd_nodes)</translation>
-        </message>
-        <message>
-            <location filename="../aquadrip_plugin.py" line="340" />
-            <source>观测点 (aqd_obs_points)</source>
-            <translation>Observation points (aqd_obs_points)</translation>
-        </message>
-        <message>
-            <location filename="../aquadrip_plugin.py" line="344" />
-            <source>DEM 高程</source>
-            <translation>DEM elevation</translation>
         </message>
         <message>
             <location filename="../aquadrip_plugin.py" line="346" />

@@ -414,7 +414,7 @@ class SyncManager:
         for _lid, layer in self.project.mapLayers().items():
             if not isinstance(layer, QgsRasterLayer):
                 continue
-            if layer.name() == "DEM 高程":  # 图层名是数据标识,不翻译
+            if layer.name() in ("DEM", "DEM 高程"):  # 兼容旧项目的中文图层名
                 return layer
             rasters.append(layer)
         dem_keywords = ("dem", "elevation", QApplication.translate("SyncManager", "高程"), "altitude", "dtm", "srtm")
