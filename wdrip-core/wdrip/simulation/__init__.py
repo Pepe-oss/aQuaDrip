@@ -219,7 +219,10 @@ class DripSimulation:
                        length=max(link.length, 1),
                        diameter=diameter_m,
                        roughness=link.roughness,
-                       minor_loss=link.minor_loss)
+                       minor_loss=link.minor_loss,
+                       initial_status=(
+                           "CLOSED" if str(getattr(link, "status", "OPEN")).upper() == "CLOSED"
+                           else "OPEN"))
             logger.debug(f"  Pipe: {lid} {link.from_node}→{link.to_node} L={link.length}")
     
     def build_wntr_model(self):
@@ -303,6 +306,36 @@ class DripSimulation:
         
         except Exception as e:
             logger.exception("模拟失败")
+            # 含阀门的管网求解失败(如 WNTRSimulator 对 FCV+PDD 的
+            # 兼容性问题)→ 阀门降级为等径短管后重跑:
+            # 开启阀门≈畅通管,关闭阀门=CLOSED 管;损失 FCV 限流语义
+            # 但保证得到物理合理的结果,并在消息中注明
+            from wdrip.network import Pipe
+            from wdrip.network.links import ValveStatus
+            if any(hasattr(l, "valve_type") for l in self.network.links.values()):
+                logger.warning("求解失败,尝试将阀门降级为普通管道后重跑")
+                try:
+                    sub = self.network.sub_network(lambda _l: True)
+                    for lid, link in list(sub.links.items()):
+                        if not hasattr(link, "valve_type"):
+                            continue
+                        closed = (getattr(link, "status", None) == ValveStatus.CLOSED)
+                        sub.links[lid] = Pipe(
+                            lid, link.from_node, link.to_node,
+                            length=1.0,
+                            diameter=link.diameter or 110.0,
+                            roughness=130.0,
+                            minor_loss=getattr(link, "minor_loss", 0.0) or 0.0,
+                            status="CLOSED" if closed else "OPEN",
+                            pipe_type="mainline")
+                    sim2 = DripSimulation(sub, precision=self._precision)
+                    result = sim2.run(duration=duration, timestep=timestep)
+                    if result.success:
+                        result.message += " [注意: 阀门已降级为普通管道(限流语义未参与计算)]"
+                        return result
+                except Exception as e2:
+                    logger.exception("阀门降级重跑也失败: %s", e2)
+
             # EPANET 引擎失败时自动回退到迭代引擎
             if self._engine.name == "epanet":
                 from .engine import IterativeWNTRSimulatorEngine

@@ -209,7 +209,20 @@ class IterativeWNTRSimulatorEngine(SimulationEngine):
         
         # 最终结果
         sim = wntr.sim.WNTRSimulator(wn_model)
-        return sim.run_sim()
+        wntr_results = sim.run_sim()
+
+        # 结果校验:部分阀门拓扑(如 FCV+PDD 组合)下 WNTRSimulator
+        # 可能静默返回空结果——显式报错,交由上层降级重试,
+        # 而不是以"成功"状态输出空/NaN 结果误导用户
+        try:
+            pdf = wntr_results.node['pressure']
+            if pdf is None or len(pdf) == 0 or pdf.isna().all().all():
+                raise RuntimeError(
+                    "WNTRSimulator 返回了空的压力结果"
+                    "(可能与阀门/需求拓扑有关)")
+        except KeyError:
+            raise RuntimeError("WNTRSimulator 结果中缺少压力数据")
+        return wntr_results
 
 
 def auto_detect_engine() -> SimulationEngine:
