@@ -547,8 +547,69 @@ class TopologyOrderedCalibrator(CalibrationAlgorithm):
             ts["avg_delta"] = (ts["total_delta"] / ts["count"]
                                if ts["count"] > 0 else 0.0)
 
-        return {"rmse": rmse, "details": details, "adjusted": adjusted,
-                "type_stats": type_stats, "skipped_obs": skipped_obs}
+        result = {"rmse": rmse, "details": details, "adjusted": adjusted,
+                  "type_stats": type_stats, "skipped_obs": skipped_obs}
+
+        # 6. 水源水头联合校准(可选)
+        # 崩塌态/强边界主导的管网中,压力对 C 解耦(自平衡负反馈),
+        # 系统性偏差(模拟整体偏高/偏低)应校准 head——灵敏度≈1,
+        # 是工程校准的第一优先参数。误差均值方向驱动,逐步逼近。
+        if self.params.get("calibrate_head"):
+            result["head_adjust"] = self._calibrate_head(obs_data)
+
+        return result
+
+    def _calibrate_head(self, obs_data: dict):
+        """按观测误差均值调整水源水头,写回 aqd_nodes
+
+        压力对 head 灵敏度≈1(近线性),一步 lr×err;
+        单轮变化限幅 ±2m,下限保护 0.5m。
+
+        Returns:
+            (old_head, new_head) 或 None(无观测/无水源/写回失败)
+        """
+        errs = [ps - po for (_x, _y, ps, po, _q, _qo) in obs_data.values()
+                if ps is not None and po is not None and po > 0]
+        if not errs:
+            return None
+        err = sum(errs) / len(errs)
+        src = None
+        for n in self.net.nodes.values():
+            if hasattr(n, "source_type"):
+                src = n
+                break
+        if src is None:
+            return None
+
+        from qgis.core import QgsProject
+        from .layer_utils import find_layer
+        layer = find_layer(QgsProject.instance(), "aqd_nodes")
+        if layer is None:
+            return None
+        old_head = float(src.head or 0)
+        delta = max(-2.0, min(2.0, -self.learning_rate * err))
+        new_head = max(0.5, old_head + delta)
+        if abs(new_head - old_head) < 1e-3:
+            return None
+
+        need_edit = not layer.isEditable()
+        if need_edit:
+            layer.startEditing()
+        try:
+            for feat in layer.getFeatures():
+                if str(feat.attribute("node_type") or "") == "source":
+                    feat.setAttribute("head", float(new_head))
+                    layer.updateFeature(feat)
+                    break
+            if need_edit and not layer.commitChanges():
+                layer.rollBack()
+                return None
+        except Exception:
+            if need_edit:
+                layer.rollBack()
+            return None
+        layer.triggerRepaint()
+        return (old_head, new_head)
 
     def _calibrate_layer(self, obs_set: FrozenSet[str], pipe_ids: List[str],
                          obs_data: dict, obs_node: dict,

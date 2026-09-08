@@ -458,96 +458,96 @@ Place a water source on the map first.</translation>
             <translation>Learning rate:</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="60" />
+            <location filename="../ui/calibration_dialog.py" line="71" />
             <source>C 限值 (Hazen-Williams)</source>
             <translation>C limits (Hazen-Williams)</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="64" />
+            <location filename="../ui/calibration_dialog.py" line="75" />
             <source>主/干管</source>
             <translation>Mainline</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="210" />
+            <location filename="../ui/calibration_dialog.py" line="227" />
             <source>支管</source>
             <translation>Submain</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="211" />
+            <location filename="../ui/calibration_dialog.py" line="228" />
             <source>毛管</source>
             <translation>Lateral</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="81" />
+            <location filename="../ui/calibration_dialog.py" line="92" />
             <source>校准结果:</source>
             <translation>Calibration result:</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="84" />
+            <location filename="../ui/calibration_dialog.py" line="95" />
             <source>点击「开始校准」后显示迭代结果...</source>
             <translation>Iteration results appear after Start Calibration...</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="94" />
+            <location filename="../ui/calibration_dialog.py" line="105" />
             <source>▶ 开始校准</source>
             <translation>▶ Start Calibration</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="98" />
+            <location filename="../ui/calibration_dialog.py" line="109" />
             <source>⏹ 停止</source>
             <translation>⏹ Stop</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="102" />
+            <location filename="../ui/calibration_dialog.py" line="113" />
             <source>✅ 应用校准结果</source>
             <translation>✅ Apply Calibration Result</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="107" />
+            <location filename="../ui/calibration_dialog.py" line="118" />
             <source>关闭</source>
             <translation>Closed</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="161" />
+            <location filename="../ui/calibration_dialog.py" line="173" />
             <source>
 ── 校准{0}，共 {1} 次迭代 ──</source>
             <translation>
 ── Calibration {0}, {1} iterations in total ──</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="187" />
+            <location filename="../ui/calibration_dialog.py" line="199" />
             <source>
 ── 迭代 {0}  RMSE = {1:.2f} m  ({2} 条管道)  [{3}]</source>
             <translation>
 ── Iteration {0}  RMSE = {1:.2f} m  ({2} pipes)  [{3}]</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="210" />
+            <location filename="../ui/calibration_dialog.py" line="227" />
             <source>干管</source>
             <translation>Mainline</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="219" />
+            <location filename="../ui/calibration_dialog.py" line="236" />
             <source>{0} {1}条(hf²={2:.0f}% {3}{4:.1f})</source>
             <translation>{0} {1} pipes (hf²={2:.0f}% {3}{4:.1f})</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="222" />
+            <location filename="../ui/calibration_dialog.py" line="239" />
             <source>  📊 分型: </source>
             <translation>  📊 By type: </translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="229" />
+            <location filename="../ui/calibration_dialog.py" line="246" />
             <source>  ✓ 已收敛 (参数无变化)</source>
             <translation>  ✓ Converged (no parameter change)</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="233" />
+            <location filename="../ui/calibration_dialog.py" line="250" />
             <source>  ✓ 达到最大迭代次数</source>
             <translation>  ✓ Reached max iterations</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="237" />
+            <location filename="../ui/calibration_dialog.py" line="254" />
             <source>
 ❌ 迭代 {0} 失败: {1}
 {2}</source>
@@ -556,21 +556,36 @@ Place a water source on the map first.</translation>
 {2}</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="140" />
+            <location filename="../ui/calibration_dialog.py" line="152" />
             <source>提示: 每轮显示的 RMSE 为该轮校准前(上一次模拟)的误差; 校准前请确认高程/水源水头/滴头参数正确——C 值校准只应吸收管路损失部分的误差。</source>
             <translation>Note: the RMSE shown each round is the error before that round's calibration (from the previous simulation). Verify elevations / source head / emitter parameters before calibrating — C calibration should only absorb pipe-loss errors.</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="194" />
+            <location filename="../ui/calibration_dialog.py" line="211" />
             <source>  ⚠️ 观测点 {0} 距管网 {1} 超过匹配半径，已跳过</source>
             <translation>  ⚠️ Observation point {0} is {1} from the network (beyond match radius); skipped</translation>
         </message>
         <message>
-            <location filename="../ui/calibration_dialog.py" line="168" />
+            <location filename="../ui/calibration_dialog.py" line="180" />
             <source>
 ✅ 校准的 C 值已写入管道图层，正在用校准后参数重新模拟...</source>
             <translation>
 ✅ Calibrated C values are already written to the pipe layer; re-simulating with calibrated parameters...</translation>
+        </message>
+        <message>
+            <location filename="../ui/calibration_dialog.py" line="60" />
+            <source>🔧 同时校准水源水头（推荐）</source>
+            <translation>🔧 Calibrate source head too (recommended)</translation>
+        </message>
+        <message>
+            <location filename="../ui/calibration_dialog.py" line="63" />
+            <source>模拟压力整体偏高/偏低时,按误差均值同步调整水源水头。供给受限的管网中管道糙率几乎不影响压力,需校准水头边界。</source>
+            <translation>When simulated pressures are systematically high/low, adjust the source head by the mean error. In supply-limited networks pipe roughness barely affects pressure; calibrate the head boundary instead.</translation>
+        </message>
+        <message>
+            <location filename="../ui/calibration_dialog.py" line="203" />
+            <source>  🔧 水源水头: {0:.2f} → {1:.2f} m</source>
+            <translation>  🔧 Source head: {0:.2f} → {1:.2f} m</translation>
         </message>
     </context>
     <context>

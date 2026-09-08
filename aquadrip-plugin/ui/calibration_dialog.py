@@ -3,7 +3,7 @@
 from qgis.PyQt.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
     QSpinBox, QDoubleSpinBox, QTextEdit, QPushButton,
-    QProgressBar, QLabel, QComboBox,
+    QProgressBar, QLabel, QComboBox, QCheckBox,
 )
 from qgis.PyQt.QtCore import Qt, pyqtSignal
 
@@ -54,6 +54,17 @@ class CalibrationDialog(QDialog):
         self._spin_lr.setSingleStep(0.05)
         self._spin_lr.setValue(0.30)
         form.addRow(QApplication.translate("CalibrationDialog", "学习率:"), self._spin_lr)
+
+        # 水源水头联合校准:供给受限/边界主导的管网中 C 无杠杆,
+        # 系统性偏差由 head 吸收(压力对 head 灵敏度≈1)
+        self._check_head = QCheckBox(
+            QApplication.translate("CalibrationDialog", "🔧 同时校准水源水头（推荐）"))
+        self._check_head.setChecked(True)
+        self._check_head.setToolTip(QApplication.translate(
+            "CalibrationDialog",
+            "模拟压力整体偏高/偏低时,按误差均值同步调整水源水头。"
+            "供给受限的管网中管道糙率几乎不影响压力,需校准水头边界。"))
+        form.addRow(self._check_head)
         layout.addLayout(form)
 
         # ── C 限值（按管道类型）──
@@ -119,6 +130,7 @@ class CalibrationDialog(QDialog):
     def _get_params(self) -> dict:
         return {
             "learning_rate": self._spin_lr.value(),
+            "calibrate_head": self._check_head.isChecked(),
             "c_limits": {k: (slo.value(), shi.value())
                          for k, (slo, shi) in self._c_spins.items()},
         }
@@ -186,6 +198,11 @@ class CalibrationDialog(QDialog):
 
             self._result_text.append(
                 QApplication.translate("CalibrationDialog", "\n── 迭代 {0}  RMSE = {1:.2f} m  ({2} 条管道)  [{3}]").format(self._iteration, rmse, len(details), algo.label))
+            head_adj = result.get("head_adjust")
+            if head_adj:
+                self._result_text.append(
+                    QApplication.translate("CalibrationDialog",
+                        "  🔧 水源水头: {0:.2f} → {1:.2f} m").format(*head_adj))
 
             # 距管网过远被跳过的观测点(放错位置的观测点不参与校准)
             for lb, dist in result.get("skipped_obs", []):
