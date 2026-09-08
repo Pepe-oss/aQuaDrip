@@ -317,11 +317,11 @@ def _load_link_flow() -> Dict[str, float]:
         return {}
     try:
         from .sim_history import SimHistory
-        records = SimHistory(gpkg_path).load()
-        if not records:
+        # latest() 只读一个分片（旧 load() 解析整个历史文件）
+        rec = SimHistory(gpkg_path).latest()
+        if not rec:
             return {}
-        lf = records[0].get("link_flow", {})
-        return _aggregate_segment_flow(lf)
+        return _aggregate_segment_flow(rec.get("link_flow", {}))
     except Exception:
         return {}
 

@@ -387,11 +387,11 @@ class AQuaDripDockWidget(QDockWidget):
         if not gpkg_path:
             return {}, {}, {}, {}
         from ..tools.sim_history import SimHistory
-        h = SimHistory(gpkg_path)
-        records = h.load()
-        if not records:
+        # latest() 只读一个分片；原先 load() 解析整个历史文件
+        # （1GB 级）只为取 records[0]，是界面卡顿的主因之一
+        r = SimHistory(gpkg_path).latest()
+        if not r:
             return {}, {}, {}, {}
-        r = records[0]
         return (r.get("node_coords", {}),
                 r.get("link_geometry", {}),
                 r.get("link_flow", {}),

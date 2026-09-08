@@ -184,10 +184,10 @@ class PipePressureChecker:
         if not gpkg_path:
             return {}, {}
         from .sim_history import SimHistory
-        records = SimHistory(gpkg_path).load()
-        if not records:
+        # latest() 只读一个分片（旧 load() 解析整个历史文件）
+        rec = SimHistory(gpkg_path).latest()
+        if not rec:
             return {}, {}
-        rec = records[0]
         return rec.get("node_pressure", {}), rec
 
     @staticmethod

@@ -946,13 +946,12 @@ class AQuaDripPlugin:
             return
 
         from .tools.sim_history import SimHistory
-        records = SimHistory(gpkg_path).load()
-        if not records:
+        # latest() 只读一个分片（旧 load() 解析整个历史文件）
+        record = SimHistory(gpkg_path).latest()
+        if not record:
             # 无历史记录 → 回退到运行模拟
             self.on_run_simulation()
             return
-
-        record = records[0]
 
         # 轻量适配器：node_pressure 值包装为数组，
         # 兼容 dockwidget._find_nearest_pressure 的 p_arr[0] 访问
@@ -986,12 +985,11 @@ class AQuaDripPlugin:
             return
 
         from .tools.sim_history import SimHistory
-        history = SimHistory(gpkg_path)
-        records = history.load()
-        if not records:
+        # latest() 只读一个分片（旧 load() 解析整个历史文件）
+        latest = SimHistory(gpkg_path).latest()
+        if not latest:
             self.iface.messageBar().pushWarning("aQuaDrip", QApplication.translate("AquadripPlugin", "请先运行模拟"))
             return
-        latest = records[0]
         node_pressure = latest.get("node_pressure", {})
         node_coords = latest.get("node_coords", {})
         lg = latest.get("link_geometry", {})
@@ -1099,9 +1097,10 @@ class AQuaDripPlugin:
         gpkg_path = find_gpkg_path(None, "aqd_fields")
         if not gpkg_path: return obs_data
         from .tools.sim_history import SimHistory
-        recs = SimHistory(gpkg_path).load()
-        if not recs: return obs_data
-        r = recs[0]
+        # latest() 只读一个分片（旧 load() 解析整个历史文件）
+        r = SimHistory(gpkg_path).latest()
+        if not r:
+            return obs_data
         npd, ncd = r.get("node_pressure", {}), r.get("node_coords", {})
         lfd, lgd = r.get("link_flow", {}), r.get("link_geometry", {})
         efd = r.get("emitter_flow", {})

@@ -2297,6 +2297,11 @@ Load or create a project first</translation>
             <translation>Select a record first</translation>
         </message>
         <message>
+            <location filename="../ui/visualize_dialog.py" line="190" />
+            <source>记录文件缺失，无法可视化</source>
+            <translation>Record file is missing, cannot visualize</translation>
+        </message>
+        <message>
             <location filename="../ui/visualize_dialog.py" line="187" />
             <source>确定删除该记录？</source>
             <translation>Delete this record?</translation>

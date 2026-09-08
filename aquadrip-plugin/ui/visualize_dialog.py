@@ -23,7 +23,10 @@ class VisualizeDialog(QDialog):
         super().__init__(parent or iface.mainWindow())
         self.iface = iface
         self.history = None
-        self.records = []
+        # 只保存轻量摘要（KB 级）；完整记录在点击"可视化"时
+        # 用 history.get(i) 按需读取单个分片。原先 open 时 load()
+        # 解析全部记录（1GB 级 JSON）导致对话框卡住几十秒
+        self.summaries = []
 
         self.setWindowTitle(QApplication.translate("VisualizeDialog", "aQuaDrip 模拟历史"))
         self.setMinimumWidth(420)
@@ -112,13 +115,13 @@ class VisualizeDialog(QDialog):
         self.list_widget.hide()
 
     def _refresh_list(self):
-        """刷新历史列表"""
+        """刷新历史列表（只读轻量索引，毫秒级）"""
         if not self.history:
             return
-        self.records = self.history.load()
+        self.summaries = self.history.summaries()
         self.list_widget.clear()
 
-        if not self.records:
+        if not self.summaries:
             self.empty_label.show()
             self.list_widget.hide()
             return
@@ -128,7 +131,7 @@ class VisualizeDialog(QDialog):
 
         # 收集所有轮灌组用于过滤器
         rotation_ids = set()
-        for record in self.records:
+        for record in self.summaries:
             rid = record.get("rotation_id")
             if rid:
                 rotation_ids.add(rid)
@@ -147,7 +150,7 @@ class VisualizeDialog(QDialog):
             QApplication.translate(
                 "VisualizeDialog",
                 "共 {0} 条记录（上限 {1}）").format(
-                    len(self.records), SimHistory.MAX_RECORDS))
+                    len(self.summaries), SimHistory.MAX_RECORDS))
         self._update_list_display()
 
     def _on_filter_changed(self):
@@ -157,23 +160,26 @@ class VisualizeDialog(QDialog):
         """根据过滤器更新列表显示"""
         filter_rid = self._shift_combo.currentData() if hasattr(self, '_shift_combo') else ""
         self.list_widget.clear()
-        for idx, record in enumerate(self.records):
+        for idx, record in enumerate(self.summaries):
             if filter_rid and record.get("rotation_id") != filter_rid:
                 continue
             summary = SimHistory.summary(record)
             item = QListWidgetItem(summary)
-            # 存全量索引：启用轮灌过滤后列表行号与 self.records
+            # 存全量索引：启用轮灌过滤后列表行号与 self.summaries
             # 索引不再一一对应，直接用行号会可视化/删除错误的记录
             item.setData(Qt.UserRole, idx)
             self.list_widget.addItem(item)
 
     def _on_visualize(self):
-        """可视化选中的记录"""
+        """可视化选中的记录（此时才读取完整分片）"""
         item = self.list_widget.currentItem()
         if item is None:
             QMessageBox.information(self, "aQuaDrip", QApplication.translate("VisualizeDialog", "请先选择一条记录"))
             return
-        record = self.records[item.data(Qt.UserRole)]
+        record = self.history.get(item.data(Qt.UserRole)) if self.history else None
+        if record is None:
+            QMessageBox.warning(self, "aQuaDrip", QApplication.translate("VisualizeDialog", "记录文件缺失，无法可视化"))
+            return
         mode = self.mode_combo.currentData()
         self.visualize_requested.emit(record, mode)
 

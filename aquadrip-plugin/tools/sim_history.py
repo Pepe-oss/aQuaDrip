@@ -1,20 +1,38 @@
-"""SimHistory — 模拟历史记录管理（sidecar JSON 文件）
+"""SimHistory — 模拟历史记录管理（v2 分片存储）
 
-每次模拟结果存储在与 GPKG 同目录的 .simhistory 文件中，
-用于历史对比和可视化。
+历史架构问题（v1）：所有记录存在单个 JSON 数组文件（.simhistory）中，
+每次模拟 add() 都要"读全文件 → append → 重写全文件"。管网展开后单条
+记录可达 65MB（每个滴头的压力/流量/坐标/几何），轮灌多轮次后文件涨到
+1GB+，导致：
+  - add() 读 1GB + 写 1GB（每次模拟结束卡 1~2 分钟）
+  - load() 解析 1GB（可视化/承压/校准等任何读取都卡几十秒）
+  - 数 GB Python 对象压爆内存，整个 QGIS 都变慢
+
+v2 架构："一条记录一个 gzip 分片 + 轻量索引"：
+  <base>.simhistory.d/index.json          摘要索引（KB 级，毫秒读取）
+  <base>.simhistory.d/rec_000001.json.gz  单条完整记录（紧凑 JSON + gzip）
+
+各操作代价：
+  add()       追加一个分片（O(1)，不再重写全文件）
+  summaries() 只读索引（毫秒级，列表 UI 用）
+  latest()/get(i) 只解压一条分片（百毫秒级）
+  load()      顺序读全部分片（兼容保留，仅诊断用）
+
+旧版单文件在首次访问时自动流式迁移（逐条解析，不整载入内存），
+原文件保留为 .simhistory.bak，确认无误后可手动删除。
 """
 
+import gzip
 import json
 import os
 from datetime import datetime
-from typing import Dict, List, Optional
-from qgis.PyQt.QtWidgets import QApplication
+from typing import Dict, Iterator, List, Optional
 
 
 class SimHistory:
-    """模拟历史记录管理（sidecar JSON 文件）
+    """模拟历史记录管理（v2 分片存储）
 
-    存储路径：aquadrip.gpkg → aquadrip.simhistory（同目录同名）
+    存储路径：aquadrip.gpkg → aquadrip.simhistory.d/（目录）
     自动裁剪：超过 MAX_RECORDS 条时自动保留最新记录
     """
 
@@ -23,21 +41,177 @@ class SimHistory:
     def __init__(self, gpkg_path: str):
         self.gpkg_path = gpkg_path
         if gpkg_path.endswith(".gpkg"):
-            self.path = gpkg_path[:-5] + ".simhistory"
+            base = gpkg_path[:-5]
         else:
-            self.path = gpkg_path + ".simhistory"
+            base = gpkg_path
+        self.path = base + ".simhistory"       # v1 单文件路径（迁移源）
+        self.dir = base + ".simhistory.d"      # v2 分片目录
+        self.index_path = os.path.join(self.dir, "index.json")
+        self._index = None  # {"next_seq": int, "records": [summary...]}
+
+    # ── 内部：索引与分片 ──
+
+    def _ensure_ready(self):
+        """加载（必要时迁移/重建）索引。幂等。"""
+        if self._index is not None:
+            return
+        if os.path.exists(self.index_path):
+            try:
+                with open(self.index_path, "r", encoding="utf-8") as f:
+                    self._index = json.load(f)
+                if not isinstance(self._index, dict) \
+                        or "records" not in self._index:
+                    raise ValueError("bad index")
+            except (json.JSONDecodeError, OSError, ValueError):
+                # 索引损坏 → 从分片重建（保留可能已加载的部分）
+                self._index = None
+                self._rebuild_index()
+            # v2 索引存在但又出现了旧版单文件：迁移期间用户未重启
+            # QGIS、旧版插件代码又写入了新记录 → 追加合并，不丢数据
+            if os.path.exists(self.path):
+                self._migrate_legacy()
+            return
+        if os.path.exists(self.path):
+            self._migrate_legacy()
+            return
+        self._index = {"next_seq": 1, "records": []}
+
+    def _shard_path(self, seq: int) -> str:
+        return os.path.join(self.dir, f"rec_{seq:06d}.json.gz")
+
+    def _write_shard(self, seq: int, record: dict, level: int = 6):
+        os.makedirs(self.dir, exist_ok=True)
+        tmp = self._shard_path(seq) + ".tmp"
+        with gzip.open(tmp, "wt", encoding="utf-8", compresslevel=level) as f:
+            json.dump(record, f, ensure_ascii=False,
+                      separators=(",", ":"))
+        os.replace(tmp, self._shard_path(seq))
+
+    def _read_shard(self, seq: int) -> Optional[dict]:
+        p = self._shard_path(seq)
+        if not os.path.exists(p):
+            return None
+        try:
+            with gzip.open(p, "rt", encoding="utf-8") as f:
+                return json.load(f)
+        except (OSError, EOFError, json.JSONDecodeError):
+            return None
+
+    def _write_index(self):
+        os.makedirs(self.dir, exist_ok=True)
+        tmp = self.index_path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(self._index, f, ensure_ascii=False,
+                      separators=(",", ":"))
+        os.replace(tmp, self.index_path)
+
+    def _rebuild_index(self):
+        """从分片文件重建索引（索引损坏时的自愈路径，较慢但保数据）"""
+        os.makedirs(self.dir, exist_ok=True)
+        records = []
+        max_seq = 0
+        for name in sorted(os.listdir(self.dir)):
+            if not (name.startswith("rec_")
+                    and name.endswith(".json.gz")):
+                continue
+            try:
+                seq = int(name[4:10])
+            except ValueError:
+                continue
+            rec = self._read_shard(seq)
+            if rec is not None:
+                records.append({**_summary_of(rec), "seq": seq})
+                max_seq = max(max_seq, seq)
+        records.sort(key=lambda s: s["seq"])
+        self._index = {"next_seq": max_seq + 1, "records": records}
+        self._write_index()
+
+    def _trim_to_cap(self):
+        """超过 MAX_RECORDS 时删除最老分片"""
+        changed = False
+        recs = self._index["records"]
+        while len(recs) > self.MAX_RECORDS:
+            oldest = recs.pop(0)
+            try:
+                os.remove(self._shard_path(oldest["seq"]))
+            except OSError:
+                pass
+            changed = True
+        if changed:
+            self._write_index()
+
+    # ── v1 迁移 ──
+
+    def _migrate_legacy(self):
+        """把 v1 单文件 JSON 数组流式迁移为 v2 分片
+
+        逐条 raw_decode（不整载入内存——1GB 文件整载会吃 5GB+ 内存）。
+        v2 索引已存在时（迁移期间旧版插件又写入了单文件）追加合并。
+        迁移成功后原文件改名为 .simhistory.bak（保留用户数据）。
+        """
+        t0 = datetime.now()
+        appending = self._index is not None
+        print(f"[aQuaDrip] 历史文件迁移中（一次性）: {self.path} "
+              f"({os.path.getsize(self.path) / 1e6:.0f} MB)…")
+        seq = self._index["next_seq"] if appending else 1
+        if not appending:
+            self._index = {"next_seq": 1, "records": []}
+        records = self._index["records"]
+        corrupt = False
+        try:
+            for rec in _iter_json_array(self.path):
+                summary = _summary_of(rec)
+                summary["seq"] = seq
+                # 压缩级别 1：一次性大文件迁移以速度优先（快 ~40%）
+                self._write_shard(seq, rec, level=1)
+                records.append(summary)
+                seq += 1
+        except (json.JSONDecodeError, OSError) as e:
+            # 损坏的 v1 文件：保留已迁移出的记录，原文件留 .corrupt.bak
+            corrupt = True
+            print(f"[aQuaDrip] ⚠️ 旧历史文件解析中断（{e}），"
+                  f"已迁移 {len(records)} 条")
+        self._index["next_seq"] = seq
+        self._trim_to_cap()
+        self._write_index()
+        bak = self.path + (".corrupt.bak" if corrupt else ".bak")
+        try:
+            os.replace(self.path, bak)
+        except OSError:
+            pass
+        dt = (datetime.now() - t0).total_seconds()
+        print(f"[aQuaDrip] 历史文件迁移完成: 本次 {len(records)} 条，"
+              f"耗时 {dt:.0f}s。原文件已保留为 {bak}，"
+              f"确认无误后可手动删除")
+
+    # ── 公共 API ──
+
+    def summaries(self) -> List[dict]:
+        """全部记录的轻量摘要（最新在前，毫秒级）
+
+        摘要字段：timestamp/cu/du/message/计数/rotation_id/shift_index，
+        不含压力/流量/坐标等大数据——列表 UI 用它，不解析分片。
+        """
+        self._ensure_ready()
+        return list(reversed(self._index["records"]))
+
+    def latest(self) -> Optional[dict]:
+        """最新一条完整记录（只读一个分片，百毫秒级）"""
+        self._ensure_ready()
+        recs = self._index["records"]
+        if not recs:
+            return None
+        return self._read_shard(recs[-1]["seq"])
 
     def load(self) -> List[dict]:
-        """加载全部历史记录（最新在前）"""
-        if not os.path.exists(self.path):
-            return []
-        try:
-            with open(self.path, "r", encoding="utf-8") as f:
-                records = json.load(f)
-            # 最新的在前（列表末尾是最新，倒序返回）
-            return list(reversed(records))
-        except (json.JSONDecodeError, OSError):
-            return []
+        """加载全部历史记录（最新在前）。仅诊断用——会读全部分片。"""
+        self._ensure_ready()
+        out = []
+        for s in reversed(self._index["records"]):
+            rec = self._read_shard(s["seq"])
+            if rec is not None:
+                out.append(rec)
+        return out
 
     def add(self, cu: float, du: float,
             node_pressure: Dict[str, float],
@@ -51,7 +225,7 @@ class SimHistory:
             link_geometry: Optional[Dict[str, list]] = None,
             rotation_id: Optional[str] = None,
             shift_index: Optional[int] = None) -> dict:
-        """新增一条记录
+        """新增一条记录（O(1)：写一个分片 + 更新 KB 级索引）
 
         Args:
             cu: Christiansen 均匀度
@@ -75,14 +249,7 @@ class SimHistory:
         if timestamp is None:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        records = []
-        if os.path.exists(self.path):
-            try:
-                with open(self.path, "r", encoding="utf-8") as f:
-                    records = json.load(f)
-            except (json.JSONDecodeError, OSError):
-                records = []
-
+        self._ensure_ready()
         record = {
             "timestamp": timestamp,
             "cu": round(float(cu), 2),
@@ -113,14 +280,13 @@ class SimHistory:
                                   for p in pts]
                               for k, pts in (link_geometry or {}).items()},
         }
-        records.append(record)
 
-        # 自动裁剪：超过 MAX_RECORDS 只保留最新
-        if len(records) > self.MAX_RECORDS:
-            records = records[-self.MAX_RECORDS:]
-
-        with open(self.path, "w", encoding="utf-8") as f:
-            json.dump(records, f, ensure_ascii=False, indent=2)
+        seq = self._index["next_seq"]
+        self._index["next_seq"] = seq + 1
+        self._write_shard(seq, record)
+        self._index["records"].append({**_summary_of(record), "seq": seq})
+        self._trim_to_cap()
+        self._write_index()
 
         return {
             "timestamp": timestamp,
@@ -129,53 +295,57 @@ class SimHistory:
         }
 
     def delete(self, index: int) -> bool:
-        """删除指定索引的记录（index 基于 load() 的倒序索引）
+        """删除指定索引的记录（index 基于 summaries()/load() 的倒序索引）
 
         Returns:
             True 表示删除成功
         """
-        if not os.path.exists(self.path):
+        self._ensure_ready()
+        recs = self._index["records"]
+        real_index = len(recs) - 1 - index
+        if real_index < 0 or real_index >= len(recs):
             return False
+        summary = recs.pop(real_index)
         try:
-            with open(self.path, "r", encoding="utf-8") as f:
-                records = json.load(f)
-        except (json.JSONDecodeError, OSError):
-            return False
-
-        # load() 返回倒序，正向存储中的索引 = len - 1 - index
-        real_index = len(records) - 1 - index
-        if real_index < 0 or real_index >= len(records):
-            return False
-
-        records.pop(real_index)
-        with open(self.path, "w", encoding="utf-8") as f:
-            json.dump(records, f, ensure_ascii=False, indent=2)
+            os.remove(self._shard_path(summary["seq"]))
+        except OSError:
+            pass
+        self._write_index()
         return True
 
     def get(self, index: int) -> Optional[dict]:
-        """获取指定索引的完整记录（index 基于 load() 的倒序索引）"""
-        records = self.load()
-        if 0 <= index < len(records):
-            return records[index]
+        """获取指定索引的完整记录（index 基于倒序索引，只读一个分片）"""
+        self._ensure_ready()
+        recs = self._index["records"]
+        real_index = len(recs) - 1 - index
+        if 0 <= real_index < len(recs):
+            return self._read_shard(recs[real_index]["seq"])
         return None
 
     def purge_all(self) -> int:
         """清空全部历史记录，返回删除条数"""
-        if not os.path.exists(self.path):
-            return 0
-        count = self.count
-        with open(self.path, "w", encoding="utf-8") as f:
-            json.dump([], f)
+        self._ensure_ready()
+        count = len(self._index["records"])
+        for s in self._index["records"]:
+            try:
+                os.remove(self._shard_path(s["seq"]))
+            except OSError:
+                pass
+        self._index = {"next_seq": self._index["next_seq"], "records": []}
+        self._write_index()
         return count
 
     @property
     def count(self) -> int:
         """当前记录总数"""
-        return len(self.load())
+        self._ensure_ready()
+        return len(self._index["records"])
 
     @staticmethod
     def summary(record: dict) -> str:
         """生成记录摘要文本（用于列表显示）"""
+        # 函数内导入：保持本模块纯 stdlib（可在无 QGIS 环境测试/复用）
+        from qgis.PyQt.QtWidgets import QApplication
         ts = record.get("timestamp", "?")
         cu = record.get("cu", 0)
         du = record.get("du", 0)
@@ -185,3 +355,64 @@ class SimHistory:
         if rid is not None and si is not None:
             return QApplication.translate("SimHistory", "{0}  [轮灌 {1} 轮次{2}]  CU={3:.1f}%  DU={4:.1f}%  滴头={5}").format(ts, rid, si+1, cu, du, n)
         return QApplication.translate("SimHistory", "{0}  CU={1:.1f}%  DU={2:.1f}%  滴头={3}").format(ts, cu, du, n)
+
+
+# ── 模块级辅助 ──
+
+_SUMMARY_KEYS = ("timestamp", "cu", "du", "message", "node_count",
+                 "pipe_count", "emitter_count", "rotation_id", "shift_index")
+
+
+def _summary_of(record: dict) -> dict:
+    """从完整记录提取轻量摘要字段"""
+    return {k: record.get(k) for k in _SUMMARY_KEYS}
+
+
+def _iter_json_array(path: str, chunk_size: int = 1 << 20) -> Iterator[dict]:
+    """流式迭代 JSON 数组文件，逐条 yield（不整载入内存）
+
+    配合 json.JSONDecoder.raw_decode 增量解析。1GB 的 v1 历史文件
+    用 json.load 整载会吃 5GB+ 内存，必须流式。
+    """
+    dec = json.JSONDecoder()
+    with open(path, "r", encoding="utf-8") as f:
+        buf = f.read(chunk_size)
+        # 跳到数组开始
+        while True:
+            i = buf.find("[")
+            if i >= 0:
+                buf = buf[i + 1:]
+                break
+            if not buf:
+                return  # 不是数组
+            buf = f.read(chunk_size)
+            if not buf:
+                return
+
+        while True:
+            # 跳过空白与记录间的分隔逗号（可能跨越 chunk 边界）
+            while True:
+                buf = buf.lstrip()
+                if not buf:
+                    buf = f.read(chunk_size)
+                    if not buf:
+                        return
+                    continue
+                if buf[0] == ",":
+                    buf = buf[1:]
+                    continue
+                break
+            if buf.startswith("]"):
+                return
+            # 增量取一个对象
+            while True:
+                try:
+                    obj, end = dec.raw_decode(buf)
+                    break
+                except json.JSONDecodeError:
+                    more = f.read(chunk_size)
+                    if not more:
+                        raise
+                    buf += more
+            yield obj
+            buf = buf[end:]
