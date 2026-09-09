@@ -22,7 +22,7 @@ from typing import Optional
 from qgis.PyQt.QtCore import Qt, pyqtSignal
 from qgis.PyQt.QtGui import QColor
 from qgis.gui import QgsMapTool, QgsMapMouseEvent, QgsRubberBand
-from qgis.core import QgsWkbTypes, QgsGeometry
+from qgis.core import QgsWkbTypes, QgsGeometry, QgsPointXY
 
 
 class ManualLateralTool(QgsMapTool):
