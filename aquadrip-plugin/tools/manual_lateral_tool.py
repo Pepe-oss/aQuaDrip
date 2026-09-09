@@ -39,7 +39,7 @@ class ManualLateralTool(QgsMapTool):
         self._generator = None       # LateralGenerator 延迟创建
         self._angle_rad = None       # 方向角(弧度),首次点击/移动时计算
         self._placed = 0
-        self._work_geom = None       # 工作几何(惰性):无效几何 makeValid 修正
+        self._work_geom_cache = None  # 工作几何(惰性):无效几何 makeValid 修正
         self._warned_fixed = False   # 修正提示只弹一次
 
         # 预览橡皮筋(绿色半透明虚线)
@@ -80,18 +80,18 @@ class ManualLateralTool(QgsMapTool):
         GEOS 求交直接拓扑失败 → 预览/放置全部失效。修正一次
         缓存复用,避免每次鼠标移动都做 makeValid。
         """
-        if self._work_geom is not None:
-            return self._work_geom if not self._work_geom.isEmpty() else None
+        if self._work_geom_cache is not None:
+            return self._work_geom_cache if not self._work_geom_cache.isEmpty() else None
         g = self._field_feat.geometry()
         if g is None or g.isEmpty():
-            self._work_geom = QgsGeometry()
+            self._work_geom_cache = QgsGeometry()
             return None
         if g.isGeosValid():
-            self._work_geom = g
+            self._work_geom_cache = g
         else:
             fixed = g.makeValid()
             if fixed is not None and not fixed.isEmpty():
-                self._work_geom = fixed
+                self._work_geom_cache = fixed
                 if not self._warned_fixed:
                     self._warned_fixed = True
                     from qgis.PyQt.QtWidgets import QApplication
@@ -102,8 +102,8 @@ class ManualLateralTool(QgsMapTool):
                             "田块几何不规则(自相交等),已自动修正用于毛管放置"),
                         level=1, duration=6)
             else:
-                self._work_geom = g
-        return self._work_geom
+                self._work_geom_cache = g
+        return self._work_geom_cache
 
     def _layer_crs(self):
         return self._field_layer.crs() if self._field_layer else None
