@@ -1183,6 +1183,11 @@ Place a water source on the map first.</translation>
             <source>放置失败: {0}</source>
             <translation>Placement failed: {0}</translation>
         </message>
+        <message>
+            <location filename="../tools/manual_lateral_tool.py" line="99" />
+            <source>田块几何不规则(自相交等),已自动修正用于毛管放置</source>
+            <translation>Field geometry is irregular (self-intersection etc.); auto-corrected for lateral placement</translation>
+        </message>
     </context>
     <context>
         <name>NewProjectDialog</name>

@@ -436,7 +436,7 @@ class LateralGenerator:
         Returns:
             [QgsPointXY, ...] 或 None(点击在田块外/交为点)
         """
-        if geom is None or geom.isEmpty() or not geom.isGeosValid():
+        if geom is None or geom.isEmpty():
             return None
         bbox = geom.boundingBox()
         # 双向足够长:bbox 对角线长度必贯穿任意过内点的直线
@@ -447,7 +447,16 @@ class LateralGenerator:
             QgsPointXY(point.x() + dx, point.y() + dy)])
         inter = line.intersection(geom)
         if inter is None or inter.isEmpty() or inter.isNull():
-            return None
+            # 不规则手绘田块常有无效几何(自相交/环自触碰/重复点),
+            # GEOS 求交会直接拓扑失败返回空——makeValid 修正后重试。
+            # 不在入口硬性拒绝无效几何:许多"看起来在田块内"的位置
+            # 在无效几何的 GEOS 语义下不在,修正后即恢复
+            if not geom.isGeosValid():
+                fixed = geom.makeValid()
+                if fixed and not fixed.isEmpty():
+                    inter = line.intersection(fixed)
+            if inter is None or inter.isEmpty() or inter.isNull():
+                return None
         # 交可能是 MultiLineString(凹形)——取最长段
         if inter.type() == QgsWkbTypes.LineGeometry and not inter.isMultipart():
             candidates = [inter]

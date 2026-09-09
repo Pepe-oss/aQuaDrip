@@ -526,7 +526,8 @@ class PropertyDialog(QDialog):
 
             from ..tools.manual_lateral_tool import ManualLateralTool
             # 存实例属性防 GC(工具激活期间对象必须存活)
-            self._manual_tool = ManualLateralTool(self.iface, feat)
+            # 传 layer 用于画布↔图层 CRS 变换
+            self._manual_tool = ManualLateralTool(self.iface, feat, self.layer)
             self._manual_tool.finished.connect(self._on_manual_done)
             self.iface.mapCanvas().setMapTool(self._manual_tool)
         except Exception as e:
