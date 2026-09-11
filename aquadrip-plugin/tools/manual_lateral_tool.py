@@ -24,6 +24,10 @@ from qgis.PyQt.QtGui import QColor
 from qgis.gui import QgsMapTool, QgsMapMouseEvent, QgsRubberBand
 from qgis.core import QgsWkbTypes, QgsGeometry, QgsPointXY
 
+# 构建标记:激活提示中显示,用于确认运行的代码版本
+# (拷贝更新插件文件后必须重启 QGIS/重载插件,旧模块仍在内存)
+BUILD_TAG = "b20260909.2"
+
 
 class ManualLateralTool(QgsMapTool):
     """单根毛管手动放置(单击自动延伸到田块边界)"""
@@ -54,12 +58,14 @@ class ManualLateralTool(QgsMapTool):
         super().activate()
         self.canvas.setCursor(Qt.CrossCursor)
         from qgis.PyQt.QtWidgets import QApplication
+        print(f"[aQuaDrip] ManualLateralTool {BUILD_TAG} activated "
+              f"from {__file__}")
         self.iface.messageBar().pushMessage(
             "aQuaDrip",
             QApplication.translate(
                 "ManualLateralTool",
                 "点击田块内位置放置毛管(方向沿田块行向,自动延伸到边界);"
-                "右键或 Esc 退出").format(),
+                "右键或 Esc 退出").format() + f"  [{BUILD_TAG}]",
             level=0, duration=0)
 
     def deactivate(self):
