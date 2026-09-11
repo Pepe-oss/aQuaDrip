@@ -402,7 +402,8 @@ class LateralGenerator:
 
         参数(滴头间距/k/x)从田块字段读取,与自动生成同源——
         用户在属性对话框保存过参数后,手动放置与批量生成的
-        毛管属性完全一致。凹形地块由调用方传最长段。
+        毛管属性完全一致。断续行由调用方传入目标段的折线
+        (lateral_segment_at 返回全部区段,工具按点击位置选段)。
 
         Args:
             field_feat: 田块要素(读参数)
@@ -421,20 +422,25 @@ class LateralGenerator:
             field_geom=None)  # None = 不清旧,保留已有毛管
 
     @staticmethod
-    def lateral_segment_at(point, geom, angle_rad):
-        """过点沿方向与田块求交,返回该位置的整根毛管折线(最长段)
+    def lateral_segment_at(point, geom, angle_rad, min_len=0.0):
+        """过点沿方向与田块求交,返回该行**全部**不相邻区段(按沿线位置排序)
 
         手动放置模式的核心几何:构造过 point 的双向长线
-        (长度=田块 bbox 对角线,保证贯穿),与田块多边形求交,
-        凹形地块交出多段时取最长的一段。
+        (长度=田块 bbox 对角线,保证贯穿),与田块多边形求交。
+        断续田块一行可能穿过多个不相邻的田面区段
+        (如 111·0000·1111111)——每个区段都是一根真实的滴灌带,
+        全部返回,由调用方决定放置哪一段。
 
         Args:
             point: QgsPointXY 点击位置(图层 CRS)
             geom: 田块 QgsGeometry
             angle_rad: 毛管方向角(弧度,来自 _calc_direction_angle)
+            min_len: 最短段长度(图层单位),短于它的碎屑段跳过;
+                经纬度图层需由调用方换算成度
 
         Returns:
-            [QgsPointXY, ...] 或 None(点击在田块外/交为点)
+            [[QgsPointXY, ...], ...] 各段折线(≥1 段,沿线方向排序)
+            或 None(点击在田块外/交为点/全部段都被过滤)
         """
         if geom is None or geom.isEmpty():
             return None
@@ -457,7 +463,7 @@ class LateralGenerator:
                     inter = line.intersection(fixed)
             if inter is None or inter.isEmpty() or inter.isNull():
                 return None
-        # 交可能是 MultiLineString(凹形)——取最长段
+        # 交可能是 MultiLineString(断续/凹形)——收集全部线段
         if inter.type() == QgsWkbTypes.LineGeometry and not inter.isMultipart():
             candidates = [inter]
         elif inter.isMultipart():
@@ -465,11 +471,20 @@ class LateralGenerator:
                           if part.type() == QgsWkbTypes.LineGeometry]
         else:
             return None  # 点/其他
-        best = max(candidates, key=lambda g: g.length())
-        pts = best.asPolyline()
-        if not pts or len(pts) < 2:
+        segments = []
+        for cand in candidates:
+            if min_len > 0 and cand.length() < min_len:
+                continue  # 碎屑段
+            pts = cand.asPolyline()
+            if pts and len(pts) >= 2:
+                segments.append(pts)
+        if not segments:
             return None
-        return pts
+        # 按沿线位置排序(起点在方向前方的段在前)
+        cos_a, sin_a = math.cos(angle_rad), math.sin(angle_rad)
+        segments.sort(
+            key=lambda p: p[0].x() * cos_a + p[0].y() * sin_a)
+        return segments
 
     @staticmethod
     def _delete_existing_laterals(layer: QgsVectorLayer,
