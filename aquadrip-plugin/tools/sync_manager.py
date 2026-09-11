@@ -282,6 +282,12 @@ class SyncManager:
                     layer.rollBack()
                     self.log(QApplication.translate("SyncManager", "⚠️ 图层 {0} 提交失败").format(layer.name()))
 
+        # 4.5 水源连通性检查
+        #     孤立水源(未连接任何管道)是"模拟结果全为 0"最典型的静默根因:
+        #     WNTR 中水库孤立 → 全网无供水 → 压力/流量全部为 0。
+        #     在此明确警告并提示最近管道的距离,用户可立即定位缺口。
+        self._check_source_connectivity(net)
+
         # 5. 毛管展开为 EmitterNode 滴头链
         #    关键：emitter_spacing 是米单位，必须投影到米制 CRS（UTM）后再展开，
         #    否则在经纬度下 math.hypot 算出的"长度"是度，滴头数永远 = 1。
@@ -331,6 +337,49 @@ class SyncManager:
         return net
 
     # ── CRS 投影辅助 ──
+
+    def _check_source_connectivity(self, net):
+        """水源连通性诊断：孤立水源 → 模拟全为 0 的静默根因
+
+        拓扑按几何容差连接（经纬度 ~1m、投影 ~10cm），主管若没有
+        真正画到水源点，水源就是孤立的——WNTR 中水库不供水，
+        全网压力/流量全 0，且无任何报错。此处显式警告并给出
+        水源到最近管道端点的距离，用户可立即定位缺口。
+        """
+        from wdrip.network import SourceNode
+        sources = [n for n in net.nodes.values() if isinstance(n, SourceNode)]
+        if not sources or not net.links:
+            return
+        is_geo = self._is_geographic()
+        m_per_unit = 111320.0 if is_geo else 1.0  # 近似：纬度方向 1°≈111km
+
+        # 端点坐标缓存（一次遍历，O(links)）
+        endpoints = []
+        for l in net.links.values():
+            a = net.get_node(l.from_node)
+            b = net.get_node(l.to_node)
+            if a is not None:
+                endpoints.append((a.x, a.y))
+            if b is not None:
+                endpoints.append((b.x, b.y))
+        if not endpoints:
+            return
+
+        for s in sources:
+            degree = sum(1 for l in net.links.values()
+                         if s.id in (l.from_node, l.to_node))
+            if degree > 0:
+                continue
+            best = min(((s.x - x) ** 2 + (s.y - y) ** 2) ** 0.5
+                       for x, y in endpoints)
+            dist_m = best * m_per_unit
+            self.log(
+                QApplication.translate(
+                    "SyncManager",
+                    "⚠️ 水源 {0} 未连接任何管道——模拟结果将全为 0！"
+                    "水源距最近的管道端点约 {1:.1f} m,"
+                    "请把主管延伸画到水源点(或把水源节点移到主管端点)"
+                ).format(s.id, dist_m))
 
     def _apply_dem_to_network(self, net):
         """为 DripNetwork 中所有节点采样 DEM 高程。

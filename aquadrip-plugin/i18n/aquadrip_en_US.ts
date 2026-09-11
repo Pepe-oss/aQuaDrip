@@ -2071,6 +2071,11 @@ An aQuaDrip project must contain the {1} layer.</translation>
             <source>⚠️ 水源总水头 {0:.1f}m 低于管网最高点 {1:.1f}m,高处田块可能欠压——请增大水头或检查高程</source>
             <translation>⚠️ Source total head {0:.1f} m is below the highest network point {1:.1f} m; uphill areas may be under-pressured — increase head or check elevations</translation>
         </message>
+        <message>
+            <location filename="../tools/sync_manager.py" line="297" />
+            <source>⚠️ 水源 {0} 未连接任何管道——模拟结果将全为 0！水源距最近的管道端点约 {1:.1f} m,请把主管延伸画到水源点(或把水源节点移到主管端点)</source>
+            <translation>⚠️ Source {0} is not connected to any pipe — simulation results will be all zeros! The source is about {1:.1f} m from the nearest pipe endpoint. Please extend the mainline to the source point (or move the source node onto the mainline endpoint)</translation>
+        </message>
     </context>
     <context>
         <name>TrimDialog</name>
