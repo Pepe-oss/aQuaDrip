@@ -3,15 +3,19 @@
 从历史记录生成临时可视化图层：
 - results_nodes（点）：节点压力 + 滴头流量，按压力渐变着色
 - results_pipes（线）：管道流量 + 流速，按流量渐变着色
+
+并支持把同一份结果导出为矢量文件（GPKG/GeoJSON/Shapefile）。
 """
 
-from typing import Optional
+import os
+from typing import List, Optional, Tuple
 
 from qgis.core import (
     QgsProject, QgsVectorLayer, QgsField, QgsFeature,
     QgsGeometry, QgsPointXY,
     QgsGraduatedSymbolRenderer, QgsGradientColorRamp,
     QgsGradientStop, QgsSymbol, QgsRendererRange,
+    QgsVectorFileWriter, QgsCoordinateTransformContext,
 )
 from qgis.PyQt.QtCore import QVariant
 from qgis.PyQt.QtGui import QColor
@@ -59,51 +63,111 @@ class Visualizer:
             QApplication.translate("Visualize", "可视化: {0}  CU={1:.1f}%  DU={2:.1f}%").format(ts, cu, du),
             level=0, duration=5)
 
+    # ── 节点矢量导出 ──
+
+    def export_nodes(self, record: dict, out_path: str) -> int:
+        """把历史记录的节点导出为矢量文件（每个节点: 压力 + 滴头流量）
+
+        与 results_nodes 可视化图层同源（_node_features 单一来源）。
+        按扩展名选驱动：.gpkg(GPKG 默认) / .geojson|json / .shp；
+        CRS 用数据图层真实坐标系（避免 OTF 投影错位）。
+
+        Args:
+            record: 历史记录字典（来自 SimHistory.get）
+            out_path: 目标文件路径
+
+        Returns:
+            写出的节点数
+
+        Raises:
+            ValueError: 记录无节点数据或写入失败
+        """
+        features = self._node_features(record)
+        if not features:
+            raise ValueError(QApplication.translate(
+                "Visualize", "记录中没有可导出的节点数据"))
+
+        crs_id = self._export_crs_id()
+        layer = QgsVectorLayer(f"Point?crs={crs_id}", "nodes", "memory")
+        dp = layer.dataProvider()
+        # 字段名 ≤10 字符：Shapefile 驱动会截断超长字段名，
+        # 统一紧凑命名保证三种格式导出的字段一致
+        dp.addAttributes([
+            QgsField("node_id", QVariant.String),
+            QgsField("pressure_m", QVariant.Double),
+            QgsField("emit_flow", QVariant.Double),
+        ])
+        layer.updateFields()
+
+        feats = []
+        for nid, pressure, flow, xy in features:
+            feat = QgsFeature(layer.fields())
+            feat.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(xy[0], xy[1])))
+            feat.setAttribute("node_id", nid)
+            if pressure is not None:
+                feat.setAttribute("pressure_m", pressure)
+            if flow is not None:
+                feat.setAttribute("emit_flow", flow)
+            feats.append(feat)
+        dp.addFeatures(feats)
+        layer.updateExtents()
+
+        ext = os.path.splitext(out_path)[1].lower()
+        if ext in (".geojson", ".json"):
+            driver = "GeoJSON"
+        elif ext == ".shp":
+            driver = "ESRI Shapefile"
+        else:
+            driver = "GPKG"  # 默认（含未知扩展名）
+
+        opts = QgsVectorFileWriter.SaveVectorOptions()
+        opts.driverName = driver
+        err, msg = QgsVectorFileWriter.writeAsVectorFormatV3(
+            layer, out_path,
+            QgsProject.instance().transformContext(), opts)[:2]
+        if err != QgsVectorFileWriter.NoError:
+            raise ValueError(msg or f"write error ({err})")
+        return len(feats)
+
+    def _export_crs_id(self) -> str:
+        """导出 CRS：优先数据图层 CRS，其次项目 CRS，兜底 4326
+
+        历史记录的坐标是图层 CRS 下的原始值，项目 CRS 可能不同
+        （OTF 投影），必须按数据真实 CRS 导出。
+        """
+        nodes_layer = self._find_layer("aqd_nodes")
+        if nodes_layer is not None:
+            crs = nodes_layer.crs()
+            if crs.isValid():
+                return crs.authid()
+        crs = QgsProject.instance().crs()
+        return crs.authid() if crs.isValid() else "EPSG:4326"
+
     def _create_node_layer(self, record: dict, crs_id: str,
                             mode: str) -> Optional[QgsVectorLayer]:
-        """节点图层：压力 (MPa) / 滴头流量 (L/h) 着色"""
-        node_pressure = record.get("node_pressure", {})
-        emitter_flow = record.get("emitter_flow", {})
-        node_coords = record.get("node_coords", {})
-
+        """节点图层：压力 (m/MPa) / 滴头流量 (L/h) 着色"""
         layer = QgsVectorLayer(
             f"Point?crs={crs_id}", "results_nodes", "memory")
         dp = layer.dataProvider()
         dp.addAttributes([
             QgsField("node_id", QVariant.String),
+            QgsField("pressure_m", QVariant.Double),
             QgsField("pressure_mpa", QVariant.Double),
             QgsField("emitter_flow", QVariant.Double),
         ])
         layer.updateFields()
 
         feats = []
-        # 普通节点（有压力）
-        for nid, pressure in node_pressure.items():
-            coords = node_coords.get(nid)
-            if not coords or len(coords) < 2:
-                continue
+        for nid, pressure, flow, xy in self._node_features(record):
             feat = QgsFeature(layer.fields())
             feat.setGeometry(QgsGeometry.fromPointXY(
-                QgsPointXY(float(coords[0]), float(coords[1]))))
+                QgsPointXY(xy[0], xy[1])))
             feat.setAttribute("node_id", nid)
-            feat.setAttribute("pressure_mpa", float(pressure) * M_H2O_TO_MPa)
-            # 如果该节点也是滴头，取滴头流量
-            if nid in emitter_flow:
-                feat.setAttribute("emitter_flow", float(emitter_flow[nid]))
-            feats.append(feat)
-
-        # 滴头节点（只有 emitter_flow，坐标在 node_coords）
-        for eid, flow in emitter_flow.items():
-            if eid in node_pressure:
-                continue  # 已在上面处理
-            coords = node_coords.get(eid)
-            if not coords or len(coords) < 2:
-                continue
-            feat = QgsFeature(layer.fields())
-            feat.setGeometry(QgsGeometry.fromPointXY(
-                QgsPointXY(float(coords[0]), float(coords[1]))))
-            feat.setAttribute("node_id", eid)
-            feat.setAttribute("emitter_flow", float(flow))
+            if pressure is not None:
+                feat.setAttribute("pressure_m", pressure)
+                feat.setAttribute("pressure_mpa", pressure * M_H2O_TO_MPa)
+            if flow is not None:
+                feat.setAttribute("emitter_flow", flow)
             feats.append(feat)
 
         if not feats:
@@ -116,6 +180,42 @@ class Visualizer:
         self._apply_graduated_renderer(layer, field_name, "blue_red")
 
         return layer
+
+    @staticmethod
+    def _node_features(record: dict) -> List[Tuple[str, Optional[float],
+                                                   Optional[float],
+                                                   Tuple[float, float]]]:
+        """从历史记录提取节点数据（可视化与矢量导出的单一来源）
+
+        Returns:
+            [(node_id, pressure_m|None, emitter_flow_Lh|None, (x, y)), ...]
+            普通节点有压力无滴头流量；滴头节点两者都有；
+            仅在 emitter_flow 中的滴头只有流量。
+        """
+        node_pressure = record.get("node_pressure", {})
+        emitter_flow = record.get("emitter_flow", {})
+        node_coords = record.get("node_coords", {})
+
+        out = []
+        # 普通节点（有压力）
+        for nid, pressure in node_pressure.items():
+            coords = node_coords.get(nid)
+            if not coords or len(coords) < 2:
+                continue
+            flow = emitter_flow.get(nid)
+            out.append((nid, float(pressure),
+                        float(flow) if flow is not None else None,
+                        (float(coords[0]), float(coords[1]))))
+        # 滴头节点（只有 emitter_flow，坐标在 node_coords）
+        for eid, flow in emitter_flow.items():
+            if eid in node_pressure:
+                continue  # 已在上面处理
+            coords = node_coords.get(eid)
+            if not coords or len(coords) < 2:
+                continue
+            out.append((eid, None, float(flow),
+                        (float(coords[0]), float(coords[1]))))
+        return out
 
     def _create_pipe_layer(self, record: dict,
                             crs_id: str) -> Optional[QgsVectorLayer]:

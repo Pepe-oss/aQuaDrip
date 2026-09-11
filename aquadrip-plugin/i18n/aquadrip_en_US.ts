@@ -2348,6 +2348,26 @@ This cannot be undone!</translation>
             <source>已清空 {0} 条记录</source>
             <translation>{0} records purged</translation>
         </message>
+        <message>
+            <source>💾 导出节点</source>
+            <translation>💾 Export Nodes</translation>
+        </message>
+        <message>
+            <source>导出选中记录的节点矢量文件（压力 + 滴头流量）</source>
+            <translation>Export nodes of the selected record to a vector file (pressure + emitter flow)</translation>
+        </message>
+        <message>
+            <source>导出节点矢量文件</source>
+            <translation>Export Node Vector File</translation>
+        </message>
+        <message>
+            <source>已导出 {0} 个节点（压力+滴头流量）→ {1}</source>
+            <translation>Exported {0} nodes (pressure + emitter flow) → {1}</translation>
+        </message>
+        <message>
+            <source>导出失败: {0}</source>
+            <translation>Export failed: {0}</translation>
+        </message>
     </context>
     <context>
         <name>ZoneDivider</name>

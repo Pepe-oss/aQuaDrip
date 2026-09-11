@@ -80,6 +80,12 @@ class VisualizeDialog(QDialog):
         self.btn_visualize.clicked.connect(self._on_visualize)
         btn_layout.addWidget(self.btn_visualize)
 
+        self.btn_export = QPushButton(QApplication.translate("VisualizeDialog", "💾 导出节点"))
+        self.btn_export.setToolTip(QApplication.translate(
+            "VisualizeDialog", "导出选中记录的节点矢量文件（压力 + 滴头流量）"))
+        self.btn_export.clicked.connect(self._on_export_nodes)
+        btn_layout.addWidget(self.btn_export)
+
         self.btn_delete = QPushButton(QApplication.translate("VisualizeDialog", "🗑 删除"))
         self.btn_delete.clicked.connect(self._on_delete)
         btn_layout.addWidget(self.btn_delete)
@@ -182,6 +188,45 @@ class VisualizeDialog(QDialog):
             return
         mode = self.mode_combo.currentData()
         self.visualize_requested.emit(record, mode)
+
+    def _on_export_nodes(self):
+        """导出选中记录的节点矢量文件（压力 + 滴头流量）"""
+        item = self.list_widget.currentItem()
+        if item is None or not self.history:
+            QMessageBox.information(self, "aQuaDrip", QApplication.translate("VisualizeDialog", "请先选择一条记录"))
+            return
+        record = self.history.get(item.data(Qt.UserRole))
+        if record is None:
+            QMessageBox.warning(self, "aQuaDrip", QApplication.translate("VisualizeDialog", "记录文件缺失，无法可视化"))
+            return
+
+        # 默认文件名：aquadrip_result_<时间戳>.gpkg，存到项目 GPKG 同目录
+        import os
+        from qgis.PyQt.QtWidgets import QFileDialog
+        ts = (record.get("timestamp") or "result").replace(":", "").replace(" ", "_").replace("-", "")
+        default_dir = os.path.dirname(self.history.gpkg_path) \
+            if getattr(self.history, "gpkg_path", "") else ""
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            QApplication.translate("VisualizeDialog", "导出节点矢量文件"),
+            os.path.join(default_dir, f"aquadrip_result_{ts}.gpkg"),
+            "GeoPackage (*.gpkg);;GeoJSON (*.geojson);;Shapefile (*.shp)")
+        if not path:
+            return
+
+        try:
+            from ..tools.visualize import Visualizer
+            count = Visualizer(self.iface).export_nodes(record, path)
+            self.iface.messageBar().pushMessage(
+                "aQuaDrip",
+                QApplication.translate(
+                    "VisualizeDialog",
+                    "已导出 {0} 个节点（压力+滴头流量）→ {1}").format(count, path),
+                level=0, duration=6)
+        except Exception as e:
+            QMessageBox.warning(
+                self, "aQuaDrip",
+                QApplication.translate("VisualizeDialog", "导出失败: {0}").format(e))
 
     def _on_delete(self):
         """删除选中的记录"""
