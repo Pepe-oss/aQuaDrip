@@ -2275,6 +2275,18 @@ Commit changes and continue?</translation>
             <source>添加切割段失败</source>
             <translation>Failed to add trim segment</translation>
         </message>
+        <message>
+            <source>已切除 {0:.1f} m</source>
+            <translation>Removed {0:.1f} m</translation>
+        </message>
+        <message>
+            <source>管道已分割</source>
+            <translation>Pipe split</translation>
+        </message>
+        <message>
+            <source>已切割 {0} 根管道，共切除 {1:.1f} m</source>
+            <translation>Cut {0} pipes, removed {1:.1f} m in total</translation>
+        </message>
     </context>
     <context>
         <name>Visualize</name>

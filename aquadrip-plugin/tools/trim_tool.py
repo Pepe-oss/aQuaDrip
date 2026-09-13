@@ -64,7 +64,11 @@ class TrimTool(QgsMapTool):
                     if not self._drawing:
                         self._start_draw(event)
                 else:
-                    point = event.snapPoint()
+                    # 用原始点击位置做几何命中——不用 snapPoint():
+                    # 插件默认开启全局捕捉(AllLayers 顶点+线段 15px)，
+                    # 点击会被吸到附近的节点/别的管段上，导致切错
+                    # 位置、切错管甚至找不到管(要点好几下)
+                    point = QgsPointXY(event.mapPoint())
                     self._trim_at_point(point)
             elif event.button() == Qt.RightButton:
                 if self.mode == "line" and self._drawing:
@@ -128,7 +132,7 @@ class TrimTool(QgsMapTool):
             return
 
         if tolerance is None:
-            tolerance = self.canvas.mapUnitsPerPixel() * 15
+            tolerance = self._pixel_tolerance(layer)
 
         # 查找最近管道
         best_feat = None
@@ -151,7 +155,7 @@ class TrimTool(QgsMapTool):
         if need_edit:
             layer.startEditing()
         try:
-            self._do_split(layer, best_feat, [best_pos])
+            _, removed_m = self._do_split(layer, best_feat, [best_pos])
             if need_edit and not layer.commitChanges():
                 raise RuntimeError(QApplication.translate("TrimTool", "提交失败: {0}").format('; '.join(layer.commitErrors())))
         except Exception as e:
@@ -160,8 +164,25 @@ class TrimTool(QgsMapTool):
             self.iface.messageBar().pushWarning("aQuaDrip", QApplication.translate("TrimTool", "切割失败: {0}").format(e))
             return
         layer.triggerRepaint()
-        self.iface.messageBar().pushMessage(
-            "aQuaDrip", QApplication.translate("TrimTool", "管道已切割"), level=0, duration=3)
+        if self.cut_length > 0:
+            self.iface.messageBar().pushMessage(
+                "aQuaDrip", QApplication.translate("TrimTool", "已切除 {0:.1f} m").format(removed_m), level=0, duration=3)
+        else:
+            self.iface.messageBar().pushMessage(
+                "aQuaDrip", QApplication.translate("TrimTool", "管道已分割"), level=0, duration=3)
+
+    def _pixel_tolerance(self, layer):
+        """点击命中容差（图层单位）：15 像素距离，钳位在 2~50 米之间
+
+        纯像素容差在紧 zoom 时不足 2m（点不准），在远 zoom 的经纬度
+        下又可达公里级（误切远处的管）——统一换算成米再钳位。"""
+        try:
+            geo = layer.crs().isValid() and layer.crs().isGeographic()
+        except Exception:
+            geo = False
+        px_m = self.canvas.mapUnitsPerPixel() * (111320.0 if geo else 1.0)
+        tol_m = max(2.0, min(px_m * 15, 50.0))
+        return tol_m / (111320.0 if geo else 1.0)
 
     # ── 画线批量切割 ──
 
@@ -188,6 +209,7 @@ class TrimTool(QgsMapTool):
             return
 
         total_cut = 0
+        total_removed = 0.0
         need_edit = not layer.isEditable()
         if need_edit:
             layer.startEditing()
@@ -200,12 +222,8 @@ class TrimTool(QgsMapTool):
                 if feat is None:
                     continue
 
-                if len(positions) == 1:
-                    count = self._do_split(layer, feat, positions)
-                else:
-                    # 多个交点：传入全部位置，一次性处理
-                    count = self._do_split(layer, feat, positions)
-
+                count, removed_m = self._do_split(layer, feat, positions)
+                total_removed += removed_m
                 if count >= 2:
                     total_cut += 1
 
@@ -218,13 +236,20 @@ class TrimTool(QgsMapTool):
             return
 
         layer.triggerRepaint()
-        self.iface.messageBar().pushMessage(
-            "aQuaDrip", QApplication.translate("TrimTool", "已切割 {0} 根管道").format(total_cut), level=0, duration=4)
+        if self.cut_length > 0:
+            self.iface.messageBar().pushMessage(
+                "aQuaDrip",
+                QApplication.translate("TrimTool", "已切割 {0} 根管道，共切除 {1:.1f} m").format(total_cut, total_removed),
+                level=0, duration=4)
+        else:
+            self.iface.messageBar().pushMessage(
+                "aQuaDrip", QApplication.translate("TrimTool", "已切割 {0} 根管道").format(total_cut), level=0, duration=4)
 
-    def _do_split(self, layer, feat, positions) -> int:
-        """在管道指定位置(0~1)处分割并写入图层，返回生成段数
+    def _do_split(self, layer, feat, positions) -> tuple:
+        """在管道指定位置(0~1)处分割并写入图层
 
-        positions: 沿线位置比例列表（已排序去重）
+        positions: 沿线位置比例列表（层长比例，已排序去重）
+        返回 (生成段数, 实际切除米数)
         注意：调用者负责管理编辑会话（startEditing/commitChanges）
         """
         geom = feat.geometry()
@@ -232,58 +257,57 @@ class TrimTool(QgsMapTool):
         total_len = geom.length()
 
         # 切割长度是米，而 geom.length() 是图层单位（经纬度=度）。
-        # 必须先用椭球度量把米换算成沿线比例，否则"2m"会按图层单位
-        # 理解：经纬度下 1m/0.0008° ≈ 1250 → 钳位到 0.01~0.99 →
-        # 整根管道被切除（远超设定长度）
-        half_frac = 0.0
+        # 所有区间阈值/钳位一律在【米】空间计算，再经层长↔米长
+        # 累计换算（折线各向异性精确）映射回层长比例——
+        # 原先的"比例阈值 0.005"在 650m 毛管上等于 3.25m，
+        # 设 2m 时整个切除区间被丢弃（表现为切了没反应）；
+        # "0.01/0.99 比例钳位"在长管上则是 6.5m 的端部禁区
+        cut_positions = list(positions)
+        remove_zones = []  # (层长比例 lo, 层长比例 hi)
+        removed_m = 0.0
         if self.cut_length > 0:
-            total_len_m = self._length_meters(layer, line)
+            total_len_m, cum_l, cum_m = self._cumulative_lengths(layer, line)
             if total_len_m > 0:
-                half_frac = (self.cut_length / 2) / total_len_m
-
-        # 计算所有切割位置
-        if half_frac <= 0:
-            cut_positions = positions
-        else:
-            cut_positions = []
-            for pos in positions:
-                p1 = max(0.01, pos - half_frac)
-                p2 = min(0.99, pos + half_frac)
-                if p2 - p1 > 0.005:
-                    cut_positions.extend([p1, p2])
-                else:
-                    cut_positions.append(pos)
+                half = self.cut_length / 2
+                for pos in positions:
+                    # 点击位置(层长比例) → 米长比例，在米空间定区间
+                    m = self._convert_frac(line, total_len, total_len_m,
+                                           cum_l, cum_m, pos, to_meters=True)
+                    lo_m = max(0.0, m - half / total_len_m)
+                    hi_m = min(1.0, m + half / total_len_m)
+                    zone_m = (hi_m - lo_m) * total_len_m
+                    if zone_m < 0.01:
+                        # 区间退化(<1cm)：按纯分割处理
+                        continue
+                    lo = self._convert_frac(line, total_len, total_len_m,
+                                            cum_l, cum_m, lo_m, to_meters=False)
+                    hi = self._convert_frac(line, total_len, total_len_m,
+                                            cum_l, cum_m, hi_m, to_meters=False)
+                    cut_positions.extend([lo, hi])
+                    remove_zones.append((lo, hi))
+                    removed_m += zone_m
 
         segments = self._split_polyline(line, total_len, cut_positions)
 
-        # cut_length > 0：移除切除区间内的段
-        if half_frac > 0:
-            # 构建切除区间 [(p1, p2), ...]
-            remove_zones = []
-            for pos in positions:
-                p1 = max(0.01, pos - half_frac)
-                p2 = min(0.99, pos + half_frac)
-                if p2 - p1 > 0.005:
-                    remove_zones.append((p1, p2))
-
-            if remove_zones:
-                # 计算每段的中间位置，判断是否在切除区间内
-                kept = []
-                cum = 0.0
-                for seg in segments:
-                    seg_len = sum(
-                        seg[i].distance(seg[i + 1]) for i in range(len(seg) - 1)
-                    ) if len(seg) >= 2 else 0.0
-                    seg_mid = (cum + seg_len / 2) / total_len if total_len > 0 else 0
-                    cum += seg_len
-                    # 如果段的中点在任何切除区间内，跳过
-                    in_remove = any(p1 <= seg_mid <= p2 for p1, p2 in remove_zones)
-                    if not in_remove:
-                        kept.append(seg)
-                segments = kept
+        # 移除切除区间内的段（区间端点已换算为层长比例，
+        # 段中点同为层长比例，直接比较）
+        if remove_zones:
+            kept = []
+            cum = 0.0
+            for seg in segments:
+                seg_len = sum(
+                    seg[i].distance(seg[i + 1]) for i in range(len(seg) - 1)
+                ) if len(seg) >= 2 else 0.0
+                seg_mid = (cum + seg_len / 2) / total_len if total_len > 0 else 0
+                cum += seg_len
+                # 如果段的中点在任何切除区间内，跳过
+                in_remove = any(p1 <= seg_mid <= p2 for p1, p2 in remove_zones)
+                if not in_remove:
+                    kept.append(seg)
+            segments = kept
 
         if not segments:
-            return 0
+            return 0, removed_m
 
         # 写入图层
         skip_fields = {"fid", "id"}
@@ -310,7 +334,64 @@ class TrimTool(QgsMapTool):
                 raise RuntimeError(QApplication.translate("TrimTool", "添加切割段失败"))
         layer.deleteFeature(feat.id())
 
-        return len(segments)
+        return len(segments), removed_m
+
+    @staticmethod
+    def _cumulative_lengths(layer, line):
+        """折线的层长/米长累计表（切割区间换算的单一数据源）
+
+        Returns:
+            (总米长, cum_layer 顶点累计层长列表, cum_meter 顶点累计米长列表)
+            椭球不可用时米长按平面长度近似（经纬度 ×111320）
+        """
+        n = len(line)
+        cum_l = [0.0] * n
+        cum_m = [0.0] * n
+        try:
+            from qgis.core import QgsDistanceArea, QgsProject
+            da = QgsDistanceArea()
+            crs = layer.crs() if layer is not None else None
+            if crs is not None and crs.isValid():
+                da.setSourceCrs(crs, QgsProject.instance().transformContext())
+            da.setEllipsoid("WGS84")
+            use_ellipsoid = True
+        except Exception:
+            use_ellipsoid = False
+            geographic = (layer is not None and layer.crs().isValid()
+                          and layer.crs().isGeographic())
+        for i in range(n - 1):
+            sl = line[i].distance(line[i + 1])
+            if use_ellipsoid:
+                sm = float(da.measureLine(line[i], line[i + 1]) or 0)
+                if sm <= 0:
+                    sm = sl * (111320.0 if (crs is not None and crs.isGeographic()) else 1.0)
+            else:
+                sm = sl * (111320.0 if geographic else 1.0)
+            cum_l[i + 1] = cum_l[i] + sl
+            cum_m[i + 1] = cum_m[i] + sm
+        return cum_m[-1], cum_l, cum_m
+
+    @staticmethod
+    def _convert_frac(line, total_len, total_len_m, cum_l, cum_m, frac,
+                      to_meters: bool):
+        """层长比例 ↔ 米长比例 换算（顶点间线性插值，折线各向异性精确）
+
+        直线两种比例天然一致；折线因各段米/层换算率随方向不同
+        （经纬度下东西向 ×cosφ），必须按累计表换算。
+        """
+        if total_len <= 0 or total_len_m <= 0 or len(line) < 2:
+            return frac
+        src_cum, dst_cum = (cum_l, cum_m) if to_meters else (cum_m, cum_l)
+        src_total, dst_total = (total_len, total_len_m) if to_meters \
+            else (total_len_m, total_len)
+        target = frac * src_total
+        for i in range(len(line) - 1):
+            s0, s1 = src_cum[i], src_cum[i + 1]
+            if s1 >= target or i == len(line) - 2:
+                r = (target - s0) / (s1 - s0) if s1 > s0 else 0.0
+                r = max(0.0, min(1.0, r))
+                return (dst_cum[i] + (dst_cum[i + 1] - dst_cum[i]) * r) / dst_total
+        return frac
 
     def _split_polyline(self, line, total_len, positions):
         """在多个沿线比例位置分割折线，返回段列表（每段至少2个顶点）"""
@@ -369,34 +450,6 @@ class TrimTool(QgsMapTool):
         return segments if segments else [line]
 
     # ── 辅助方法 ──
-
-    @staticmethod
-    def _length_meters(layer, line) -> float:
-        """折线的椭球长度（米）——任何 CRS 下都返回米
-
-        geom.length() 是图层单位（经纬度=度），与 UI 的米制切割长度
-        不可直接混算。椭球度量在经纬度下按 WGS84 椭球精确换算，
-        且东西向自动考虑纬度收缩（cos φ），无 x/y 比例失真。
-        椭球不可用时兜底平面长度近似（经纬度 1°≈111km）。
-        """
-        try:
-            from qgis.core import QgsDistanceArea, QgsProject
-            da = QgsDistanceArea()
-            crs = layer.crs() if layer is not None else None
-            if crs is not None and crs.isValid():
-                da.setSourceCrs(crs, QgsProject.instance().transformContext())
-            da.setEllipsoid("WGS84")
-            m = float(da.measureLine(line) or 0)
-            if m > 0:
-                return m
-        except Exception:
-            import traceback
-            traceback.print_exc()
-        # 兜底：平面长度 × 单位换算
-        planar = QgsGeometry.fromPolylineXY(line).length()
-        if layer is not None and layer.crs().isValid() and layer.crs().isGeographic():
-            return planar * 111320.0
-        return planar
 
     def _find_intersections(self, feat, draw_geom):
         """找到管道与画线的所有交点，返回沿管道的位置比例列表（排序）"""
