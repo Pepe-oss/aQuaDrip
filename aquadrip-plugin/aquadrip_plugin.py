@@ -73,6 +73,8 @@ class AQuaDripPlugin:
              QApplication.translate("AquadripPlugin", "创建 aQuaDrip 标准 GeoPackage 图层")),
             ("open_project.svg", QApplication.translate("AquadripPlugin", "打开项目"), self.on_open_project,
              QApplication.translate("AquadripPlugin", "打开已有的 aQuaDrip GeoPackage 项目")),
+            ("save_as.svg", QApplication.translate("AquadripPlugin", "项目另存为"), self.on_save_project_as,
+             QApplication.translate("AquadripPlugin", "复制当前项目（数据+模拟历史+工程文件）到新路径")),
             ("generate_laterals.svg", QApplication.translate("AquadripPlugin", "毛管生成"), self.on_generate_lateral,
              QApplication.translate("AquadripPlugin", "选中农田地块后，设置农艺参数并生成毛管")),
             ("trim_pipe.svg", QApplication.translate("AquadripPlugin", "切割管道"), self.on_trim_lateral,
@@ -1136,6 +1138,11 @@ class AQuaDripPlugin:
         """打开已有的 aQuaDrip GPKG 项目"""
         from .tools.project_io import load_layers
         load_layers(self.iface)
+
+    def on_save_project_as(self):
+        """项目另存为：复制 GPKG+历史 → 重指图层 → 另存 .qgz"""
+        from .tools.project_io import save_project_as
+        save_project_as(self.iface)
 
     def on_export_inp(self):
         """导出为 EPANET INP 文件"""

@@ -434,6 +434,14 @@ Place a water source on the map first.</translation>
             <source>校准重模拟失败: {0}</source>
             <translation>Calibration re-simulation failed: {0}</translation>
         </message>
+        <message>
+            <source>项目另存为</source>
+            <translation>Save Project As</translation>
+        </message>
+        <message>
+            <source>复制当前项目（数据+模拟历史+工程文件）到新路径</source>
+            <translation>Copy the current project (data + simulation history + project file) to a new path</translation>
+        </message>
     </context>
     <context>
         <name>CalibrationDialog</name>
@@ -1450,6 +1458,54 @@ An aQuaDrip project must contain the {1} layer.</translation>
             <location filename="../tools/project_io.py" line="210" />
             <source>INP 已导出: {0}（节点 {1}，管道 {2}）</source>
             <translation>INP exported: {0} ({1} nodes, {2} pipes)</translation>
+        </message>
+        <message>
+            <source>未找到当前项目 GPKG，请先打开或新建项目</source>
+            <translation>No project GPKG found; please open or create a project first</translation>
+        </message>
+        <message>
+            <source>有 {0} 个图层处于编辑状态且可能包含未提交的更改。
+另存为只会复制已提交到 GPKG 的数据。
+
+提交更改并继续？</source>
+            <translation>{0} layer(s) are in edit mode and may contain uncommitted changes.
+Save As only copies data already committed to the GPKG.
+
+Commit changes and continue?</translation>
+        </message>
+        <message>
+            <source>图层 {0} 提交失败: {1}</source>
+            <translation>Failed to commit layer {0}: {1}</translation>
+        </message>
+        <message>
+            <source>项目另存为</source>
+            <translation>Save Project As</translation>
+        </message>
+        <message>
+            <source>目标路径与当前项目相同，已取消</source>
+            <translation>Target path is the same as the current project; cancelled</translation>
+        </message>
+        <message>
+            <source>目标已存在，覆盖？
+{0}</source>
+            <translation>Target already exists. Overwrite?
+{0}</translation>
+        </message>
+        <message>
+            <source>复制后的 GPKG 完整性校验失败</source>
+            <translation>Integrity check of the copied GPKG failed</translation>
+        </message>
+        <message>
+            <source>写入工程文件失败: {0}</source>
+            <translation>Failed to write project file: {0}</translation>
+        </message>
+        <message>
+            <source>另存为失败: {0}</source>
+            <translation>Save As failed: {0}</translation>
+        </message>
+        <message>
+            <source>项目已另存为: {0}（图层 {1} 个，模拟历史 {2} 条）</source>
+            <translation>Project saved as: {0} ({1} layers, {2} history records)</translation>
         </message>
     </context>
     <context>

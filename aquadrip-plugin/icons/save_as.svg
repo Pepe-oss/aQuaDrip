@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- 软盘主体 -->
+  <path d="M4 3 L23 3 L28 8 L28 29 L4 29 Z" fill="#4a90d9" stroke="#2c6cb0" stroke-width="1.5"/>
+  <!-- 软盘金属挡板 -->
+  <path d="M9 3 L21 3 L21 12 L9 12 Z" fill="#d8dee9" stroke="#95a5b8" stroke-width="1"/>
+  <path d="M12 4 L18 4 L18 10 L12 10 Z" fill="#95a5b8"/>
+  <!-- 标签区 -->
+  <path d="M7 19 L25 19 L25 29 L7 29 Z" fill="#f5f7fa" stroke="#95a5b8" stroke-width="1"/>
+  <!-- 另存为角标箭头 -->
+  <path d="M27 6 L27 14 L23 11 M27 14 L31 11" stroke="#2ecc71" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" transform="translate(-2,14) scale(0.9)"/>
+</svg>
