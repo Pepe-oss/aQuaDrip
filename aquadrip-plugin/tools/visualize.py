@@ -94,6 +94,7 @@ class Visualizer:
         # 统一紧凑命名保证三种格式导出的字段一致
         dp.addAttributes([
             QgsField("node_id", QVariant.String),
+            QgsField("is_emitter", QVariant.Int),
             QgsField("pressure_m", QVariant.Double),
             QgsField("emit_flow", QVariant.Double),
         ])
@@ -104,6 +105,7 @@ class Visualizer:
             feat = QgsFeature(layer.fields())
             feat.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(xy[0], xy[1])))
             feat.setAttribute("node_id", nid)
+            feat.setAttribute("is_emitter", self._is_emitter(record, nid))
             if pressure is not None:
                 feat.setAttribute("pressure_m", pressure)
             if flow is not None:
@@ -151,6 +153,7 @@ class Visualizer:
         dp = layer.dataProvider()
         dp.addAttributes([
             QgsField("node_id", QVariant.String),
+            QgsField("is_emitter", QVariant.Int),
             QgsField("pressure_m", QVariant.Double),
             QgsField("pressure_mpa", QVariant.Double),
             QgsField("emitter_flow", QVariant.Double),
@@ -163,6 +166,7 @@ class Visualizer:
             feat.setGeometry(QgsGeometry.fromPointXY(
                 QgsPointXY(xy[0], xy[1])))
             feat.setAttribute("node_id", nid)
+            feat.setAttribute("is_emitter", self._is_emitter(record, nid))
             if pressure is not None:
                 feat.setAttribute("pressure_m", pressure)
                 feat.setAttribute("pressure_mpa", pressure * M_H2O_TO_MPa)
@@ -191,6 +195,12 @@ class Visualizer:
             [(node_id, pressure_m|None, emitter_flow_Lh|None, (x, y)), ...]
             普通节点有压力无滴头流量；滴头节点两者都有；
             仅在 emitter_flow 中的滴头只有流量。
+
+            注:滴头节点 flow=None 表示模拟流量为 NULL(仅缺坐标等异常),
+            正常滴头(含流量为 0 的欠压滴头)都有数值;
+            非滴头节点(干管/支管接点、水源)不在 emitter_flow 中,
+            其 emit_flow=NULL 是"无滴头"而非数据缺失——配合
+            调用方写入的 is_emitter 字段可区分。
         """
         node_pressure = record.get("node_pressure", {})
         emitter_flow = record.get("emitter_flow", {})
@@ -216,6 +226,11 @@ class Visualizer:
             out.append((eid, None, float(flow),
                         (float(coords[0]), float(coords[1]))))
         return out
+
+    @staticmethod
+    def _is_emitter(record: dict, nid: str) -> int:
+        """节点是否为滴头(1/0):在 emitter_flow 记录中即为滴头"""
+        return 1 if nid in record.get("emitter_flow", {}) else 0
 
     def _create_pipe_layer(self, record: dict,
                             crs_id: str) -> Optional[QgsVectorLayer]:
