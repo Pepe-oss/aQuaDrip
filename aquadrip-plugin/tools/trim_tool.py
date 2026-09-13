@@ -231,15 +231,24 @@ class TrimTool(QgsMapTool):
         line = geom.asPolyline()
         total_len = geom.length()
 
+        # 切割长度是米，而 geom.length() 是图层单位（经纬度=度）。
+        # 必须先用椭球度量把米换算成沿线比例，否则"2m"会按图层单位
+        # 理解：经纬度下 1m/0.0008° ≈ 1250 → 钳位到 0.01~0.99 →
+        # 整根管道被切除（远超设定长度）
+        half_frac = 0.0
+        if self.cut_length > 0:
+            total_len_m = self._length_meters(layer, line)
+            if total_len_m > 0:
+                half_frac = (self.cut_length / 2) / total_len_m
+
         # 计算所有切割位置
-        if self.cut_length <= 0:
+        if half_frac <= 0:
             cut_positions = positions
         else:
-            half = self.cut_length / 2
             cut_positions = []
             for pos in positions:
-                p1 = max(0.01, pos - half / total_len)
-                p2 = min(0.99, pos + half / total_len)
+                p1 = max(0.01, pos - half_frac)
+                p2 = min(0.99, pos + half_frac)
                 if p2 - p1 > 0.005:
                     cut_positions.extend([p1, p2])
                 else:
@@ -248,13 +257,12 @@ class TrimTool(QgsMapTool):
         segments = self._split_polyline(line, total_len, cut_positions)
 
         # cut_length > 0：移除切除区间内的段
-        if self.cut_length > 0:
-            half = self.cut_length / 2
+        if half_frac > 0:
             # 构建切除区间 [(p1, p2), ...]
             remove_zones = []
             for pos in positions:
-                p1 = max(0.01, pos - half / total_len)
-                p2 = min(0.99, pos + half / total_len)
+                p1 = max(0.01, pos - half_frac)
+                p2 = min(0.99, pos + half_frac)
                 if p2 - p1 > 0.005:
                     remove_zones.append((p1, p2))
 
@@ -361,6 +369,34 @@ class TrimTool(QgsMapTool):
         return segments if segments else [line]
 
     # ── 辅助方法 ──
+
+    @staticmethod
+    def _length_meters(layer, line) -> float:
+        """折线的椭球长度（米）——任何 CRS 下都返回米
+
+        geom.length() 是图层单位（经纬度=度），与 UI 的米制切割长度
+        不可直接混算。椭球度量在经纬度下按 WGS84 椭球精确换算，
+        且东西向自动考虑纬度收缩（cos φ），无 x/y 比例失真。
+        椭球不可用时兜底平面长度近似（经纬度 1°≈111km）。
+        """
+        try:
+            from qgis.core import QgsDistanceArea, QgsProject
+            da = QgsDistanceArea()
+            crs = layer.crs() if layer is not None else None
+            if crs is not None and crs.isValid():
+                da.setSourceCrs(crs, QgsProject.instance().transformContext())
+            da.setEllipsoid("WGS84")
+            m = float(da.measureLine(line) or 0)
+            if m > 0:
+                return m
+        except Exception:
+            import traceback
+            traceback.print_exc()
+        # 兜底：平面长度 × 单位换算
+        planar = QgsGeometry.fromPolylineXY(line).length()
+        if layer is not None and layer.crs().isValid() and layer.crs().isGeographic():
+            return planar * 111320.0
+        return planar
 
     def _find_intersections(self, feat, draw_geom):
         """找到管道与画线的所有交点，返回沿管道的位置比例列表（排序）"""
