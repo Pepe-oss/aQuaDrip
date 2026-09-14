@@ -106,7 +106,8 @@ class ZoneDivider:
         global_visited: Set[str] = set()
         for src in sources:
             self._traverse(src, graph, all_valves, zone_map,
-                           valve_counter, "", global_visited)
+                           valve_counter, "", global_visited,
+                           sources=set(sources))
 
         # 3. 写回图层
         if not zone_map:
@@ -166,7 +167,7 @@ class ZoneDivider:
             link = net.links.get(vlid)
             if link is None:
                 continue
-            subtree |= self._valve_subtree(vlid, net, graph)
+            subtree |= self._valve_subtree(vlid, net, graph, set(sources))
         subtree_base = {self._base_id(lid) for lid in subtree}
 
         label = self._next_group_label()
@@ -216,7 +217,8 @@ class ZoneDivider:
         visited: Set[str] = set()
         for src in sources:
             self._traverse(src, graph, all_valves, zone_map,
-                           valve_counter, "", visited, valve_labels)
+                           valve_counter, "", visited, valve_labels,
+                           sources=set(sources))
         if not valve_labels:
             self.iface.messageBar().pushWarning(
                 "aQuaDrip", QApplication.translate("ZoneDivider", "未发现可编组的阀门"))
@@ -279,7 +281,8 @@ class ZoneDivider:
                   valve_counter: Dict[int, int],
                   zone_prefix: str,
                   visited: Set[str],
-                  valve_labels: Optional[Dict[str, str]] = None):
+                  valve_labels: Optional[Dict[str, str]] = None,
+                  sources: Optional[Set[str]] = None):
         """BFS 遍历管网，遇到阀门时递归进入子分区。
 
         Args:
@@ -292,7 +295,9 @@ class ZoneDivider:
             visited: 全局已访问节点集
             valve_labels: 可选输出 {valve_lid: 细分标签}（按发现顺序，
                 供按流量编组使用——BFS 序即沿干管的空间顺序）
+            sources: 水源节点集合（下游侧判定用，与存储方向无关）
         """
+        sources_set = sources or set()
         queue = deque([start_node])
 
         while queue:
@@ -315,12 +320,13 @@ class ZoneDivider:
                     zone_map[link.id] = child_prefix
                     if valve_labels is not None:
                         valve_labels[link.id] = child_prefix
-                    # 确定阀门的「另一侧」节点（可能因反向遍历而不同）
-                    other_side = link.from_node if node == link.to_node else link.to_node
+                    # 下游侧判定与存储方向无关（sync 的拓扑回写会按
+                    # 几何顶点序覆盖 DirectionFixer 的成果，不能信方向）
+                    other_side = self._downstream_side(link, graph, sources_set)
                     # 递归处理阀门下游
                     self._traverse(other_side, graph, all_valves,
                                   zone_map, valve_counter, child_prefix, visited,
-                                  valve_labels)
+                                  valve_labels, sources_set)
                 elif is_valve:
                     # 阀门已处理过（从另一方向到达），跳过不重复标记
                     continue
@@ -330,20 +336,72 @@ class ZoneDivider:
                     if next_node not in visited:
                         queue.append(next_node)
 
+    def _downstream_side(self, link, graph, sources_set: Set[str]) -> str:
+        """阀门的下游侧节点（与存储 from/to 方向无关）
+
+        不穿越任何阀门就能到达水源的一侧 = 上游侧，返回另一侧。
+        判不了（两侧都不可达，如孤立段）时回退 to_node。
+        """
+        def _reaches_source(start: str) -> bool:
+            seen = {link.from_node, link.to_node}
+            q = deque([start])
+            while q:
+                n = q.popleft()
+                if n in sources_set:
+                    return True
+                for nxt_link, nxt in graph.get(n, []):
+                    if hasattr(nxt_link, "valve_type"):
+                        continue
+                    if nxt not in seen:
+                        seen.add(nxt)
+                        q.append(nxt)
+            return False
+
+        if _reaches_source(link.to_node):
+            return link.from_node
+        return link.to_node
+
     # ── 子树与标签辅助（合并/编组共用） ──
 
-    def _valve_subtree(self, valve_lid: str, net, graph) -> Set[str]:
+    def _valve_subtree(self, valve_lid: str, net, graph,
+                       sources: Optional[Set[str]] = None) -> Set[str]:
         """阀门下游子树的 link id 集合（到其他阀门为止，不含阀门自身）
 
-        DirectionFixer 已保证阀门 to_node 为下游侧。普通管道双向遍历；
-        遇到任何阀门都不穿越（未选中的阀门保留其自己的子分区）。
+        下游侧判定与存储的 from/to 方向无关：不穿越任何阀门就能
+        到达水源的一侧 = 上游侧（DirectionFixer 修好的方向会被
+        SyncManager 的拓扑回写按几何顶点序覆盖，不能依赖）。
+        从另一侧（下游）BFS 收集普通管道；遇任何阀门都不穿越
+        （未选中的阀门保留其自己的子分区）。
         """
         link = net.links.get(valve_lid)
         if link is None:
             return set()
+        sources_set = sources or set()
+
+        def _reaches_source(start: str) -> bool:
+            """从 start 出发不穿越阀门能否到达水源（= start 是上游侧）"""
+            seen = {link.from_node, link.to_node}
+            q = deque([start])
+            while q:
+                n = q.popleft()
+                if n in sources_set:
+                    return True
+                for nxt_link, nxt in graph.get(n, []):
+                    if hasattr(nxt_link, "valve_type"):
+                        continue  # 不穿越阀门
+                    if nxt not in seen:
+                        seen.add(nxt)
+                        q.append(nxt)
+            return False
+
+        if _reaches_source(link.to_node):
+            start = link.from_node  # to 侧是上游 → 从 from 侧出发
+        else:
+            start = link.to_node
+
         subtree: Set[str] = set()
         visited_nodes = {link.from_node, link.to_node}
-        queue = deque([link.to_node])
+        queue = deque([start])
         while queue:
             node = queue.popleft()
             for nxt_link, next_node in graph.get(node, []):
