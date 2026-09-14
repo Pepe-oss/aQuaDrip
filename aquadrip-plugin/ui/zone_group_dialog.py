@@ -12,7 +12,7 @@
 
 from qgis.PyQt.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QComboBox, QDoubleSpinBox,
-    QPushButton, QLabel, QHBoxLayout,
+    QPushButton, QLabel, QHBoxLayout, QLineEdit,
 )
 from qgis.PyQt.QtCore import Qt, pyqtSignal
 from qgis.PyQt.QtWidgets import QApplication
@@ -58,6 +58,12 @@ class ZoneGroupDialog(QDialog):
         self.target_spin.setSuffix(" L/h")
         self._default_target_from_source()
         form.addRow(QApplication.translate("ZoneGroupDialog", "目标组流量:"), self.target_spin)
+
+        # 分区标签（仅合并模式；留空自动编号 G1/G2…）
+        self.label_edit = QLineEdit()
+        self.label_edit.setPlaceholderText(
+            QApplication.translate("ZoneGroupDialog", "留空自动编号 G1/G2…"))
+        form.addRow(QApplication.translate("ZoneGroupDialog", "分区标签:"), self.label_edit)
         layout.addLayout(form)
 
         # 模式说明（随模式切换）
@@ -99,6 +105,7 @@ class ZoneGroupDialog(QDialog):
     def _on_mode_changed(self):
         mode = self.mode_combo.currentData()
         self.target_spin.setEnabled(mode == self.MODE_FLOW)
+        self.label_edit.setEnabled(mode == self.MODE_MERGE)
         hints = {
             self.MODE_SINGLE: QApplication.translate(
                 "ZoneGroupDialog",
@@ -109,8 +116,8 @@ class ZoneGroupDialog(QDialog):
                 "每组流量之和不超过目标值；同组阀门轮灌时同开。"),
             self.MODE_MERGE: QApplication.translate(
                 "ZoneGroupDialog",
-                "先在地图上选中 ≥2 个阀门（按住 Shift 多选），再点应用——"
-                "它们及其下游管道统一为同一分区，轮灌时同开。"),
+                "先在地图上选中 ≥1 个阀门（按住 Shift 多选），输入分区标签（如 一区/2/north），"
+                "再点应用——选中阀门及其控制的所有下游管道统一为该分区，轮灌时同开。"),
         }
         self.hint.setText(hints.get(mode, ""))
 
@@ -119,4 +126,6 @@ class ZoneGroupDialog(QDialog):
         params = {}
         if mode == self.MODE_FLOW:
             params["target_flow_lph"] = self.target_spin.value()
+        if mode == self.MODE_MERGE:
+            params["label"] = self.label_edit.text().strip()
         self.apply_requested.emit(mode, params)

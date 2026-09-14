@@ -128,18 +128,21 @@ class ZoneDivider:
 
         return {"valves": len(all_valves), "zones": zones, "pipes": written}
 
-    # ── 多阀合并（模式 A）──
+    # ── 手动标签分区（通用原语） ──
 
-    def merge_selected_valves(self) -> dict:
-        """把地图上选中的多个阀门合并为同一分区
+    def assign_zone_to_valves(self, label: Optional[str] = None) -> dict:
+        """把地图上选中的阀门（≥1 个）指派到指定标签的分区
 
-        现实中一个管理分区常由多个阀门同时控制（水源流量大于单阀区
-        需求、或一个管理单元跨多条支管）。轮灌调度器按 zone 字符串
-        分组同开——同标签即同组，本方法只需统一标签。
+        通用分区原语：分区 = 同标签阀门集合的等价类；管道归属 =
+        这些阀门下游子树的并集（下游侧按水源可达性判定，与存储/
+        画线方向无关，串联/分支阀门均成立）。标签由用户自定义
+        （如 "一区"/"north"），留空则自动取下一个空闲的 G{n}。
+
+        Args:
+            label: 分区标签；空/None 自动编号
 
         Returns:
-            {"valves": 合并阀门数, "zone": 新分区标签, "pipes": 重标管道数}
-            失败时 valves=0
+            {"valves": 阀门数, "zone": 标签, "pipes": 重标管道数}
         """
         valve_layer = self._find_layer("aqd_valves")
         if valve_layer is None:
@@ -147,12 +150,22 @@ class ZoneDivider:
                 "aQuaDrip", QApplication.translate("ZoneDivider", "未找到 aqd_valves 图层"))
             return {"valves": 0, "zone": "", "pipes": 0}
         selected = list(valve_layer.selectedFeatures())
-        if len(selected) < 2:
+        if not selected:
             self.iface.messageBar().pushWarning(
                 "aQuaDrip",
                 QApplication.translate("ZoneDivider",
-                                       "请先在地图上选中至少 2 个阀门再合并（当前 {0} 个）").format(len(selected)))
+                                       "请先在地图上选中阀门（按住 Shift 可多选）"))
             return {"valves": 0, "zone": "", "pipes": 0}
+
+        label = (label or "").strip()
+        if label == "0":
+            self.iface.messageBar().pushWarning(
+                "aQuaDrip",
+                QApplication.translate("ZoneDivider",
+                                       "标签 0 为公共区保留，请换一个标签"))
+            return {"valves": 0, "zone": "", "pipes": 0}
+        if not label:
+            label = self._next_group_label()
 
         net, graph, all_valves, sources = self._build_graph()
         if net is None or not sources:
@@ -160,18 +173,14 @@ class ZoneDivider:
                 "aQuaDrip", QApplication.translate("ZoneDivider", "管网构建失败或无水源"))
             return {"valves": 0, "zone": "", "pipes": 0}
 
-        merged_ids = {f"V{f.id()}" for f in selected}
+        sel_ids = {f"V{f.id()}" for f in selected}
         # 各选中阀门下游子树（到未选中的阀门为止，保留其子分区）
         subtree = set()
-        for vlid in merged_ids:
-            link = net.links.get(vlid)
-            if link is None:
-                continue
+        for vlid in sel_ids:
             subtree |= self._valve_subtree(vlid, net, graph, set(sources))
         subtree_base = {self._base_id(lid) for lid in subtree}
 
-        label = self._next_group_label()
-        zone_map = {vlid: label for vlid in merged_ids}
+        zone_map = {vlid: label for vlid in sel_ids}
         zone_map.update({lid: label for lid in subtree_base})
 
         written = self._write_zones(zone_map)
@@ -179,10 +188,17 @@ class ZoneDivider:
         self.iface.messageBar().pushMessage(
             "aQuaDrip",
             QApplication.translate("ZoneDivider",
-                                   "已将 {0} 个阀门合并为分区 {1}（{2} 条管道重标记，轮灌时同开）").format(
-                                       len(merged_ids), label, written),
+                                   "分区 {0}: {1} 个阀门（{2} 条管道，轮灌时同开）").format(
+                                       label, len(sel_ids), written),
             level=0, duration=6)
-        return {"valves": len(merged_ids), "zone": label, "pipes": written}
+        return {"valves": len(sel_ids), "zone": label, "pipes": written}
+
+    def merge_selected_valves(self) -> dict:
+        """合并选中的多个阀门为同一分区（自动 G{n} 标签）
+
+        兼容入口——等价于 assign_zone_to_valves(label=None)。
+        """
+        return self.assign_zone_to_valves(None)
 
     # ── 按流量自动编组（模式 B）──
 

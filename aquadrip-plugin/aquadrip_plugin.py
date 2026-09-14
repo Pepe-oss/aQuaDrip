@@ -784,7 +784,8 @@ class AQuaDripPlugin:
         if mode == "flow":
             divider.auto_group_by_flow(float(params.get("target_flow_lph", 0)))
         elif mode == "merge":
-            divider.merge_selected_valves()
+            # 手动标签（空则自动 G{n}）——用户自定义分区名的通用入口
+            divider.assign_zone_to_valves(params.get("label") or None)
         else:
             divider.divide()
 

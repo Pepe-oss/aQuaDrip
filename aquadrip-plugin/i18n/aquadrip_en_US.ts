@@ -42,6 +42,18 @@
             <source>先在地图上选中 ≥2 个阀门（按住 Shift 多选），再点应用——它们及其下游管道统一为同一分区，轮灌时同开。</source>
             <translation>First select ≥2 valves on the map (Shift for multi-select), then apply — they and their downstream pipes become one zone, opened together during rotation.</translation>
         </message>
+        <message>
+            <source>分区标签:</source>
+            <translation>Zone label:</translation>
+        </message>
+        <message>
+            <source>留空自动编号 G1/G2…</source>
+            <translation>Leave empty for auto numbering G1/G2…</translation>
+        </message>
+        <message>
+            <source>先在地图上选中 ≥1 个阀门（按住 Shift 多选），输入分区标签（如 一区/2/north），再点应用——选中阀门及其控制的所有下游管道统一为该分区，轮灌时同开。</source>
+            <translation>First select ≥1 valve on the map (Shift for multi-select), enter a zone label (e.g. Zone1/2/north), then apply — the selected valves and all their downstream pipes become that zone, opened together during rotation.</translation>
+        </message>
     </context>
 
 <context>
@@ -2549,6 +2561,18 @@ This cannot be undone!</translation>
         <message>
             <source>按流量编组完成: {0} 组（目标 {1:.0f} L/h, 总需求 {2:.0f} L/h） {3}</source>
             <translation>Flow-based grouping done: {0} groups (target {1:.0f} L/h, total demand {2:.0f} L/h) {3}</translation>
+        </message>
+        <message>
+            <source>请先在地图上选中阀门（按住 Shift 可多选）</source>
+            <translation>Select valves on the map first (Shift for multi-select)</translation>
+        </message>
+        <message>
+            <source>标签 0 为公共区保留，请换一个标签</source>
+            <translation>Label 0 is reserved for the common zone; use another label</translation>
+        </message>
+        <message>
+            <source>分区 {0}: {1} 个阀门（{2} 条管道，轮灌时同开）</source>
+            <translation>Zone {0}: {1} valves ({2} pipes, opened together during rotation)</translation>
         </message>
     </context>
 </TS>
