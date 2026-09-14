@@ -1,6 +1,50 @@
 <?xml version='1.0' encoding='utf-8'?>
 <TS version="2.1" language="en_US">
     <context>
+    <name>ZoneGroupDialog</name>
+        <message>
+            <source>aQuaDrip 分区划分</source>
+            <translation>aQuaDrip Zone Division</translation>
+        </message>
+        <message>
+            <source>分区模式:</source>
+            <translation>Zone mode:</translation>
+        </message>
+        <message>
+            <source>单阀细分（每阀一个分区）</source>
+            <translation>Single-valve zones (one zone per valve)</translation>
+        </message>
+        <message>
+            <source>按流量自动编组（多阀一区）</source>
+            <translation>Auto grouping by flow (multi-valve zones)</translation>
+        </message>
+        <message>
+            <source>合并选中的阀门为同一分区</source>
+            <translation>Merge selected valves into one zone</translation>
+        </message>
+        <message>
+            <source>目标组流量:</source>
+            <translation>Target group flow:</translation>
+        </message>
+        <message>
+            <source>▶ 应用</source>
+            <translation>▶ Apply</translation>
+        </message>
+        <message>
+            <source>每个阀门独立成一个分区（层级编号）。可反复重跑重置手动合并/编组结果。</source>
+            <translation>Each valve becomes its own zone (hierarchical labels). Re-run anytime to reset manual merges/groupings.</translation>
+        </message>
+        <message>
+            <source>按阀门需求流量（最新模拟优先，否则按毛管几何估算）沿干管顺序装箱，每组流量之和不超过目标值；同组阀门轮灌时同开。</source>
+            <translation>Pack valves by demand flow (latest simulation preferred, otherwise geometric estimate) along the mainline order; each group stays within the target. Valves in the same group open together during rotation.</translation>
+        </message>
+        <message>
+            <source>先在地图上选中 ≥2 个阀门（按住 Shift 多选），再点应用——它们及其下游管道统一为同一分区，轮灌时同开。</source>
+            <translation>First select ≥2 valves on the map (Shift for multi-select), then apply — they and their downstream pipes become one zone, opened together during rotation.</translation>
+        </message>
+    </context>
+
+<context>
         <name>AQuaDripPlugin</name>
         <message>
             <location filename="../tools/i18n.py" line="103" />
@@ -2473,6 +2517,38 @@ This cannot be undone!</translation>
             <location filename="../tools/zone_divider.py" line="280" />
             <source>分区着色失败: {0}</source>
             <translation>Zone coloring failed: {0}</translation>
+        </message>
+        <message>
+            <source>未找到 aqd_valves 图层</source>
+            <translation>aqd_valves layer not found</translation>
+        </message>
+        <message>
+            <source>请先在地图上选中至少 2 个阀门再合并（当前 {0} 个）</source>
+            <translation>Select at least 2 valves on the map before merging ({0} selected)</translation>
+        </message>
+        <message>
+            <source>管网构建失败或无水源</source>
+            <translation>Network build failed or no water source</translation>
+        </message>
+        <message>
+            <source>已将 {0} 个阀门合并为分区 {1}（{2} 条管道重标记，轮灌时同开）</source>
+            <translation>Merged {0} valves into zone {1} ({2} pipes relabeled, opened together during rotation)</translation>
+        </message>
+        <message>
+            <source>目标组流量必须大于 0</source>
+            <translation>Target group flow must be greater than 0</translation>
+        </message>
+        <message>
+            <source>管网构建失败、无水源或无阀门</source>
+            <translation>Network build failed, no source or no valves</translation>
+        </message>
+        <message>
+            <source>未发现可编组的阀门</source>
+            <translation>No valves found for grouping</translation>
+        </message>
+        <message>
+            <source>按流量编组完成: {0} 组（目标 {1:.0f} L/h, 总需求 {2:.0f} L/h） {3}</source>
+            <translation>Flow-based grouping done: {0} groups (target {1:.0f} L/h, total demand {2:.0f} L/h) {3}</translation>
         </message>
     </context>
 </TS>

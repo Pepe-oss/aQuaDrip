@@ -761,15 +761,32 @@ class AQuaDripPlugin:
         self._viz_dlg.show()
 
     def on_zone_divide(self):
-        """根据阀门自动划分管网分区"""
+        """分区划分：单阀细分 / 按流量自动编组 / 合并选中阀门"""
         try:
-            from .tools.zone_divider import ZoneDivider
-            ZoneDivider(self.iface).divide()
+            from .ui.zone_group_dialog import ZoneGroupDialog
+            # 存实例属性防 GC（对话框信号依赖对象存活）
+            self._zone_dlg = ZoneGroupDialog(self.iface,
+                                             parent=self.iface.mainWindow())
+            self._zone_dlg.apply_requested.connect(self._on_zone_apply)
+            self._zone_dlg.finished.connect(
+                lambda: setattr(self, "_zone_dlg", None))
+            self._zone_dlg.show()
         except Exception as e:
             import traceback
             traceback.print_exc()
             self.iface.messageBar().pushWarning(
                 "aQuaDrip", QApplication.translate("AquadripPlugin", "分区划分失败: {0}").format(e))
+
+    def _on_zone_apply(self, mode: str, params: dict):
+        """分区对话框回执：分发到对应的 ZoneDivider 方法"""
+        from .tools.zone_divider import ZoneDivider
+        divider = ZoneDivider(self.iface)
+        if mode == "flow":
+            divider.auto_group_by_flow(float(params.get("target_flow_lph", 0)))
+        elif mode == "merge":
+            divider.merge_selected_valves()
+        else:
+            divider.divide()
 
     def on_pipe_pressure_check(self):
         """检查管道承压：对比模拟压力与最大承压"""
