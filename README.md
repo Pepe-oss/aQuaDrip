@@ -1,5 +1,7 @@
 # aQuaDrip
 
+**中文 | [English](README_EN.md)**
+
 基于 QGIS + WNTR 的智能滴灌设计与水肥一体化分析平台。
 
 An intelligent drip irrigation design & fertigation analysis platform built on QGIS + WNTR.
