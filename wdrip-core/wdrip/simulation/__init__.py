@@ -175,6 +175,20 @@ class DripSimulation:
         
         elif hasattr(link, "valve_type"):
             # Valve (Link!)
+            # 关闭阀门：WNTRSimulator 忽略阀门的 initial_status
+            # （实测关闭的 PRV 仍全流量通过），但尊重**管道**的
+            # CLOSED 状态——统一以 CLOSED 短管表示关断语义
+            # （与阀门降级策略一致，EPANET 路径下同样有效）
+            from wdrip.network.links import ValveStatus
+            if getattr(link, "status", None) == ValveStatus.CLOSED:
+                diameter_m = link.diameter / 1000.0 if link.diameter > 0 else 0.02
+                wn.add_pipe(lid, link.from_node, link.to_node,
+                            length=1, diameter=diameter_m,
+                            roughness=130, minor_loss=link.minor_loss,
+                            initial_status="CLOSED")
+                logger.info(f"阀门 {lid} 关闭，以 CLOSED 短管参与求解（关断语义）")
+                return
+
             vtype = str(link.valve_type.name).upper()
             # WNTR 支持的阀门类型（与 ValveType 枚举一致）
             WNTR_VALVE_TYPES = {"PRV", "PSV", "FCV"}
