@@ -139,9 +139,9 @@ aQuaDrip/
 
 ## Status
 
-- Version: 0.1.x — core workflows (design → simulation → calibration → rotation) functional.
+- Version: 0.2.0 — core workflows (design → simulation → calibration → rotation) functional.
 - See `DEVELOPMENT_PLAN.md` for the roadmap.
 
 ## License
 
-See the repository for license information.
+Released under the [MIT License](LICENSE).

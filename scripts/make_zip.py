@@ -27,7 +27,7 @@ PLUGIN = os.path.join(REPO, "aquadrip-plugin")
 CORE = os.path.join(REPO, "wdrip-core")
 
 EXCLUDE_DIRS = {"__pycache__", ".pytest_cache", "help", "geo_utils",
-                "processing", "test"}          # 空脚手架/开发资源不分发
+                "processing", "test", "tests"}   # 空脚手架/开发资源不分发
 EXCLUDE_SUFFIX = (".pyc", ".pyo", ".DS_Store")
 
 
@@ -53,7 +53,11 @@ def build(staging: str):
     # 2. wdrip 核心库(仅 wdrip 包,不带 tests/临时文件)
     copy_tree(os.path.join(CORE, "wdrip"), os.path.join(staging, "wdrip"))
 
-    # 3. 结构自检
+    # 3. MIT 许可证随包分发(许可条款要求)
+    shutil.copy2(os.path.join(REPO, "LICENSE"),
+                 os.path.join(staging, "LICENSE"))
+
+    # 4. 结构自检
     must_exist = [
         os.path.join(staging, "metadata.txt"),
         os.path.join(staging, "__init__.py"),

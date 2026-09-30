@@ -106,5 +106,9 @@ aQuaDrip/
 
 ## 开发状态
 
-- 版本：0.1.0.dev — 项目骨架搭建中
+- 版本：0.2.0 — 核心工作流（设计 → 模拟 → 校准 → 轮灌）已可用
 - 详细规划见：`DEVELOPMENT_PLAN.md`
+
+## 许可 / License
+
+本项目基于 [MIT License](LICENSE) 开源。
