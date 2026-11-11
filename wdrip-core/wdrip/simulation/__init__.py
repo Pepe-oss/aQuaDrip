@@ -229,8 +229,13 @@ class DripSimulation:
         else:
             # Pipe
             diameter_m = link.diameter / 1000.0 if link.diameter > 0 else 0.02
+            # 管段长度必须保留原始值：滴灌毛管滴头间距常见 0.2~0.6 m，
+            # 旧实现 max(length, 1) 会把短管段强行放大到 1 m，导致沿程
+            # 水头损失被严重高估（间距 0.3 m 时放大 3.3 倍）。仅在
+            # length<=0 时用极小值兜底，避免 WNTR 拒绝零长度管道。
+            length_m = link.length if (link.length and link.length > 0) else 1e-6
             wn.add_pipe(lid, link.from_node, link.to_node,
-                       length=max(link.length, 1),
+                       length=length_m,
                        diameter=diameter_m,
                        roughness=link.roughness,
                        minor_loss=link.minor_loss,

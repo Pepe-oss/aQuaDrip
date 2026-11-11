@@ -101,5 +101,47 @@ class TestDripSimulationSimple(unittest.TestCase):
             self.assertGreater(pressure, 0)
 
 
+class TestShortSegmentLength(unittest.TestCase):
+    """回归测试：短管段(<1 m)长度不得被放大
+
+    旧实现 `length=max(link.length, 1)` 会把滴灌毛管常见的 0.2~0.6 m
+    滴头间距强行放大到 1 m，使沿程水头损失被严重高估（间距 0.3 m 时
+    放大 3.3 倍）。该缺陷由 Provenzano et al. (2005) 复现时定位。
+    """
+
+    def test_short_segment_preserved(self):
+        """0.3 m 管段应原样进入 WNTR 模型"""
+        from wdrip.simulation import DripSimulation
+        net = DripNetwork("short_seg")
+        net.add_node(SourceNode("R1", 0, 0, head=20))
+        net.add_node(EmitterNode("E1", 0.3, 0, elevation=0,
+                                 emitter_k=1.0, emitter_x=0.5))
+        net.add_link(Pipe("P1", "R1", "E1", pipe_type="lateral",
+                          diameter=16, length=0.3, roughness=130))
+        wn = DripSimulation(net).build_wntr_model()
+        self.assertAlmostEqual(wn.get_link("P1").length, 0.3, places=9)
+
+    def test_short_segment_head_loss_is_proportional(self):
+        """固定流量下压降应与管长成正比（0.3 m vs 1.0 m ≈ 3.33 倍）"""
+        from wdrip.simulation import DripSimulation
+
+        demand = 1000.0 / 3600.0 / 1000.0  # 1000 L/h → m³/s
+
+        def head_loss(length):
+            net = DripNetwork(f"seg_{length}")
+            net.add_node(SourceNode("R1", 0, 0, head=20))
+            net.add_node(Junction("J1", length, 0, elevation=0, demand=demand))
+            net.add_link(Pipe("P1", "R1", "J1", pipe_type="lateral",
+                              diameter=16, length=length, roughness=130))
+            res = DripSimulation(net).run(duration=0)
+            self.assertTrue(res.success, msg=res.message)
+            return 20.0 - float(res.node_pressure["J1"][0])
+
+        loss_short = head_loss(0.3)
+        loss_long = head_loss(1.0)
+        self.assertGreater(loss_short, 0)
+        self.assertAlmostEqual(loss_long / loss_short, 1.0 / 0.3, delta=0.05)
+
+
 if __name__ == "__main__":
     unittest.main()
