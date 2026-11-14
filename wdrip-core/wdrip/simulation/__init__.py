@@ -29,12 +29,41 @@ class DripSimulation:
         precision: 精度预设 "fast"/"standard"/"high"（仅对迭代引擎生效）
     """
 
-    # 精度预设
+    # 精度预设(迭代引擎):收敛判据统一为总流量缺口<0.5%(主,
+    # 等于质量平衡缺口)+ 单滴头缺口<0.1%(兜底,见 engine.py),
+    # tolerance 为统一绝对下限兜底(1e-10);三档差异 = 迭代上限(安全
+    # 预算)——阻尼(0.5)下缺口每轮约减半,典型 9 轮收敛,15/20/25 充裕。
+    # 另支持 "custom:N"(用户指定最多迭代次数,见 _resolve_precision_params)
     PRESETS = {
-        "fast":     {"max_iter": 5,  "tolerance": 1e-6},
-        "standard": {"max_iter": 8,  "tolerance": 1e-7},
-        "high":     {"max_iter": 15, "tolerance": 1e-8},
+        "fast":     {"max_iter": 15, "tolerance": 1e-10},
+        "standard": {"max_iter": 20, "tolerance": 1e-10},
+        "high":     {"max_iter": 25, "tolerance": 1e-10},
     }
+
+    # custom:N 允许的迭代上限范围(与 UI SpinBox 范围一致)
+    CUSTOM_MAX_ITER_RANGE = (1, 200)
+
+    @classmethod
+    def _resolve_precision_params(cls, precision: str) -> Optional[dict]:
+        """精度字符串 → 迭代引擎参数 dict;无法识别返回 None
+
+        支持两种形式:
+          - 预设键: "fast" / "standard" / "high"
+          - 自定义: "custom:N"(N 为 1..200 整数)——用户指定最多迭代
+            次数;tolerance 取统一绝对下限 1e-10。收敛判据(总流量
+            缺口<0.5%)满足即提前停止,N 只是安全预算上限
+        """
+        if precision in cls.PRESETS:
+            return dict(cls.PRESETS[precision])
+        if isinstance(precision, str) and precision.startswith("custom:"):
+            try:
+                n = int(precision.split(":", 1)[1])
+            except (TypeError, ValueError):
+                return None
+            lo, hi = cls.CUSTOM_MAX_ITER_RANGE
+            if lo <= n <= hi:
+                return {"max_iter": n, "tolerance": 1e-10}
+        return None
     
     def __init__(self, network: 'DripNetwork', engine: Optional['SimulationEngine'] = None,
                  precision: str = "fast"):
@@ -47,8 +76,10 @@ class DripSimulation:
             self._engine = engine
         else:
             self._engine = auto_detect_engine()
-            # 对迭代引擎注入精度参数
-            params = self.PRESETS.get(precision, self.PRESETS["fast"])
+            # 对迭代引擎注入精度参数(预设键或 custom:N;
+            # 无法识别时回退 fast,与旧行为一致)
+            params = self._resolve_precision_params(precision) \
+                or dict(self.PRESETS["fast"])
             if hasattr(self._engine, 'max_iter'):
                 self._engine.max_iter = params["max_iter"]
                 self._engine.tolerance = params["tolerance"]
@@ -82,10 +113,14 @@ class DripSimulation:
         # PDD（压力依赖用水）：emitter 滴头才能按 q=k·P^x 出水；
         # 默认 DDA 模式下 emitter 被忽略，管网不出水、全静压
         wn.options.hydraulic.demand_model = "PDD"
-        # 消除 EPANET "REQUIRED PRESSURE below lower limit" 警告
-        # 滴灌场景中 emitter 流量由 emitter_coefficient 公式 q=k·P^x 计算，
-        # base_demand 均为 0，required_pressure 数值不影响 emitter 结果
-        wn.options.hydraulic.required_pressure = 0.1
+        # required_pressure 压到物理压力范围之下(1e-6 m),PDD 的需求
+        # 缩放不进入物理压力区:原 0.1 m 会让 P<0.1 m 的低压滴头需求被
+        # 缩放(实测可占全网 25%)。EPANET 引擎路径 base_demand=0,
+        # 数值上无影响。WNTR 系引擎(迭代/纯 WNTR)在 engine.py 中切
+        # DDA——需求由迭代写死,PDD 缩放会污染不动点;且 WNTRSimulator
+        # 的 PDD 建模硬性要求 required_pressure > 平滑宽度(硬编码
+        # 0.05),1e-6 无法满足,原先的 0.1 正是为越过该限制。
+        wn.options.hydraulic.required_pressure = 1e-6
 
         # 3.1 emitter 流态指数(EPANET/WNTR 的 emitter 指数是全局 option,
         # 节点上挂的 emitter_exponent 仅供迭代引擎逐节点读取):
@@ -299,8 +334,8 @@ class DripSimulation:
                 logger.info("管网混合滴头流态指数(PC/非PC),"
                             "EPANET 全局指数无法表达,切换迭代引擎")
                 self._engine = IterativeWNTRSimulatorEngine()
-                if self._precision in self.PRESETS:
-                    params = self.PRESETS[self._precision]
+                params = self._resolve_precision_params(self._precision)
+                if params:
                     self._engine.max_iter = params["max_iter"]
                     self._engine.tolerance = params["tolerance"]
                 if progress_callback:
@@ -361,8 +396,8 @@ class DripSimulation:
                 logger.warning(f"EPANET 引擎失败 ({e})，回退到迭代求解器")
                 try:
                     self._engine = IterativeWNTRSimulatorEngine()
-                    if self._precision in self.PRESETS:
-                        params = self.PRESETS[self._precision]
+                    params = self._resolve_precision_params(self._precision)
+                    if params:
                         self._engine.max_iter = params["max_iter"]
                         self._engine.tolerance = params["tolerance"]
                     # 注入进度回调，否则迭代引擎不会上报迭代进度

@@ -143,5 +143,38 @@ class TestShortSegmentLength(unittest.TestCase):
         self.assertAlmostEqual(loss_long / loss_short, 1.0 / 0.3, delta=0.05)
 
 
+class TestCustomPrecision(unittest.TestCase):
+    """custom:N 精度字符串——用户指定最大迭代次数"""
+
+    def test_resolve_custom(self):
+        """custom:N 解析:合法范围/非法形式"""
+        from wdrip.simulation import DripSimulation
+        self.assertEqual(
+            DripSimulation._resolve_precision_params("custom:7"),
+            {"max_iter": 7, "tolerance": 1e-10})
+        # 预设键仍正常
+        self.assertEqual(
+            DripSimulation._resolve_precision_params("fast")["max_iter"], 15)
+        # 非法形式 → None
+        for bad in ("custom:abc", "custom:0", "custom:201", "custom:",
+                    "custom", "whatever", None):
+            self.assertIsNone(
+                DripSimulation._resolve_precision_params(bad), msg=str(bad))
+
+    def test_custom_precision_injected(self):
+        """custom:N 注入到自动检测的迭代引擎(EPANET 不可用环境)"""
+        from wdrip.simulation import DripSimulation
+        from wdrip.simulation.engine import IterativeWNTRSimulatorEngine
+        net = DripNetwork("custom_prec")
+        sim = DripSimulation(net, precision="custom:7")
+        if isinstance(sim._engine, IterativeWNTRSimulatorEngine):
+            self.assertEqual(sim._engine.max_iter, 7)
+            self.assertEqual(sim._engine.tolerance, 1e-10)
+        # 无法识别的精度回退 fast(与旧行为一致)
+        sim2 = DripSimulation(net, precision="bogus")
+        if isinstance(sim2._engine, IterativeWNTRSimulatorEngine):
+            self.assertEqual(sim2._engine.max_iter, 15)
+
+
 if __name__ == "__main__":
     unittest.main()

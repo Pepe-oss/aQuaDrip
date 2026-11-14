@@ -19,7 +19,8 @@ class SimulationWorker(QObject):
         """
         Args:
             net: DripNetwork 管网对象
-            precision: "fast" / "standard" / "high"
+            precision: "fast" / "standard" / "high" / "custom:N"
+                (N=1..200,用户指定最大迭代次数,收敛即提前停止)
         """
         super().__init__(parent)
         self._net = net

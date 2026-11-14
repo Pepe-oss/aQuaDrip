@@ -87,6 +87,11 @@ class WNTRSimulatorEngine(SimulationEngine):
     def run(self, wn_model) -> SimulationResult:
         import wntr
         self._wn = wn_model
+        # 需求恒定(DDA):本引擎不设滴头需求(全 0),PDD/DDA 结果相同;
+        # 且 WNTRSimulator 的 PDD 建模硬性要求 required_pressure > 平滑
+        # 宽度(硬编码 0.05),与 required_pressure=1e-6(见 DripSimulation
+        # _build_wntr_model)冲突,切 DDA 绕开该限制
+        wn_model.options.hydraulic.demand_model = "DDA"
         sim = wntr.sim.WNTRSimulator(wn_model)
         wntr_results = sim.run_sim()
         return wntr_results
@@ -139,11 +144,16 @@ class IterativeWNTRSimulatorEngine(SimulationEngine):
     display_name = "WNTR迭代求解器"
     description = "通过迭代逼近 emitter 沿程损失，无需 EPANET，但速度较慢"
     
-    def __init__(self, max_iter: int = 10, tolerance: float = 1e-7,
+    def __init__(self, max_iter: int = 25, tolerance: float = 1e-10,
                  progress_callback=None):
         super().__init__()
-        # tolerance 单位 m³/s：1e-7 ≈ 0.36 L/h，与滴头流量量级匹配
-        #（原默认 0.001 m³/s = 3.6 m³/h，远大于滴头流量会假收敛）
+        # 收敛以总流量判据为主(见 run):Σq 相对变化 < 0.5% ≈ 质量平衡
+        # 缺口 < 0.5%(DDA 下源流量=Σ施加需求,报告出流=Σ新算 q);
+        # 单滴头相对变化 < 0.1% 与绝对下限为兜底。
+        # tolerance(m³/s)是绝对下限兜底:1e-10 ≈ 3.6e-7 L/h,数值零变化,
+        # 覆盖滴头流量极小的退化场景。旧默认 1e-7 ≈ 0.36 L/h,与单滴头
+        # 流量(~2 L/h)同量级——变化还占滴头流量很大比例时就假收敛。
+        # max_iter=25:总流量判据下典型田块 5~6 轮收敛,预算充裕。
         self.max_iter = max_iter
         self.tolerance = tolerance
         # 可选进度回调: callback(percent: int, message: str)
@@ -152,6 +162,13 @@ class IterativeWNTRSimulatorEngine(SimulationEngine):
     def run(self, wn_model) -> SimulationResult:
         import wntr
         self._wn = wn_model
+        # 迭代引擎把 q=kP^x 写进 base_demand 后求解,需要需求恒定(DDA):
+        # PDD 会按压力缩放需求(P<required_pressure 时),与不动点假设
+        # 冲突——原 required_pressure=0.1 m 时,P<0.1 m 的低压滴头
+        # (实测可占全网 25%)需求被缩放,求解器所用流量与 q=kP^x 对不上。
+        # 且 WNTRSimulator 的 PDD 建模硬性要求 required_pressure > 平滑
+        # 宽度(硬编码 0.05),阈值无法压到物理压力范围之下,故切 DDA。
+        wn_model.options.hydraulic.demand_model = "DDA"
         
         # 识别 emitter 节点并记录原始参数
         emitter_nodes = []
@@ -168,14 +185,21 @@ class IterativeWNTRSimulatorEngine(SimulationEngine):
                 if wn_node_start and wn_node_start.demand_timeseries_list:
                     wn_node_start.demand_timeseries_list[0].base_value = 0
         
+        # prev_flows 记录各滴头当前施加的需求 d(初始 0;阻尼更新见下)。
+        # 收敛判据以"施加需求"为基准:DDA 下源流量=Σd,报告出流=Σq,
+        # |Σq−Σd|/Σd 即质量平衡缺口,与阻尼系数无关。
         prev_flows = {n['id']: 0.0 for n in emitter_nodes}
-        
+
         for iteration in range(self.max_iter):
             sim = wntr.sim.WNTRSimulator(wn_model)
             wntr_results = sim.run_sim()
-            
+
             # 从压力计算真实 emitter 流量，更新 base_demand
             max_change = 0
+            total_q = 0.0    # 本轮新算出流 Σq
+            max_q = 0.0      # 全网最大单滴头出流
+            # 本轮求解实际施加的总需求 Σd(prev_flows 更新前捕获)
+            total_demand = sum(prev_flows.values())
             for n in emitter_nodes:
                 try:
                     # 用 iloc[0] 取首个时间步：WNTR 1.5 在同一模型上重复
@@ -184,27 +208,59 @@ class IterativeWNTRSimulatorEngine(SimulationEngine):
                     p = float(wntr_results.node['pressure'][n['id']].iloc[0])
                 except (KeyError, IndexError):
                     p = 0
-                
+
                 if p > 0:
                     # 流量 = coeff × P^exponent (WNTR 单位 m³/s)
                     q_cms = n['coeff'] * (p ** n['exponent'])
                 else:
                     q_cms = 0
-                
+
+                # 残差 = 新算出流 − 本轮施加需求(单滴头质量缺口)
                 change = abs(q_cms - prev_flows[n['id']])
                 max_change = max(max_change, change)
-                prev_flows[n['id']] = q_cms
+                total_q += q_cms
+                max_q = max(max_q, q_cms)
                 # WNTR 1.x: base_demand 是只读属性，通过 demand_timeseries_list 修改
+                # 欠松弛(阻尼系数 0.5):需求 = 旧需求与新算流量的均值。
+                # 直接写新值在刚性管网上定点迭代易在上下界间振荡,阻尼
+                # 使其单调逼近。
+                # 干节点投影:P≤0 时出流必为 0,需求立即清零退出需求集
+                # (阻尼均值会给干节点留半截需求,物理上不成立且拖慢
+                # 脱水支路的收敛);压力回升后按阻尼正常重新进入,
+                # 通常几轮即稳定
+                if p <= 0:
+                    d_new = 0.0
+                else:
+                    d_new = 0.5 * prev_flows[n['id']] + 0.5 * q_cms
+                prev_flows[n['id']] = d_new
                 wn_node = wn_model.get_node(n['id'])
                 if wn_node and wn_node.demand_timeseries_list:
-                    wn_node.demand_timeseries_list[0].base_value = q_cms
-            
-            logger.debug(f"  迭代{iteration+1}: max_change={max_change:.6f}")
+                    wn_node.demand_timeseries_list[0].base_value = d_new
+
+            # 总流量判据(主判据):Σq 对上本轮施加需求 Σd——DDA 下求解器
+            # 强制源流量 = Σd,报告出流是 Σq,故 rel_total 直接等于质量
+            # 平衡缺口(阻尼下 d≠q,必须按此口径测;若比两轮原始出流,
+            # 阻尼会让出流序列"看似不变"而假收敛)——审稿要报的数
+            rel_total = abs(total_q - total_demand) / max(total_demand, 1e-12)
+            q_scale = max(max_q, 1e-9)
+
+            logger.debug(f"  迭代{iteration+1}: max_change={max_change:.3e} "
+                         f"rel_total={rel_total:.3e}")
             if self.progress_callback:
                 pct = int((iteration + 1) / self.max_iter * 100)
                 self.progress_callback(pct, f"迭代 {iteration+1}/{self.max_iter}")
-            if max_change < self.tolerance:
-                logger.debug(f"  收敛于迭代{iteration+1}")
+            if rel_total < 5e-3:
+                # 总流量缺口 < 0.5%(即质量平衡缺口)
+                logger.debug(f"  收敛于迭代{iteration+1} (总流量缺口 {rel_total:.2e})")
+                break
+            # 单滴头判据(兜底):最大单滴头缺口 |q−d| / 全网最大滴头出流
+            # < 0.1% 即收敛。绝对值判据与滴头流量量级耦合(单滴头 ~2 L/h
+            # ≈ 5.6e-7 m³/s,旧 tolerance 1e-7 m³/s ≈ 整个滴头流量),小
+            # 流量田块会假收敛。1e-9 下限防全 0 流量除零;
+            # tolerance 作绝对下限兜底(数值零变化),保留参数语义不破坏 API
+            if max_change / q_scale < 1e-3 or max_change < self.tolerance:
+                logger.debug(f"  收敛于迭代{iteration+1} "
+                             f"(单滴头缺口 {max_change / q_scale:.2e})")
                 break
         
         # 最终结果

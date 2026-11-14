@@ -2099,8 +2099,8 @@ Commit changes and continue?</translation>
         </message>
         <message>
             <location filename="../ui/simulation_dialog.py" line="17" />
-            <source>5 次迭代，适合日常设计</source>
-            <translation>5 iterations, for everyday design</translation>
+            <source>最多 15 次迭代，适合日常设计</source>
+            <translation>Up to 15 iterations, for everyday design</translation>
         </message>
         <message>
             <location filename="../ui/simulation_dialog.py" line="19" />
@@ -2109,8 +2109,8 @@ Commit changes and continue?</translation>
         </message>
         <message>
             <location filename="../ui/simulation_dialog.py" line="20" />
-            <source>8 次迭代，平衡精度与速度</source>
-            <translation>8 iterations, balance of accuracy and speed</translation>
+            <source>最多 20 次迭代，平衡精度与速度</source>
+            <translation>Up to 20 iterations, balance of accuracy and speed</translation>
         </message>
         <message>
             <location filename="../ui/simulation_dialog.py" line="22" />
@@ -2119,8 +2119,23 @@ Commit changes and continue?</translation>
         </message>
         <message>
             <location filename="../ui/simulation_dialog.py" line="23" />
-            <source>15 次迭代，用于校准分析</source>
-            <translation>15 iterations, for calibration analysis</translation>
+            <source>最多 25 次迭代，用于校准分析</source>
+            <translation>Up to 25 iterations, for calibration analysis</translation>
+        </message>
+        <message>
+            <location filename="../ui/simulation_dialog.py" line="65" />
+            <source>自定义（指定最大迭代次数）</source>
+            <translation>Custom (set max iterations)</translation>
+        </message>
+        <message>
+            <location filename="../ui/simulation_dialog.py" line="67" />
+            <source>迭代求解器的最大迭代轮数；收敛（总流量缺口 &lt; 0.5%）即提前停止，此值只是安全上限</source>
+            <translation>Maximum iterations for the iterative solver; stops early on convergence (total-flow gap &lt; 0.5%), this value is only a safety cap</translation>
+        </message>
+        <message>
+            <location filename="../ui/simulation_dialog.py" line="72" />
+            <source> 次</source>
+            <translation> rounds</translation>
         </message>
         <message>
             <location filename="../ui/simulation_dialog.py" line="51" />
