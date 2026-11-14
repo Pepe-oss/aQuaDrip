@@ -34,7 +34,7 @@ if [ "$PY" = "/Applications/QGIS.app/Contents/MacOS/python3.12" ]; then
 fi
 
 echo "== QGIS headless 测试($PY) =="
-for t in test_trim_units test_manual_lateral test_export_nodes test_zone_group test_save_as; do
+for t in test_trim_units test_manual_lateral test_export_nodes test_zone_group test_save_as test_calib_head; do
   echo "-- $t"
   "$PY" "$HERE/$t.py" || rc=1
 done

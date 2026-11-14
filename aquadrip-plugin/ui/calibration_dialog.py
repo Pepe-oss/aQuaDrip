@@ -68,8 +68,8 @@ class CalibrationDialog(QDialog):
         layout.addLayout(form)
 
         # ── C 限值（按管道类型）──
-        c_group = QGroupBox(QApplication.translate("CalibrationDialog", "C 限值 (Hazen-Williams)"))
-        c_form = QFormLayout(c_group)
+        self._c_group = QGroupBox(QApplication.translate("CalibrationDialog", "C 限值 (Hazen-Williams)"))
+        c_form = QFormLayout(self._c_group)
         self._c_spins = {}
         for key, label, dlo, dhi in [
             ("mainline", QApplication.translate("CalibrationDialog", "主/干管"), 100, 150),
@@ -86,7 +86,7 @@ class CalibrationDialog(QDialog):
             row.addWidget(shi)
             c_form.addRow(f"{label}:", row)
             self._c_spins[key] = (slo, shi)
-        layout.addWidget(c_group)
+        layout.addWidget(self._c_group)
 
         # ── 结果区 ──
         layout.addWidget(QLabel(QApplication.translate("CalibrationDialog", "校准结果:")))
@@ -119,6 +119,18 @@ class CalibrationDialog(QDialog):
         btn_close.clicked.connect(self.reject)
         btn.addWidget(btn_close)
         layout.addLayout(btn)
+
+        # 算法切换:启停与所选算法无关的控件(放在 _build_ui 末尾,
+        # 确保 _check_head/_c_group 均已创建——addItem 也会触发本信号)
+        self._combo_algo.currentIndexChanged.connect(self._on_algo_changed)
+        self._on_algo_changed()
+
+    def _on_algo_changed(self):
+        """仅调水头的算法:置灰 C 限值与水头联合校准开关(该算法本身就是调水头)"""
+        cls = ALGORITHMS.get(self._combo_algo.currentData())
+        head_only = bool(cls and getattr(cls, "head_only", False))
+        self._check_head.setEnabled(not head_only)
+        self._c_group.setEnabled(not head_only)
 
     def reject(self):
         """关闭对话框时停止运行中的校准"""
@@ -240,7 +252,10 @@ class CalibrationDialog(QDialog):
                         QApplication.translate("CalibrationDialog", "  📊 分型: ").format() + " | ".join(parts))
 
             # 收敛判据：RMSE 变化 < 0.02 且本次参数无实际变化
+            # (details 恒空的算法——如仅调水头——看水源水头变化)
             has_change = any(abs(d) > 0.05 for _, _, _, _, d in details)
+            if head_adj and abs(head_adj[1] - head_adj[0]) > 0.05:
+                has_change = True
             if self._prev_rmse is not None and abs(rmse - self._prev_rmse) < 0.02:
                 if not has_change:
                     self._result_text.append(QApplication.translate("CalibrationDialog", "  ✓ 已收敛 (参数无变化)")); self._finish(); return

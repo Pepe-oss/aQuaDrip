@@ -326,6 +326,59 @@ def _load_link_flow() -> Dict[str, float]:
         return {}
 
 
+def _calibrate_source_head(net, obs_data: dict, learning_rate: float):
+    """按观测压力误差均值调整水源水头,写回 aqd_nodes。
+
+    压力对 head 灵敏度≈1(近线性),一步 lr×err;
+    单轮变化限幅 ±2m,下限保护 0.5m。
+
+    Returns:
+        (old_head, new_head) 或 None(无观测/无水源/写回失败)
+    """
+    errs = [ps - po for (_x, _y, ps, po, _q, _qo) in obs_data.values()
+            if ps is not None and po is not None and po > 0]
+    if not errs:
+        return None
+    err = sum(errs) / len(errs)
+    src = None
+    for n in net.nodes.values():
+        if hasattr(n, "source_type"):
+            src = n
+            break
+    if src is None:
+        return None
+
+    from qgis.core import QgsProject
+    from .layer_utils import find_layer
+    layer = find_layer(QgsProject.instance(), "aqd_nodes")
+    if layer is None:
+        return None
+    old_head = float(src.head or 0)
+    delta = max(-2.0, min(2.0, -learning_rate * err))
+    new_head = max(0.5, old_head + delta)
+    if abs(new_head - old_head) < 1e-3:
+        return None
+
+    need_edit = not layer.isEditable()
+    if need_edit:
+        layer.startEditing()
+    try:
+        for feat in layer.getFeatures():
+            if str(feat.attribute("node_type") or "") == "source":
+                feat.setAttribute("head", float(new_head))
+                layer.updateFeature(feat)
+                break
+        if need_edit and not layer.commitChanges():
+            layer.rollBack()
+            return None
+    except Exception:
+        if need_edit:
+            layer.rollBack()
+        return None
+    layer.triggerRepaint()
+    return (old_head, new_head)
+
+
 def _apply_roughness(iface, net, new_roughness, old_vals, c_limits) -> Tuple[int, list]:
     """应用粗糙度到 GPKG + 同类型差异约束。
 
@@ -560,56 +613,8 @@ class TopologyOrderedCalibrator(CalibrationAlgorithm):
         return result
 
     def _calibrate_head(self, obs_data: dict):
-        """按观测误差均值调整水源水头,写回 aqd_nodes
-
-        压力对 head 灵敏度≈1(近线性),一步 lr×err;
-        单轮变化限幅 ±2m,下限保护 0.5m。
-
-        Returns:
-            (old_head, new_head) 或 None(无观测/无水源/写回失败)
-        """
-        errs = [ps - po for (_x, _y, ps, po, _q, _qo) in obs_data.values()
-                if ps is not None and po is not None and po > 0]
-        if not errs:
-            return None
-        err = sum(errs) / len(errs)
-        src = None
-        for n in self.net.nodes.values():
-            if hasattr(n, "source_type"):
-                src = n
-                break
-        if src is None:
-            return None
-
-        from qgis.core import QgsProject
-        from .layer_utils import find_layer
-        layer = find_layer(QgsProject.instance(), "aqd_nodes")
-        if layer is None:
-            return None
-        old_head = float(src.head or 0)
-        delta = max(-2.0, min(2.0, -self.learning_rate * err))
-        new_head = max(0.5, old_head + delta)
-        if abs(new_head - old_head) < 1e-3:
-            return None
-
-        need_edit = not layer.isEditable()
-        if need_edit:
-            layer.startEditing()
-        try:
-            for feat in layer.getFeatures():
-                if str(feat.attribute("node_type") or "") == "source":
-                    feat.setAttribute("head", float(new_head))
-                    layer.updateFeature(feat)
-                    break
-            if need_edit and not layer.commitChanges():
-                layer.rollBack()
-                return None
-        except Exception:
-            if need_edit:
-                layer.rollBack()
-            return None
-        layer.triggerRepaint()
-        return (old_head, new_head)
+        """按观测误差均值调整水源水头(委托 _calibrate_source_head)"""
+        return _calibrate_source_head(self.net, obs_data, self.learning_rate)
 
     def _calibrate_layer(self, obs_set: FrozenSet[str], pipe_ids: List[str],
                          obs_data: dict, obs_node: dict,
@@ -816,3 +821,45 @@ class HazenWilliamsCalibrator(CalibrationAlgorithm):
                     for lid in self._new_roughness if self.net.get_link(lid)}
         return _apply_roughness(
             self.iface, self.net, self._new_roughness, old_vals, self.c_limits)
+
+
+@register_algorithm
+class SourceHeadCalibrator(CalibrationAlgorithm):
+    """水源水头校准——只调水头,不修改管道粗糙度
+
+    适用场景:
+      - 管道 C 值有实测依据/工程约定,不允许算法改动
+      - 只需对齐边界条件(供给受限管网中压力对 C 解耦,
+        灵敏度≈0,head 是唯一有效杠杆)
+    """
+
+    name = "source_head"
+    label = "水源水头校准（仅调水头）"
+    description = "只调整水源水头，管道粗糙度保持不变"
+    head_only = True  # 校准对话框据此禁用 C 限值等无关控件
+
+    def __init__(self, iface, params: dict = None):
+        super().__init__(iface, params)
+        self.learning_rate = params.get("learning_rate", 0.30) if params else 0.30
+
+    def calibrate(self, obs_data: dict) -> dict:
+        from .sync_manager import SyncManager
+        sync = SyncManager(self.iface)
+        self.net = sync.sync_qgis_to_network(expand=False, split_vertices=False)
+        if not self.net.nodes:
+            return {"rmse": 0, "details": []}
+
+        # RMSE 语义与其他算法一致:本轮校准前(上一次模拟)的压力误差
+        errors = [ps - po for (_x, _y, ps, po, _q, _qo) in obs_data.values()
+                  if ps is not None and po is not None]
+        rmse = (sum(e * e for e in errors) / max(len(errors), 1)) ** 0.5 \
+            if errors else 0
+
+        result = {"rmse": rmse, "details": [], "adjusted": 0, "type_stats": {}}
+
+        # 只动 aqd_nodes.head,全程不引用 aqd_pipes(粗糙度零改动)
+        head_adj = _calibrate_source_head(self.net, obs_data, self.learning_rate)
+        if head_adj:
+            result["head_adjust"] = head_adj
+            result["adjusted"] = 1
+        return result
